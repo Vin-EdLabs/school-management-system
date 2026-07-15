@@ -4,8 +4,9 @@
  * Must run early - before auth for public routes
  */
 import { Request, Response, NextFunction } from 'express';
-import { resolveTenantById, resolveTenantBySlug, TenantInfo } from '../services/tenantResolver.js';
+import { resolveTenantById, resolveTenantBySlug, resolveTenantByWebsiteSubdomain, TenantInfo } from '../services/tenantResolver.js';
 import { getTenantSlugFromHost, resolveClientHost } from '../utils/tenantHost.js';
+import { getSchoolWebsiteSubdomainFromHost } from '../utils/schoolWebsiteHost.js';
 
 export interface TenantRequest extends Request {
   tenant?: TenantInfo | null;
@@ -44,7 +45,15 @@ export async function resolveTenant(
       if (!tenant && querySlug) tenant = await resolveTenantBySlug(querySlug);
     }
 
-    // 4. Subdomain: school1.scholarnerve.com (prefer client host from query/forwarded header)
+    // 4. Public school website host: {subdomain}.edu.scholarnerve.com
+    if (!tenant) {
+      const websiteSubdomain = getSchoolWebsiteSubdomainFromHost(resolveClientHost(req));
+      if (websiteSubdomain) {
+        tenant = await resolveTenantByWebsiteSubdomain(websiteSubdomain);
+      }
+    }
+
+    // 5. Portal subdomain: school1.scholarnerve.com
     if (!tenant) {
       const slugFromHost = getTenantSlugFromHost(resolveClientHost(req));
       if (slugFromHost) {

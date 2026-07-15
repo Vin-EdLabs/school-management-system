@@ -54,20 +54,36 @@ function normalizeBaseUrl(value: string): string {
   return `/${normalized}`.replace(/\/api\/?$/, '/api');
 }
 
-function resolveApiBaseUrl(): string {
-  const envBase = typeof import.meta !== 'undefined' ? String(import.meta.env?.VITE_API_BASE_URL || '').trim() : '';
-  if (envBase) {
-    return normalizeBaseUrl(envBase);
-  }
-
+export function resolveApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
+    if (
+      host.endsWith('.edu.localhost') ||
+      host.includes('.edu.lvh.me') ||
+      host.endsWith('.edu.scholarnerve.com') ||
+      host.endsWith('.schoolsite.localhost') ||
+      host.includes('.schoolsite.lvh.me') ||
+      host.endsWith('.schoolsite.scholarnerve.com') ||
+      host === 'schoolsite.scholarnerve.com'
+    ) {
+      return `${window.location.origin}/api`;
+    }
     if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com')) {
       return `${window.location.origin}/api`;
     }
-    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.lvh.me')) {
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.lvh.me')
+    ) {
       return '/api';
     }
+  }
+
+  const envBase = typeof import.meta !== 'undefined' ? String(import.meta.env?.VITE_API_BASE_URL || '').trim() : '';
+  if (envBase) {
+    return normalizeBaseUrl(envBase);
   }
 
   return 'http://localhost:3001/api';
@@ -269,12 +285,12 @@ export class ApiService {
     });
   }
 
-  async patch<T>(endpoint: string, data: any): Promise<T> {
+  async patch<T>(endpoint: string, data: any, options?: { skipTenant?: boolean; skipTenantHeaders?: boolean }): Promise<T> {
     const key = this.mutationKey('PATCH', endpoint, data);
     return this.withMutationGuard(key, async () => {
-      const response = await fetch(this.buildURL(endpoint), {
+      const response = await fetch(this.buildURL(endpoint, !options?.skipTenant), {
         method: 'PATCH',
-        headers: { ...this.getAuthHeaders(), 'X-Idempotency-Key': key },
+        headers: { ...this.getAuthHeaders(options?.skipTenantHeaders), 'X-Idempotency-Key': key },
         body: JSON.stringify(data),
       });
       const payload = await readResponseJson<Record<string, unknown>>(response);

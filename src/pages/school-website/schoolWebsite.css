@@ -1,0 +1,1498 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+/* ============================================================
+   ScholarNerve Public School Website — Design System
+   Palette: deep forest green / gold accent / white
+   Type:    Cormorant Garamond (headings) + DM Sans (body)
+   ============================================================ */
+.school-website {
+  color-scheme: light;
+
+  /* --sw-primary is set inline from SchoolWebsite.accentColor (DB). */
+  --sw-primary: #2563eb;
+  --sw-navy: #0c2340;
+  --sw-navy-light: #1a3a5c;
+  --sw-secondary: color-mix(in srgb, var(--sw-primary) 78%, #ffffff);
+  --sw-primary-deep: color-mix(in srgb, var(--sw-primary) 82%, #000000);
+  --sw-primary-tint: color-mix(in srgb, var(--sw-primary) 9%, #ffffff);
+  --sw-gold: #c9a84c;
+  --sw-gold-tint: #fdf8ee;
+  --sw-white: #ffffff;
+  --sw-offwhite: #f9f9f7;
+  --sw-text: #1c1c1e;
+  --sw-muted: #6b6b6b;
+  --sw-border: #e8e8e4;
+
+  background: var(--sw-white);
+  color: var(--sw-text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.school-website h1,
+.school-website h2,
+.school-website h3,
+.school-website .sw-serif {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sw-text);
+}
+
+.school-website .sw-container {
+  width: 100%;
+  max-width: 76rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .school-website .sw-container {
+    padding-inline: 2rem;
+  }
+}
+
+/* ---------- Labels / eyebrows ---------- */
+.school-website .sw-eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--sw-primary);
+}
+
+.school-website .sw-gold-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: rgba(201, 168, 76, 0.15);
+  border: 1px solid var(--sw-gold);
+  color: var(--sw-gold);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+/* Gold underline accent on one word of a heading */
+.school-website .sw-underline-gold {
+  position: relative;
+  white-space: nowrap;
+}
+.school-website .sw-underline-gold::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.06em;
+  height: 0.14em;
+  background: var(--sw-gold);
+  opacity: 0.55;
+  border-radius: 2px;
+  z-index: -1;
+}
+
+/* ---------- Buttons ---------- */
+.school-website .sw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 13px 28px;
+  border-radius: 100px;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+
+.school-website .sw-btn-primary {
+  background: var(--sw-primary);
+  color: #ffffff;
+  border-color: var(--sw-primary);
+}
+.school-website .sw-btn-primary:hover {
+  background: var(--sw-gold);
+  border-color: var(--sw-gold);
+  color: var(--sw-primary);
+}
+
+.school-website .sw-btn-ghost {
+  background: transparent;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.65);
+}
+.school-website .sw-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #ffffff;
+}
+
+.school-website .sw-btn-gold {
+  background: var(--sw-gold);
+  color: var(--sw-primary);
+  border-color: var(--sw-gold);
+}
+.school-website .sw-btn-gold:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.school-website .sw-btn-outline {
+  background: #ffffff;
+  color: var(--sw-text);
+  border-color: var(--sw-border);
+}
+.school-website .sw-btn-outline:hover {
+  border-color: var(--sw-primary);
+  color: var(--sw-primary);
+}
+
+.school-website .sw-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Cards ---------- */
+.school-website .sw-card {
+  background: var(--sw-white);
+  border: 1px solid var(--sw-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+}
+
+.school-website .sw-highlights-section {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fdfbf6 45%, #ffffff 100%);
+}
+
+.school-website .sw-highlights-edge {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 1;
+}
+.school-website .sw-highlights-edge--left {
+  left: 0;
+  background: linear-gradient(180deg, transparent, var(--sw-gold) 18%, var(--sw-gold) 82%, transparent);
+  box-shadow: 2px 0 24px color-mix(in srgb, var(--sw-gold) 35%, transparent);
+}
+.school-website .sw-highlights-edge--right {
+  right: 0;
+  background: linear-gradient(180deg, transparent, var(--sw-gold) 18%, var(--sw-gold) 82%, transparent);
+  box-shadow: -2px 0 24px color-mix(in srgb, var(--sw-gold) 35%, transparent);
+}
+
+.school-website .sw-highlights-panel {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 28%, var(--sw-border));
+  border-radius: 1.25rem;
+  padding: 2.5rem 1.25rem 2.75rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(253, 251, 246, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--sw-gold) 10%, transparent),
+    0 16px 40px rgba(12, 35, 64, 0.06);
+}
+@media (min-width: 768px) {
+  .school-website .sw-highlights-panel {
+    padding: 3rem 2rem 3.25rem;
+  }
+}
+
+.school-website .sw-highlights-header {
+  max-width: 42rem;
+  margin-inline: auto;
+}
+
+.school-website .sw-highlights-ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  max-width: 280px;
+}
+.school-website .sw-highlights-ornament-line {
+  flex: 1;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--sw-gold), transparent);
+}
+.school-website .sw-highlights-ornament-gem {
+  width: 10px;
+  height: 10px;
+  rotate: 45deg;
+  border-radius: 2px;
+  background: var(--sw-gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw-gold) 25%, transparent);
+}
+
+.school-website .sw-highlight-card-edge {
+  position: absolute;
+  left: 0;
+  top: 1rem;
+  bottom: 1rem;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, var(--sw-gold), var(--sw-primary));
+}
+
+.school-website .sw-highlight-card {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 30%, var(--sw-border));
+  border-radius: 14px;
+  padding: 1.75rem 1.5rem 1.875rem 1.75rem;
+  box-shadow: 0 8px 24px rgba(12, 35, 64, 0.06);
+  overflow: visible;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+.school-website .sw-highlight-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 15%, transparent);
+}
+.school-website .sw-highlight-card:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--sw-gold) 45%, var(--sw-border));
+  box-shadow:
+    0 4px 8px rgba(12, 35, 64, 0.05),
+    0 16px 40px rgba(168, 134, 46, 0.12);
+}
+.school-website .sw-highlight-card:hover::before {
+  border-color: color-mix(in srgb, var(--sw-gold) 35%, transparent);
+}
+
+.school-website .sw-highlight-num {
+  position: absolute;
+  top: 1rem;
+  right: 1.125rem;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 2.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--sw-primary) 14%, #ffffff);
+  pointer-events: none;
+  user-select: none;
+}
+
+.school-website .sw-highlight-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--sw-primary) 12%, #ffffff) 0%,
+    color-mix(in srgb, var(--sw-primary) 6%, #ffffff) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--sw-primary) 14%, var(--sw-border));
+  color: var(--sw-primary);
+  transition: transform 0.28s ease, background 0.28s ease;
+}
+.school-website .sw-highlight-card:hover .sw-highlight-icon {
+  transform: scale(1.05);
+  background: color-mix(in srgb, var(--sw-primary) 14%, #ffffff);
+}
+
+.school-website .sw-highlight-card[data-accent='0'] .sw-highlight-icon {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--sw-primary) 14%, #fff), color-mix(in srgb, var(--sw-primary) 6%, #fff));
+  border-color: color-mix(in srgb, var(--sw-primary) 18%, var(--sw-border));
+  color: var(--sw-primary);
+}
+.school-website .sw-highlight-card[data-accent='1'] .sw-highlight-icon {
+  background: linear-gradient(145deg, #fdf8ee, #fff9ef);
+  border-color: color-mix(in srgb, var(--sw-gold) 35%, var(--sw-border));
+  color: #a8862e;
+}
+.school-website .sw-highlight-card[data-accent='2'] .sw-highlight-icon {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--sw-navy) 10%, #fff), color-mix(in srgb, var(--sw-navy) 5%, #fff));
+  border-color: color-mix(in srgb, var(--sw-navy) 20%, var(--sw-border));
+  color: var(--sw-navy);
+}
+.school-website .sw-highlight-card[data-accent='3'] .sw-highlight-icon {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--sw-secondary) 14%, #fff), color-mix(in srgb, var(--sw-secondary) 6%, #fff));
+  border-color: color-mix(in srgb, var(--sw-secondary) 18%, var(--sw-border));
+  color: var(--sw-secondary);
+}
+
+.school-website .sw-highlights-gold-frame {
+  width: 56px;
+  height: 3px;
+  border-radius: 100px;
+  background: linear-gradient(90deg, var(--sw-primary), var(--sw-gold));
+}
+
+.school-website .sw-cta-card {
+  box-shadow:
+    0 4px 6px rgba(12, 35, 64, 0.06),
+    0 20px 48px rgba(12, 35, 64, 0.14);
+  color: rgba(255, 255, 255, 0.95);
+}
+.school-website .sw-cta-card::before {
+  content: '';
+  position: absolute;
+  top: -48px;
+  right: -32px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+.school-website .sw-cta-card::after {
+  content: '';
+  position: absolute;
+  bottom: -64px;
+  left: -24px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+.school-website .sw-cta-card h2,
+.school-website .sw-cta-card p {
+  color: inherit;
+}
+
+.school-website .sw-cta-section {
+  background: linear-gradient(180deg, #ffffff 0%, var(--sw-offwhite) 100%);
+}
+
+/* Featured image frames — About page */
+.school-website .sw-featured-image {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.school-website .sw-featured-image > img {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+  box-shadow: 0 16px 48px rgba(12, 35, 64, 0.12);
+}
+
+.school-website .sw-featured-image--history {
+  padding: 0 1.25rem 1.25rem 0;
+}
+.school-website .sw-featured-image--history::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: calc(100% - 1.25rem);
+  height: calc(100% - 1.25rem);
+  border-radius: 18px;
+  background: var(--sw-navy);
+  z-index: 0;
+}
+.school-website .sw-featured-image--history::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid var(--sw-gold);
+  z-index: 3;
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.25);
+}
+.school-website .sw-featured-image--history > img {
+  border-radius: 16px;
+}
+
+.school-website .sw-featured-image--overview {
+  padding: 1rem 0 0 1.25rem;
+}
+.school-website .sw-featured-image--overview::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 5px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, var(--sw-primary) 0%, var(--sw-gold) 100%);
+  z-index: 3;
+}
+.school-website .sw-featured-image--overview::after {
+  content: '';
+  position: absolute;
+  inset: 1.25rem -0.75rem -0.75rem 1.75rem;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--sw-primary) 7%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--sw-primary) 12%, var(--sw-border));
+  z-index: 0;
+}
+.school-website .sw-featured-image--overview > img {
+  border-radius: 16px;
+}
+
+.school-website .sw-icon-square {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--sw-primary-tint);
+  color: var(--sw-primary);
+}
+
+.school-website .sw-icon-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: var(--sw-primary-tint);
+  color: var(--sw-primary);
+}
+
+/* ---------- Sections ---------- */
+.school-website .sw-section {
+  padding-block: 5.5rem;
+}
+@media (max-width: 767px) {
+  .school-website .sw-section {
+    padding-block: 3.5rem;
+  }
+}
+
+.school-website .sw-section-gold {
+  background: var(--sw-gold-tint);
+}
+
+/* Gold diagonal-line geometric pattern (CTA banner) */
+.school-website .sw-gold-pattern {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(201, 168, 76, 0.05) 0px,
+    rgba(201, 168, 76, 0.05) 1px,
+    transparent 1px,
+    transparent 14px
+  );
+}
+
+.school-website .sw-on-navy,
+.school-website footer.sw-footer,
+.school-website .sw-page-hero {
+  --sw-text: rgba(255, 255, 255, 0.95);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.school-website .sw-on-navy h1,
+.school-website .sw-on-navy h2,
+.school-website .sw-on-navy h3,
+.school-website .sw-on-navy h4,
+.school-website .sw-on-navy .sw-serif,
+.school-website .sw-on-navy p,
+.school-website .sw-on-navy span,
+.school-website .sw-on-navy li,
+.school-website .sw-on-navy a:not([class*='sw-gold']) {
+  color: inherit;
+}
+
+.school-website footer.sw-footer a {
+  color: rgba(255, 255, 255, 0.88);
+}
+.school-website footer.sw-footer a:hover {
+  color: var(--sw-gold);
+}
+
+/* Closed applications notice */
+.school-website .sw-closed-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2rem;
+  border-radius: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 35%, var(--sw-border));
+  background: linear-gradient(145deg, #fff 0%, var(--sw-gold-tint) 48%, #fff 100%);
+  box-shadow: 0 18px 48px rgba(12, 35, 64, 0.08);
+}
+
+@media (min-width: 768px) {
+  .school-website .sw-closed-notice {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 2.25rem 2.5rem;
+  }
+}
+
+.school-website .sw-closed-notice-icon {
+  display: flex;
+  height: 4rem;
+  width: 4rem;
+  shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  background: var(--sw-navy);
+  color: var(--sw-gold);
+  box-shadow: 0 10px 24px rgba(12, 35, 64, 0.18);
+}
+
+.school-website .sw-closed-notice-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 45%, transparent);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.45rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sw-primary);
+}
+
+.school-website .sw-closed-notice-pill--muted {
+  border-color: var(--sw-border);
+  color: var(--sw-muted);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.school-website .sw-closed-notice-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--sw-text);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.school-website .sw-closed-notice-link:hover {
+  color: var(--sw-primary);
+}
+
+.school-website .sw-page-hero a {
+  color: rgba(255, 255, 255, 0.75);
+}
+.school-website .sw-page-hero a:hover {
+  color: #ffffff;
+}
+
+/* ---------- Navbar ---------- */
+.school-website .sw-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #ffffff;
+  border-bottom: 1px solid var(--sw-border);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.25s ease;
+}
+.school-website .sw-navbar.is-scrolled {
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+.school-website .sw-brand-name {
+  display: block;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+@media (min-width: 640px) {
+  .school-website .sw-brand-name {
+    font-size: 1rem;
+  }
+}
+@media (min-width: 768px) {
+  .school-website .sw-brand-name {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+}
+
+.school-website .sw-nav-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sw-navy-light);
+  transition: color 0.2s ease;
+  text-decoration: none;
+  position: relative;
+  padding-bottom: 3px;
+}
+.school-website .sw-nav-link:hover {
+  color: var(--sw-primary);
+}
+.school-website .sw-nav-link.active {
+  color: var(--sw-primary);
+  font-weight: 600;
+}
+.school-website .sw-nav-link.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sw-gold);
+}
+
+/* Mobile full-screen slide-down nav */
+.school-website .sw-mobile-nav {
+  animation: swSlideDown 0.25s ease both;
+}
+@keyframes swSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- Scroll reveal ---------- */
+.school-website .sw-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  will-change: opacity, transform;
+}
+.school-website .sw-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .school-website .sw-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------- Form fields ---------- */
+.school-website .sw-field,
+.school-website input.sw-field,
+.school-website textarea.sw-field {
+  background: #ffffff !important;
+  color: var(--sw-text) !important;
+  border: 1px solid var(--sw-border) !important;
+  border-radius: 8px !important;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 15px !important;
+  box-shadow: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.school-website .sw-field:focus,
+.school-website .sw-field:focus-visible,
+.school-website .sw-field[data-state='open'] {
+  border-color: var(--sw-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw-primary) 12%, transparent) !important;
+  outline: none !important;
+}
+.school-website .sw-section-divider {
+  width: 56px;
+  height: 3px;
+  border-radius: 100px;
+  background: linear-gradient(90deg, var(--sw-primary), var(--sw-gold));
+}
+
+/* Select trigger (inside .school-website) */
+.school-website button[role='combobox'].sw-field,
+.school-website [role='combobox'].sw-field {
+  background: #ffffff !important;
+  color: #1c1c1e !important;
+}
+.school-website button[role='combobox'].sw-field [data-placeholder],
+.school-website [role='combobox'].sw-field [data-placeholder] {
+  color: #9a9a96 !important;
+}
+
+/*
+ * Portaled select menus render on document.body — outside .school-website.
+ * Do not use --sw-* vars here; use fixed light-theme colors so options stay readable.
+ */
+.sw-select-content {
+  color-scheme: light !important;
+  z-index: 9999 !important;
+  background-color: #ffffff !important;
+  color: #1c1c1e !important;
+  border-color: #e8e8e4 !important;
+  box-shadow: 0 12px 40px rgba(12, 35, 64, 0.14) !important;
+}
+.sw-select-content [data-radix-select-viewport] {
+  height: auto !important;
+  max-height: min(16rem, 55vh) !important;
+}
+.sw-select-content [data-radix-select-item],
+.sw-select-content [data-radix-select-item] *,
+.sw-select-item,
+.sw-select-item * {
+  color: #1c1c1e !important;
+}
+.sw-select-content [data-radix-select-item][data-highlighted],
+.sw-select-content [data-radix-select-item][data-highlighted] *,
+.sw-select-content [data-radix-select-item]:focus,
+.sw-select-content [data-radix-select-item]:focus *,
+.sw-select-item[data-highlighted],
+.sw-select-item[data-highlighted] *,
+.sw-select-item:focus,
+.sw-select-item:focus * {
+  background-color: #fdf8ee !important;
+  color: #1c1c1e !important;
+}
+.sw-select-content [data-radix-select-item][data-state='checked'],
+.sw-select-content [data-radix-select-item][data-state='checked'] *,
+.sw-select-item[data-state='checked'],
+.sw-select-item[data-state='checked'] * {
+  color: #0c2340 !important;
+  font-weight: 600;
+}
+.dark .sw-select-content,
+.dark .sw-select-content [data-radix-select-item],
+.dark .sw-select-item {
+  background-color: #ffffff !important;
+  color: #1c1c1e !important;
+}
+.dark .sw-select-content [data-radix-select-item][data-highlighted],
+.dark .sw-select-item[data-highlighted] {
+  background-color: #fdf8ee !important;
+  color: #1c1c1e !important;
+}
+
+/* Careers / contact form fields */
+.school-website .sw-form-card {
+  border: 1px solid color-mix(in srgb, var(--sw-gold) 22%, var(--sw-border));
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 10px 32px rgba(12, 35, 64, 0.06);
+}
+.school-website .sw-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.school-website .sw-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--sw-text);
+}
+.school-website .sw-input,
+.school-website textarea.sw-input {
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--sw-border);
+  background: #fff;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  color: var(--sw-text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.school-website .sw-input:focus,
+.school-website textarea.sw-input:focus {
+  outline: none;
+  border-color: var(--sw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw-primary) 12%, transparent);
+}
+.school-website textarea.sw-input {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.school-website .sw-field::placeholder {
+  color: #9a9a96 !important;
+}
+
+.school-website label {
+  color: var(--sw-text);
+  font-weight: 500;
+}
+
+/* Force light even when the portal shell is in dark mode */
+.dark .school-website input:not([type='checkbox']):not([type='radio']),
+.dark .school-website textarea,
+.dark .school-website [role='combobox'] {
+  background-color: #ffffff !important;
+  color: var(--sw-text) !important;
+  border-color: var(--sw-border) !important;
+}
+.dark .school-website label {
+  color: var(--sw-text) !important;
+}
+
+/* ---------- Drag & drop upload zone ---------- */
+.school-website .sw-dropzone {
+  border: 2px dashed color-mix(in srgb, var(--sw-primary) 45%, #ffffff);
+  border-radius: 12px;
+  background: var(--sw-primary-tint);
+  transition: border-color 0.2s ease, background 0.2s ease;
+  cursor: pointer;
+}
+.school-website .sw-dropzone:hover,
+.school-website .sw-dropzone.is-dragover {
+  border-color: var(--sw-primary);
+  background: color-mix(in srgb, var(--sw-primary) 14%, #ffffff);
+}
+
+/* ---------- Progress bar (admissions) ---------- */
+.school-website .sw-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sw-border);
+  overflow: hidden;
+}
+.school-website .sw-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--sw-primary);
+  transition: width 0.4s ease;
+}
+.school-website .sw-step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--sw-border);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.school-website .sw-step-dot.done {
+  background: var(--sw-primary);
+}
+.school-website .sw-step-dot.active {
+  background: var(--sw-gold);
+  box-shadow: 0 0 0 4px rgba(201, 168, 76, 0.25);
+}
+
+/* ---------- Success checkmark animation ---------- */
+.school-website .sw-check-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: swStroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+.school-website .sw-check-mark {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: swStroke 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.65s forwards;
+}
+@keyframes swStroke {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---------- Gallery grid ---------- */
+.school-website .sw-gallery-section {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--sw-primary) 5%, transparent) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.school-website .sw-gallery-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 100px;
+  border: 1px solid var(--sw-border);
+  background: #fff;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--sw-text);
+  transition: all 0.2s ease;
+}
+.school-website .sw-gallery-filter.is-active {
+  background: var(--sw-primary);
+  border-color: var(--sw-primary);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--sw-primary) 28%, transparent);
+}
+.school-website .sw-gallery-filter-count {
+  display: inline-flex;
+  min-width: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.school-website .sw-gallery-filter.is-active .sw-gallery-filter-count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ---------- Framed image (Head of School style) ---------- */
+.school-website .sw-framed-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0 0 12px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+.school-website .sw-framed-image__img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(12, 35, 64, 0.12);
+}
+.school-website .sw-framed-image__accent {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  z-index: 0;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 12px;
+  border: 3px solid var(--sw-gold);
+  pointer-events: none;
+}
+.school-website .sw-framed-image--lightbox .sw-framed-image__accent {
+  border-color: rgba(201, 168, 76, 0.85);
+}
+
+.school-website .sw-gallery-framed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 2.5rem 2rem;
+}
+@media (min-width: 768px) {
+  .school-website .sw-gallery-framed-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 3rem 2.25rem;
+  }
+}
+.school-website .sw-gallery-framed-item {
+  margin: 0;
+}
+.school-website .sw-gallery-framed-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0 0.25rem;
+  font-size: 0.8125rem;
+}
+
+/* ---------- Homepage upcoming events ---------- */
+.school-website .sw-home-events {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--sw-primary) 5%, transparent) 1px, transparent 0);
+  background-size: 28px 28px;
+}
+.school-website .sw-home-event-card {
+  height: 100%;
+  border-radius: 1.25rem;
+  border: 1px solid var(--sw-border);
+  background: #fff;
+  overflow: hidden;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.school-website .sw-home-event-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(12, 35, 64, 0.08);
+  border-color: color-mix(in srgb, var(--sw-primary) 25%, var(--sw-border));
+}
+.school-website .sw-home-event-card-visual {
+  position: relative;
+  padding: 1.25rem 1.25rem 0;
+}
+.school-website .sw-home-event-frame .sw-framed-image__img {
+  aspect-ratio: 16 / 10;
+  max-height: 220px;
+}
+.school-website .sw-home-event-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+  border-radius: 0.75rem;
+  background: var(--sw-offwhite);
+  border: 1px dashed var(--sw-border);
+}
+.school-website .sw-home-event-date {
+  position: absolute;
+  top: 1.75rem;
+  left: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.75rem;
+  background: rgba(12, 35, 64, 0.88);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(12, 35, 64, 0.2);
+}
+.school-website .sw-home-event-date-month {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--sw-gold);
+}
+.school-website .sw-home-event-date-day {
+  font-family: var(--sw-serif);
+  font-size: 1.5rem;
+  line-height: 1;
+  margin-top: 0.125rem;
+}
+.school-website .sw-home-event-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+/* ---------- Events page ---------- */
+.school-website .sw-events-section {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--sw-primary) 4%, transparent) 1px, transparent 0);
+  background-size: 26px 26px;
+}
+
+.school-website .sw-event-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  animation: sw-live-pulse 1.8s ease infinite;
+}
+@keyframes sw-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+  70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.school-website .sw-event-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 100px;
+  background: color-mix(in srgb, #22c55e 12%, #fff);
+  border: 1px solid color-mix(in srgb, #22c55e 35%, transparent);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #15803d;
+}
+
+.school-website .sw-event-date-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  border-radius: 12px;
+  border: 1px solid var(--sw-border);
+  background: #fff;
+  padding: 0.65rem 0.75rem;
+  box-shadow: 0 2px 10px rgba(12, 35, 64, 0.05);
+  text-align: center;
+}
+.school-website .sw-event-date-block.is-live {
+  border-color: color-mix(in srgb, var(--sw-primary) 25%, var(--sw-border));
+  background: color-mix(in srgb, var(--sw-primary) 4%, #fff);
+}
+.school-website .sw-event-date-block .sw-event-live-pill {
+  margin-bottom: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.55rem;
+}
+.school-website .sw-event-date-month {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--sw-primary);
+}
+.school-website .sw-event-date-day {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--sw-text);
+}
+.school-website .sw-event-date-year {
+  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  color: var(--sw-muted);
+}
+
+.school-website .sw-event-row {
+  border-radius: 20px;
+  border: 1px solid var(--sw-border);
+  background: #fff;
+  box-shadow: 0 2px 18px rgba(12, 35, 64, 0.05);
+  transition: box-shadow 0.28s ease, transform 0.28s ease;
+  overflow: hidden;
+}
+.school-website .sw-event-row:hover {
+  box-shadow: 0 16px 40px rgba(12, 35, 64, 0.1);
+  transform: translateY(-2px);
+}
+.school-website .sw-event-row.is-featured {
+  border-color: color-mix(in srgb, var(--sw-primary) 22%, var(--sw-border));
+  box-shadow: 0 8px 32px rgba(12, 35, 64, 0.08);
+}
+.school-website .sw-event-row.is-past {
+  opacity: 0.92;
+}
+.school-website .sw-event-row-inner {
+  display: grid;
+  gap: 0;
+}
+@media (min-width: 768px) {
+  .school-website .sw-event-row-inner {
+    grid-template-columns: minmax(220px, 340px) 1fr;
+  }
+  .school-website .sw-event-row.is-featured .sw-event-row-inner {
+    grid-template-columns: minmax(280px, 420px) 1fr;
+  }
+}
+.school-website .sw-event-row-visual {
+  padding: 1.25rem 1.25rem 0.5rem;
+  background: linear-gradient(180deg, var(--sw-offwhite) 0%, #fff 100%);
+}
+@media (min-width: 768px) {
+  .school-website .sw-event-row-visual {
+    padding: 1.5rem;
+    border-right: 1px solid var(--sw-border);
+  }
+}
+.school-website .sw-event-row-body {
+  padding: 1.25rem 1.5rem 1.75rem;
+}
+@media (min-width: 768px) {
+  .school-website .sw-event-row-body {
+    padding: 1.75rem 2rem;
+  }
+}
+.school-website .sw-event-row-placeholder,
+.school-website .sw-event-panel-placeholder {
+  display: flex;
+  min-height: 200px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--sw-primary-tint);
+}
+
+.school-website .sw-event-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 35, 64, 0.55);
+  backdrop-filter: blur(6px);
+  padding: 1rem;
+}
+.school-website .sw-event-panel {
+  position: relative;
+  max-height: 92vh;
+  width: 100%;
+  max-width: 980px;
+  overflow-y: auto;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+.school-website .sw-event-panel-close {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  padding: 0.5rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease;
+}
+.school-website .sw-event-panel-close:hover {
+  transform: scale(1.05);
+}
+.school-website .sw-event-panel-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  display: none;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: #fff;
+  padding: 0.55rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+@media (min-width: 768px) {
+  .school-website .sw-event-panel-nav {
+    display: flex;
+  }
+}
+.school-website .sw-event-panel-nav.is-prev { left: -1.25rem; }
+.school-website .sw-event-panel-nav.is-next { right: -1.25rem; }
+
+.school-website .sw-event-panel-grid {
+  display: grid;
+  gap: 0;
+}
+@media (min-width: 900px) {
+  .school-website .sw-event-panel-grid {
+    grid-template-columns: 1fr 1.1fr;
+  }
+}
+.school-website .sw-event-panel-visual {
+  padding: 1.5rem;
+  background: var(--sw-offwhite);
+  border-bottom: 1px solid var(--sw-border);
+}
+@media (min-width: 900px) {
+  .school-website .sw-event-panel-visual {
+    border-bottom: none;
+    border-right: 1px solid var(--sw-border);
+  }
+}
+.school-website .sw-event-panel-content {
+  padding: 1.5rem 1.75rem 2rem;
+}
+@media (min-width: 900px) {
+  .school-website .sw-event-panel-content {
+    padding: 2rem 2.25rem;
+  }
+}
+
+/* ---------- Gallery masonry (legacy) ---------- */
+.school-website .sw-masonry {
+  columns: 3 280px;
+  column-gap: 1rem;
+}
+@media (max-width: 1023px) {
+  .school-website .sw-masonry {
+    columns: 2 240px;
+  }
+}
+@media (max-width: 639px) {
+  .school-website .sw-masonry {
+    columns: 1;
+  }
+}
+.school-website .sw-masonry-item {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  display: block;
+  width: 100%;
+  cursor: zoom-in;
+}
+.school-website .sw-masonry-item .sw-img-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 40, 22, 0.55);
+  color: var(--sw-gold);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.school-website .sw-masonry-item:hover .sw-img-overlay {
+  opacity: 1;
+}
+.school-website .sw-masonry-item img {
+  transition: transform 0.4s ease;
+}
+.school-website .sw-masonry-item:hover img {
+  transform: scale(1.04);
+}
+
+/* ---------- Prose ---------- */
+.school-website .sw-prose {
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--sw-muted);
+}
+.school-website .sw-prose p {
+  margin: 0 0 1rem;
+}
+.dark .school-website .sw-prose,
+.dark .school-website .sw-prose p,
+.dark .school-website .sw-prose li {
+  color: var(--sw-muted) !important;
+}
+
+/* ---------- Review rows (admissions step 5) ---------- */
+.school-website .sw-review-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--sw-border);
+  font-size: 14px;
+}
+.school-website .sw-review-row:last-child {
+  border-bottom: none;
+}
+.school-website .sw-review-row dt {
+  color: var(--sw-muted);
+  flex-shrink: 0;
+}
+.school-website .sw-review-row dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Alumni & records page */
+.school-website .sw-alumni-page {
+  padding-bottom: 0.5rem;
+}
+
+.school-website .sw-alumni-intro {
+  color: var(--sw-muted);
+}
+
+.school-website .sw-alumni-doc-list {
+  color: var(--sw-navy-light);
+  padding-top: 0.5rem;
+}
+
+.school-website .sw-alumni-info-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .school-website .sw-alumni-info-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .school-website .sw-alumni-info-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.school-website .sw-alumni-info-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1.35rem 1.25rem;
+  text-align: left;
+  border: 1px solid var(--sw-border);
+  border-radius: 1rem;
+  background: var(--sw-white);
+  box-shadow: 0 4px 20px rgba(12, 35, 64, 0.05);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.school-website .sw-alumni-info-card:hover {
+  border-color: color-mix(in srgb, var(--sw-primary) 35%, var(--sw-border));
+  box-shadow: 0 8px 28px rgba(12, 35, 64, 0.08);
+  transform: translateY(-2px);
+}
+
+.school-website .sw-alumni-info-card.is-selected {
+  border-color: var(--sw-gold);
+  box-shadow: 0 8px 32px rgba(201, 168, 76, 0.18);
+  background: linear-gradient(180deg, var(--sw-gold-tint) 0%, var(--sw-white) 100%);
+}
+
+.school-website .sw-alumni-info-card-icon {
+  display: flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--sw-primary) 10%, #ffffff);
+  color: var(--sw-primary);
+}
+
+.school-website .sw-alumni-info-card.is-selected .sw-alumni-info-card-icon {
+  background: rgba(201, 168, 76, 0.2);
+  color: color-mix(in srgb, var(--sw-navy) 80%, var(--sw-gold));
+}
+
+.school-website .sw-alumni-info-card-title {
+  font-size: 1.15rem;
+  line-height: 1.25;
+  color: var(--sw-navy);
+  margin: 0;
+}
+
+.school-website .sw-alumni-info-card-desc {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--sw-muted);
+}
+
+.school-website .sw-alumni-form-header {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem 1.75rem;
+}
+
+.school-website .sw-alumni-form-header--navy {
+  background: linear-gradient(135deg, var(--sw-navy) 0%, color-mix(in srgb, var(--sw-primary) 55%, var(--sw-navy)) 100%);
+}
+
+.school-website .sw-alumni-form-header--gold {
+  background: linear-gradient(135deg, var(--sw-gold-tint) 0%, #fff 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--sw-gold) 35%, var(--sw-border));
+}
+
+.school-website .sw-alumni-form-icon {
+  display: flex;
+  height: 3rem;
+  width: 3rem;
+  shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--sw-gold);
+}
+
+.school-website .sw-alumni-form-icon--dark {
+  background: rgba(12, 35, 64, 0.08);
+  color: var(--sw-navy);
+}

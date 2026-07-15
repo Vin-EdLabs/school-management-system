@@ -557,7 +557,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'users.role_check drop'
   );
   await safe(
-    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster'))`,
+    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager'))`,
     'users.role_check add headmaster'
   );
 
@@ -1009,6 +1009,302 @@ export async function ensureSupplementalSchema(): Promise<void> {
       UNIQUE(tenant_id, participant_one, participant_two)
     )`,
     'dm_conversations'
+  );
+
+  // --- school website module ---
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_websites (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      is_enabled BOOLEAN NOT NULL DEFAULT false,
+      is_published BOOLEAN NOT NULL DEFAULT false,
+      accent_color VARCHAR(20) DEFAULT '#2563eb',
+      logo_url TEXT,
+      banner_image_url TEXT,
+      tagline TEXT,
+      welcome_text TEXT,
+      welcome_image_url TEXT,
+      highlights JSONB NOT NULL DEFAULT '[]'::jsonb,
+      stats JSONB NOT NULL DEFAULT '{"founded_year":null,"student_count":null,"programs_count":null}'::jsonb,
+      social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_websites'
+  );
+  await safe(
+    `ALTER TABLE school_websites ADD COLUMN IF NOT EXISTS public_subdomain VARCHAR(63)`,
+    'school_websites.public_subdomain'
+  );
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_school_websites_public_subdomain_lower
+       ON school_websites (LOWER(public_subdomain))
+       WHERE public_subdomain IS NOT NULL AND TRIM(public_subdomain) <> ''`,
+    'school_websites.public_subdomain_idx'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_about (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      history TEXT,
+      vision TEXT,
+      mission TEXT,
+      core_values JSONB NOT NULL DEFAULT '[]'::jsonb,
+      director_message TEXT,
+      director_name TEXT,
+      director_title TEXT,
+      director_photo_url TEXT,
+      institution_overview TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_about'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_admission_config (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      requirements TEXT,
+      programs JSONB NOT NULL DEFAULT '[]'::jsonb,
+      applications_open BOOLEAN NOT NULL DEFAULT true,
+      open_date DATE,
+      close_date DATE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_admission_config'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_careers_config (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      applications_open BOOLEAN NOT NULL DEFAULT true,
+      intro_text TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_careers_config'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_applications (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      applicant_name TEXT NOT NULL,
+      dob DATE,
+      gender TEXT,
+      nationality TEXT,
+      program_applied TEXT,
+      parent_name TEXT,
+      parent_phone TEXT,
+      parent_email TEXT,
+      relationship TEXT,
+      documents JSONB NOT NULL DEFAULT '[]'::jsonb,
+      application_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'under_review', 'accepted', 'rejected')),
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_applications'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_applications_tenant
+     ON school_website_applications (tenant_id, submitted_at DESC)`,
+    'idx_school_website_applications_tenant'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_gallery (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      category TEXT NOT NULL DEFAULT 'facilities',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_gallery'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_gallery_tenant
+     ON school_website_gallery (tenant_id, sort_order ASC, id ASC)`,
+    'idx_school_website_gallery_tenant'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_contact (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      primary_phone TEXT,
+      secondary_phone TEXT,
+      email TEXT,
+      address TEXT,
+      map_embed_url TEXT,
+      working_hours TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_contact'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_contact_messages (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_contact_messages'
+  );
+  await safe(
+    `ALTER TABLE school_website_contact_messages ADD COLUMN IF NOT EXISTS phone TEXT`,
+    'school_website_contact_messages.phone'
+  );
+  await safe(
+    `ALTER TABLE school_website_contact_messages ALTER COLUMN email DROP NOT NULL`,
+    'school_website_contact_messages.email_nullable'
+  );
+  await safe(
+    `ALTER TABLE school_website_contact_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT false`,
+    'school_website_contact_messages.is_read'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_employment_applications (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      position_applied TEXT,
+      message TEXT,
+      documents JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'under_review', 'accepted', 'rejected')),
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_employment_applications'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_employment_tenant
+       ON school_website_employment_applications (tenant_id, submitted_at DESC)`,
+    'idx_school_website_employment_tenant'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_enable_requests (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      requested_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      requested_by_name TEXT,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'handled')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_enable_requests'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_enable_requests_tenant
+       ON school_website_enable_requests (tenant_id, created_at DESC)`,
+    'idx_school_website_enable_requests_tenant'
+  );
+
+  await safe(
+    `ALTER TABLE school_website_applications ADD COLUMN IF NOT EXISTS application_data JSONB NOT NULL DEFAULT '{}'::jsonb`,
+    'school_website_applications.application_data'
+  );
+  await safe(
+    `ALTER TABLE school_website_applications ADD COLUMN IF NOT EXISTS student_id INTEGER REFERENCES students(id) ON DELETE SET NULL`,
+    'school_website_applications.student_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_applications_student
+       ON school_website_applications (tenant_id, student_id)
+       WHERE student_id IS NOT NULL`,
+    'idx_school_website_applications_student'
+  );
+  await safe(
+    `ALTER TABLE school_websites ADD COLUMN IF NOT EXISTS welcome_image_secondary_url TEXT`,
+    'school_websites.welcome_image_secondary_url'
+  );
+  await safe(
+    `ALTER TABLE school_websites ADD COLUMN IF NOT EXISTS home_content JSONB NOT NULL DEFAULT '{}'::jsonb`,
+    'school_websites.home_content'
+  );
+  await safe(
+    `ALTER TABLE school_website_about ADD COLUMN IF NOT EXISTS history_image_url TEXT`,
+    'school_website_about.history_image_url'
+  );
+  await safe(
+    `ALTER TABLE school_website_about ADD COLUMN IF NOT EXISTS overview_image_url TEXT`,
+    'school_website_about.overview_image_url'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_events (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      event_date DATE NOT NULL,
+      event_time TIME,
+      location TEXT,
+      cover_image_url TEXT,
+      gallery_images JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_events'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_events_tenant_date
+     ON school_website_events (tenant_id, event_date DESC)`,
+    'idx_school_website_events_tenant_date'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_transcript_requests (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      full_name TEXT NOT NULL,
+      completion_year TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT,
+      document_type TEXT NOT NULL DEFAULT 'transcript'
+        CHECK (document_type IN ('transcript', 'bece', 'both', 'testimonial')),
+      notes TEXT,
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'completed', 'rejected')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_transcript_requests'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_transcript_requests_tenant
+       ON school_website_transcript_requests (tenant_id, created_at DESC)`,
+    'idx_school_website_transcript_requests_tenant'
+  );
+  await safe(
+    `ALTER TABLE school_website_transcript_requests
+       DROP CONSTRAINT IF EXISTS school_website_transcript_requests_document_type_check`,
+    'school_website_transcript_requests_document_type_check_drop'
+  );
+  await safe(
+    `ALTER TABLE school_website_transcript_requests
+       ADD CONSTRAINT school_website_transcript_requests_document_type_check
+       CHECK (document_type IN ('transcript', 'bece', 'both', 'testimonial'))`,
+    'school_website_transcript_requests_document_type_check'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS school_website_testimonial_submissions (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      full_name TEXT NOT NULL,
+      completion_year TEXT,
+      phone TEXT NOT NULL,
+      email TEXT,
+      message TEXT NOT NULL,
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'school_website_testimonial_submissions'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_school_website_testimonial_submissions_tenant
+       ON school_website_testimonial_submissions (tenant_id, created_at DESC)`,
+    'idx_school_website_testimonial_submissions_tenant'
   );
 
   const critical = [

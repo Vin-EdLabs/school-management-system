@@ -31,11 +31,12 @@ const PRIMARY_ADMIN_MODULES = [
   'complaints',
   'my-complaints',
   'messages',
+  'website-management',
 ] as const;
 
 const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver' | 'headmaster';
+export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver' | 'headmaster' | 'website-manager';
 
 interface User {
   id: number;
@@ -410,7 +411,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management'].includes(module);
     }
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
@@ -452,6 +453,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Driver: transport + staff clock
     if (user.role === 'driver') {
       return ['settings', 'settings-password-only', 'my-staff-attendance', 'messages'].includes(module);
+    }
+
+    // Website Manager: website CMS only
+    if (user.role === 'website-manager') {
+      return ['website-management', 'dashboard', 'settings-password-only'].includes(module);
     }
 
     return false;

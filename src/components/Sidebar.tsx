@@ -54,6 +54,7 @@ import {
   UserRoundSearch,
   QrCode,
   Flag,
+  Globe,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
@@ -141,8 +142,8 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('teacher-dashboard') && userRole !== 'super-admin' && userRole !== 'administrator'
       ? [{ id: 'teacher-dashboard', label: 'My Dashboard', icon: GraduationCap }]
       : []),
-    ...(hasAccess('my-staff-attendance') && userRole !== 'teacher' && userRole !== 'staff' && userRole !== 'headmaster'
-      ? [{ id: 'my-staff-attendance', label: 'Staff Clock', icon: Clock }]
+    ...(hasAccess('website-management')
+      ? [{ id: 'website-management', label: 'Website Management', icon: Globe }]
       : []),
   ],
   academic: [

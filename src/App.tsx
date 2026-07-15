@@ -25,6 +25,8 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
+import { detectSchoolWebsiteSlugFromHost } from "./utils/schoolWebsiteHost";
+import SchoolWebsiteApp from "./pages/school-website/SchoolWebsiteApp";
 import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
 import { BrandedLoadingScreen, isSplashGone } from "@/components/common/BrandedLoading";
@@ -314,8 +316,21 @@ const IndexWithSchool = () => {
   );
 };
 
+const SchoolWebsitePreviewRoute = () => {
+  const slug = detectSchoolWebsiteSlugFromHost() || detectTenantSlugFromHost() || new URLSearchParams(window.location.search).get('slug') || '';
+  if (!slug) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center">
+        <p className="text-slate-600">School website preview requires a tenant slug.</p>
+      </div>
+    );
+  }
+  return <SchoolWebsiteApp slug={slug} />;
+};
+
 const App = () => {
-  const subdomainSlug = detectTenantSlugFromHost();
+  const websiteSlug = detectSchoolWebsiteSlugFromHost();
+  const subdomainSlug = websiteSlug ? null : detectTenantSlugFromHost();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -334,7 +349,11 @@ const App = () => {
               <Toaster />
               <Sonner />
               <SubdomainPathNormalizer />
-                {subdomainSlug ? (
+                {websiteSlug ? (
+                  <Routes>
+                    <Route path="/*" element={<SchoolWebsiteApp slug={websiteSlug} />} />
+                  </Routes>
+                ) : subdomainSlug ? (
                   <Routes>
                    
                     {/* --- WILDCARD SUBDOMAIN ROUTING (Clean URL bar, e.g. rosa.localhost:8080) --- */}
@@ -342,6 +361,7 @@ const App = () => {
                     <Route path="/portal/*" element={<ParentPortalRoute />} />
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/checkin" element={<PublicCheckinPage />} />
+                    <Route path="/website/*" element={<SchoolWebsitePreviewRoute />} />
                     
                     {/* Standard Shared Dashboard Routes */}
                     <Route path="/register-school" element={<RegisterSchool />} />

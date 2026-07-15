@@ -73,6 +73,9 @@ import studentCheckinsRoutes from './routes/studentCheckins.js';
 import publicCheckinsRoutes from './routes/publicCheckins.js';
 import complaintsRoutes from './routes/complaints.js';
 import chatRoutes from './routes/chat.js';
+import publicSchoolWebsiteRoutes from './routes/publicSchoolWebsite.js';
+import schoolWebsiteRoutes from './routes/schoolWebsite.js';
+import superAdminWebsitesRoutes from './routes/superAdminWebsites.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -114,11 +117,19 @@ app.use(cors({
     const allowedPatterns = [
       /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
       /^http:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
+      /^https:\/\/([a-z0-9-]+\.)?edu\.scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?edu\.scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?edu\.localhost:(8080|5173|4173)$/,
+      /^https:\/\/([a-z0-9-]+\.)?schoolsite\.scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?schoolsite\.scholarnerve\.com$/,
+      /^http:\/\/([a-z0-9-]+\.)?schoolsite\.localhost:(8080|5173|4173)$/,
       /^http:\/\/([a-z0-9-]+\.)?localhost:(8080|5173|4173)$/,
       /^http:\/\/localhost:(8080|5173|4173)$/,
       /^http:\/\/([a-z0-9-]+\.)?127\.0\.0\.1:(8080|5173|4173)$/,
       /^http:\/\/127\.0\.0\.1:(8080|5173|4173)$/,
       /^http:\/\/([a-z0-9-]+\.)?lvh\.me:(8080|5173|4173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?schoolsite\.lvh\.me:(8080|5173|4173)$/,
+      /^http:\/\/([a-z0-9-]+\.)?edu\.lvh\.me:(8080|5173|4173)$/,
     ];
     
     const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
@@ -169,6 +180,8 @@ app.use('/api/announcements', announcementsRoutes);
 // School registrations (POST public, GET requires super-admin)
 app.use('/api/school-registrations', schoolRegistrationsRoutes);
 
+app.use('/api/public-website', publicSchoolWebsiteRoutes);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/impersonate', impersonationRoutes);
@@ -176,6 +189,7 @@ app.use('/api/schools', schoolRoutes);
 app.use('/api/schools', academicCycleRoutes);
 app.use('/api/super-admin/tenants', tenantBackupRoutes);
 app.use('/api/super-admin/finance', superAdminFinanceRoutes);
+app.use('/api/super-admin/websites', superAdminWebsitesRoutes);
 app.use('/api/super-admin', superAdminPlatformRoutes);
 app.use('/api/enrollments', enrollmentsRoutes);
 app.use('/api/students', studentRoutes);
@@ -229,6 +243,7 @@ app.use('/api/student-checkins', studentCheckinsRoutes);
 app.use('/api/public-checkins', publicCheckinsRoutes);
 app.use('/api/complaints', complaintsRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/school-website', schoolWebsiteRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

@@ -70,6 +70,7 @@ const roleLabels: Record<string, string> = {
   teacher: 'Teacher',
   staff: 'Staff',
   headmaster: 'Headmaster',
+  'website-manager': 'Website Manager',
 };
 
 const roleColors: Record<string, string> = {

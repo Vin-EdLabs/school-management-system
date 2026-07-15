@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { isPlatformAdminPath } from '../constants/platformAdminRoute.js';
+import { isSchoolWebsiteHost } from './schoolWebsiteHost.js';
 
 const EXCLUDED_DOMAINS = [
   'scholarnerve.com',
@@ -17,6 +18,8 @@ const RESERVED_SUBDOMAINS = [
   'scholarnerve',
   'portal',
   'school',
+  'schoolsite',
+  'edu',
 ];
 
 /** Normalize host from client-facing signals (query, forwarded header, or request hostname). */
@@ -55,6 +58,11 @@ export function getTenantSlugFromHost(host: string): string | null {
   const parts = normalized.split('.').filter(Boolean);
   if (parts.length < 2) return null;
 
+  // Public school websites: {subdomain}.edu.* or legacy {subdomain}.schoolsite.*
+  if (isSchoolWebsiteHost(normalized)) {
+    return null;
+  }
+
   if (normalized.endsWith('.localhost')) {
     return parts.length >= 2 ? parts[0] : null;
   }
@@ -72,6 +80,7 @@ export function getTenantSlugFromHost(host: string): string | null {
 }
 
 export function isTenantSubdomainHost(host: string): boolean {
+  if (isSchoolWebsiteHost(host)) return false;
   return getTenantSlugFromHost(host) !== null;
 }
 

@@ -66,6 +66,31 @@ export async function resolveTenantBySubdomain(subdomain: string): Promise<Tenan
   return resolveTenantBySlug(subdomain);
 }
 
+/** Resolve tenant from public school website subdomain ({name}.edu.scholarnerve.com). */
+export async function resolveTenantByWebsiteSubdomain(subdomain: string): Promise<TenantInfo | null> {
+  const key = String(subdomain || '').trim().toLowerCase();
+  if (!key) return null;
+
+  const result = await query(
+    `SELECT t.id, t.name, t.slug, t.subdomain, t.logo_url, t.primary_color, t.secondary_color,
+            COALESCE(t.subscription_status, 'active') as subscription_status,
+            COALESCE(t.is_active, true) as is_active,
+            t.archived_at
+     FROM tenants t
+     LEFT JOIN school_websites sw ON sw.tenant_id = t.id
+     WHERE ${ACTIVE_TENANT_FILTER}
+       AND (
+         LOWER(COALESCE(NULLIF(TRIM(sw.public_subdomain), ''), t.slug)) = LOWER($1)
+         OR LOWER(t.slug) = LOWER($1)
+         OR LOWER(t.subdomain) = LOWER($1)
+       )
+     LIMIT 1`,
+    [key]
+  );
+  if (result.rows.length === 0) return null;
+  return mapRow(result.rows[0]);
+}
+
 function mapRow(row: any): TenantInfo {
   return {
     id: row.id,

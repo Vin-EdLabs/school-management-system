@@ -105,6 +105,8 @@ import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import SupportModule from '../components/support/SupportModule';
 import ChatBroadcastPanel from '../components/chat/ChatBroadcastPanel';
+import SchoolWebsitesPanel from '@/components/superadmin/SchoolWebsitesPanel';
+import { superAdminWebsiteService } from '@/services/schoolWebsiteService';
 import SuperAdminSchoolChatModule from '../components/chat/SuperAdminSchoolChatModule';
 import { resolveLogoUrl } from '../services/tenantService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -213,7 +215,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
 
 interface RemovedTeacher {
   id: number;
@@ -262,6 +264,7 @@ const SuperAdminDashboard = () => {
   const darkMode = theme === 'dark';
   const [section, setSection] = useState<Section>('schools');
   const [supportInboxUnread, setSupportInboxUnread] = useState(0);
+  const [websiteEnablePending, setWebsiteEnablePending] = useState(0);
   const [schools, setSchools] = useState<School[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [landingVisitors, setLandingVisitors] = useState(0);
@@ -475,6 +478,52 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     if (user?.role === 'super-admin' && section === 'support-chat') void refreshSupportInboxUnread();
   }, [section, user?.role, refreshSupportInboxUnread]);
+
+  const refreshWebsiteEnablePending = useCallback(async () => {
+    if (user?.role !== 'super-admin') return;
+    try {
+      const data = await superAdminWebsiteService.list();
+      const count = Number(
+        data.stats?.pending_enable_requests ?? data.enable_requests?.length ?? 0
+      );
+      setWebsiteEnablePending(count);
+    } catch {
+      setWebsiteEnablePending(0);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'super-admin') return;
+    void refreshWebsiteEnablePending();
+    const id = window.setInterval(() => void refreshWebsiteEnablePending(), 60000);
+    return () => window.clearInterval(id);
+  }, [user?.role, refreshWebsiteEnablePending]);
+
+  useEffect(() => {
+    if (!socket || user?.role !== 'super-admin') return;
+    const onEnableRequest = (payload: { schoolName?: string; message?: string }) => {
+      void refreshWebsiteEnablePending();
+      toast({
+        title: 'Website activation request',
+        description: payload.schoolName
+          ? `${payload.schoolName}: ${String(payload.message || '').slice(0, 120)}`
+          : String(payload.message || 'A school requested the website feature.'),
+      });
+    };
+    const onTenant = (evt: { entity?: string }) => {
+      if (String(evt?.entity || '') === 'website-enable-request') void refreshWebsiteEnablePending();
+    };
+    socket.on('website-enable-request', onEnableRequest);
+    socket.on('tenant-data-changed', onTenant);
+    return () => {
+      socket.off('website-enable-request', onEnableRequest);
+      socket.off('tenant-data-changed', onTenant);
+    };
+  }, [socket, user?.role, refreshWebsiteEnablePending]);
+
+  useEffect(() => {
+    if (user?.role === 'super-admin' && section === 'school-websites') void refreshWebsiteEnablePending();
+  }, [section, user?.role, refreshWebsiteEnablePending]);
 
   useEffect(() => {
     if (user?.role !== 'super-admin') return;
@@ -1290,6 +1339,7 @@ const SuperAdminDashboard = () => {
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
     { id: 'school-general-chat' as Section, label: 'School General Chat', icon: Globe },
     { id: 'chat-broadcast' as Section, label: 'School Broadcast', icon: Megaphone },
+    { id: 'school-websites' as Section, label: 'School Websites', icon: Globe },
   ];
   const systemItems = [
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
@@ -1343,6 +1393,11 @@ const SuperAdminDashboard = () => {
                         {id === 'support-chat' && supportInboxUnread > 0 && (
                           <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
                             {supportInboxUnread > 99 ? '99+' : supportInboxUnread}
+                          </Badge>
+                        )}
+                        {id === 'school-websites' && websiteEnablePending > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                            {websiteEnablePending > 99 ? '99+' : websiteEnablePending}
                           </Badge>
                         )}
                       </SidebarMenuButton>
@@ -1435,6 +1490,18 @@ const SuperAdminDashboard = () => {
               {section === 'platform-settings' && 'Platform Settings'}
               {section === 'finance-wipe' && 'Finance Configuration'}
               {section === 'removed-staff' && 'Removed Staff'}
+              {section === 'school-general-chat' && 'School General Chat'}
+              {section === 'chat-broadcast' && 'School Broadcast'}
+              {section === 'school-websites' && (
+                <>
+                  School Websites
+                  {websiteEnablePending > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                      {websiteEnablePending > 99 ? '99+' : websiteEnablePending}
+                    </span>
+                  )}
+                </>
+              )}
               {section === 'announcements' && 'Global Announcements'}
               {section === 'support-chat' && (
                 <>
@@ -3317,6 +3384,12 @@ const SuperAdminDashboard = () => {
             {section === 'chat-broadcast' && (
               <div className="animate-in fade-in duration-700 p-4 md:p-6">
                 <ChatBroadcastPanel />
+              </div>
+            )}
+
+            {section === 'school-websites' && (
+              <div className="animate-in fade-in duration-700">
+                <SchoolWebsitesPanel onPendingCountChange={setWebsiteEnablePending} />
               </div>
             )}
           </div>

@@ -8,6 +8,7 @@ export const STAFF_ROLES = [
   'staff',
   'driver',
   'headmaster',
+  'website-manager',
 ] as const;
 
 export type StaffRole = (typeof STAFF_ROLES)[number];
@@ -27,6 +28,11 @@ export function canAccessTeacherPortalRoutes(role: string | null | undefined, te
 export function canManageSchoolCalendar(role: string | null | undefined): boolean {
   const r = String(role || '').toLowerCase();
   return r === 'super-admin' || r === 'administrator' || r === 'headmaster';
+}
+
+export function canManageSchoolWebsite(role: string | null | undefined): boolean {
+  const r = String(role || '').toLowerCase();
+  return r === 'super-admin' || r === 'administrator' || r === 'website-manager';
 }
 
 export function canBroadcastStaffAnnouncements(role: string | null | undefined): boolean {

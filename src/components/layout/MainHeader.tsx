@@ -58,7 +58,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const [adminNotifications, setAdminNotifications] = useState<
     Array<{
       id: string;
-      type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint';
+      type:
+        | 'parent-desk'
+        | 'support-chat'
+        | 'term-budget'
+        | 'lost-card'
+        | 'payment-submissions'
+        | 'complaint'
+        | 'website-application'
+        | 'website-contact'
+        | 'website-employment'
+        | 'website-alumni';
       title: string;
       body: string;
       unread: number;
@@ -76,7 +86,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   const showAdminBell =
     !!user &&
     user.role !== 'super-admin' &&
-    (['administrator', 'finance'].includes(user.role || '') || isHeadmaster);
+    (['administrator', 'finance', 'website-manager'].includes(user.role || '') || isHeadmaster);
   const showAdminNotifications = showAdminBell;
   const headmasterCombinedUnread = isHeadmaster ? unreadCount + adminUnreadCount : adminUnreadCount;
   const bellUnreadCount = showTeacherBell ? unreadCount : headmasterCombinedUnread;
@@ -285,6 +295,22 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                         setActiveModule('complaints');
                         return;
                       }
+                      if (
+                        notification.type === 'website-application' ||
+                        notification.type === 'website-contact' ||
+                        notification.type === 'website-employment' ||
+                        notification.type === 'website-alumni'
+                      ) {
+                        if (notification.type === 'website-alumni') {
+                          try {
+                            sessionStorage.setItem('website-management-tab', 'alumni');
+                          } catch {
+                            /* ignore */
+                          }
+                        }
+                        setActiveModule('website-management');
+                        return;
+                      }
                       setActiveModule(notification.type === 'term-budget' ? 'term-budget' : notification.type);
                     }}
                     className={cn(
@@ -377,7 +403,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         count: number;
         title: string;
         body: string;
-        type: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint';
+        type:
+          | 'parent-desk'
+          | 'support-chat'
+          | 'term-budget'
+          | 'lost-card'
+          | 'payment-submissions'
+          | 'complaint'
+          | 'website-application'
+          | 'website-contact'
+          | 'website-employment'
+          | 'website-alumni';
         priority?: 'HIGH' | 'NORMAL';
         reportId?: string;
         notificationDbId?: number;
@@ -475,6 +511,73 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           body: String(alert.message || alert.category_name || 'Budget alert'),
         });
       }
+
+      const websiteSummary = await apiService
+        .get<{
+          pending_applications: number;
+          unread_contact_messages: number;
+          pending_employment: number;
+          unread_transcript_requests: number;
+          unread_testimonials: number;
+        }>('/school-website/notifications/summary')
+        .catch(() => null);
+      if (websiteSummary) {
+        if (Number(websiteSummary.pending_applications) > 0) {
+          results.push({
+            id: 'website-applications',
+            type: 'website-application',
+            count: Number(websiteSummary.pending_applications),
+            title: 'Website — Admissions',
+            body: `${websiteSummary.pending_applications} pending admission application${websiteSummary.pending_applications === 1 ? '' : 's'}.`,
+            timestamp: Date.now(),
+          });
+        }
+        if (Number(websiteSummary.unread_contact_messages) > 0) {
+          results.push({
+            id: 'website-contact',
+            type: 'website-contact',
+            count: Number(websiteSummary.unread_contact_messages),
+            title: 'Website — Contact',
+            body: `${websiteSummary.unread_contact_messages} new contact message${websiteSummary.unread_contact_messages === 1 ? '' : 's'}.`,
+            timestamp: Date.now(),
+          });
+        }
+        if (Number(websiteSummary.pending_employment) > 0) {
+          results.push({
+            id: 'website-employment',
+            type: 'website-employment',
+            count: Number(websiteSummary.pending_employment),
+            title: 'Website — Careers',
+            body: `${websiteSummary.pending_employment} pending employment application${websiteSummary.pending_employment === 1 ? '' : 's'}.`,
+            timestamp: Date.now(),
+          });
+        }
+        const alumniCount =
+          Number(websiteSummary.unread_transcript_requests || 0) +
+          Number(websiteSummary.unread_testimonials || 0);
+        if (alumniCount > 0) {
+          const parts: string[] = [];
+          if (Number(websiteSummary.unread_transcript_requests) > 0) {
+            parts.push(
+              `${websiteSummary.unread_transcript_requests} transcript request${websiteSummary.unread_transcript_requests === 1 ? '' : 's'}`
+            );
+          }
+          if (Number(websiteSummary.unread_testimonials) > 0) {
+            parts.push(
+              `${websiteSummary.unread_testimonials} testimonial letter request${websiteSummary.unread_testimonials === 1 ? '' : 's'}`
+            );
+          }
+          results.push({
+            id: 'website-alumni',
+            type: 'website-alumni',
+            count: alumniCount,
+            title: 'Website — Alumni & Records',
+            body: parts.join(' · '),
+            timestamp: Date.now(),
+          });
+        }
+      }
+
       results.sort((a, b) => {
         const pa = a.priority === 'HIGH' ? 0 : 1;
         const pb = b.priority === 'HIGH' ? 0 : 1;
@@ -521,7 +624,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
   }, []);
 
   const markAdminNotificationRead = useCallback(async (
-    notificationType: 'parent-desk' | 'support-chat' | 'term-budget' | 'lost-card' | 'payment-submissions' | 'complaint',
+    notificationType:
+      | 'parent-desk'
+      | 'support-chat'
+      | 'term-budget'
+      | 'lost-card'
+      | 'payment-submissions'
+      | 'complaint'
+      | 'website-application'
+      | 'website-contact'
+      | 'website-employment'
+      | 'website-alumni',
     alertId?: number,
     notificationDbId?: number
   ) => {
@@ -535,7 +648,17 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       if (notificationType === 'complaint' && notificationDbId) {
         await apiService.post(`/complaints/notifications/${notificationDbId}/read`, {});
       }
-      if (notificationType !== 'parent-desk' && notificationType !== 'support-chat') {
+      if (notificationType === 'website-contact') {
+        await apiService.post('/school-website/contact/messages/read-all', {}).catch(() => undefined);
+      }
+      if (
+        notificationType !== 'parent-desk' &&
+        notificationType !== 'support-chat' &&
+        notificationType !== 'website-application' &&
+        notificationType !== 'website-employment'
+      ) {
+        await loadAdminNotifications();
+      } else if (notificationType.startsWith('website-')) {
         await loadAdminNotifications();
       }
     } catch (error) {
@@ -559,7 +682,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       const tid = evt.tenantId;
       if (tid != null && user?.tenantId != null && tid !== user.tenantId) return;
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint' || e === 'chat' || e === 'staff-notification') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint' || e === 'chat' || e === 'staff-notification' || e === 'website-application' || e === 'website-contact' || e === 'website-employment' || e === 'website-transcript' || e === 'website-testimonial') {
         void loadAdminNotifications();
       }
     };
@@ -569,6 +692,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         if (type === 'parent-desk' || type === 'support-chat') {
           showAdminCommsToast(type, event.preview);
         }
+        void loadAdminNotifications();
+      }
+      if (type === 'website-application' || type === 'website-contact' || type === 'website-employment' || type === 'website-transcript' || type === 'website-testimonial') {
+        toast('New school website message', {
+          description: String(event.preview || 'Open Website Management to review.'),
+          duration: 12_000,
+          className: 'border-l-4 border-l-emerald-500',
+        });
         void loadAdminNotifications();
       }
     };
@@ -593,6 +724,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
     socket.on('support-chat-read', onSupportRead);
     socket.on('lost-card-report', onLostCard);
     socket.on('complaint-filed', onComplaint);
+    socket.on('new-website-portal-message', onNew);
     return () => {
       socket.off('tenant-data-changed', onTenant);
       socket.off('new-parent-message', onNew);
@@ -600,6 +732,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       socket.off('support-chat-read', onSupportRead);
       socket.off('lost-card-report', onLostCard);
       socket.off('complaint-filed', onComplaint);
+      socket.off('new-website-portal-message', onNew);
     };
   }, [socket, showAdminNotifications, loadAdminNotifications, showAdminCommsToast]);
 

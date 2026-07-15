@@ -702,15 +702,15 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (!username || !password || !role) {
       return res.status(400).json({ error: 'Username, password, and role are required' });
     }
-    if (!['administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster'].includes(role)) {
-      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, driver, or headmaster' });
+    if (!['administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, driver, headmaster, or website-manager' });
     }
-    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' || role === 'headmaster' ? 5 : 6;
+    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' || role === 'headmaster' || role === 'website-manager' ? 5 : 6;
     if (password.length < minLength) {
       return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
-    if ((role === 'administrator' || role === 'finance' || role === 'headmaster') && !String(fullName || '').trim()) {
-      return res.status(400).json({ error: 'Full name is required for Administrator, Finance, and Headmaster users' });
+    if ((role === 'administrator' || role === 'finance' || role === 'headmaster' || role === 'website-manager') && !String(fullName || '').trim()) {
+      return res.status(400).json({ error: 'Full name is required for Administrator, Finance, Headmaster, and Website Manager users' });
     }
     if (role === 'headmaster' && !teacherId) {
       return res.status(400).json({ error: 'Headmaster accounts must be linked to a teacher profile (teacherId)' });

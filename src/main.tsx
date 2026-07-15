@@ -177,6 +177,8 @@ function bootstrapWithTimeout() {
   return Promise.race([bootstrapTenantBrandingAndManifest(), timeout]);
 }
 
+const OFFLINE_CACHE_NAME = 'scholarnerve-offline-v1';
+
 async function cacheIndexHtmlFromClient(version?: string) {
   try {
     let cacheName: string | undefined;
@@ -186,16 +188,40 @@ async function cacheIndexHtmlFromClient(version?: string) {
       const keys = await caches.keys();
       cacheName = keys.find((k) => k.startsWith('scholarnerve-app-'));
     }
-    if (!cacheName) return;
 
-    const cache = await caches.open(cacheName);
     const response = await fetch('/index.html', { cache: 'no-cache' });
-    if (response && response.ok) {
+    if (!response || !response.ok) return;
+
+    if (cacheName) {
+      const cache = await caches.open(cacheName);
       await cache.put('/index.html', response.clone());
       await cache.put('/', response.clone());
     }
+
+    // Also seed the dedicated offline backup cache (survives SW updates).
+    const offlineCache = await caches.open(OFFLINE_CACHE_NAME);
+    await offlineCache.put('offline-index-html', response.clone());
+    await offlineCache.put('/index.html', response.clone());
   } catch (e) {
     console.warn('[PWA] Client-side index.html cache failed:', e);
+  }
+}
+
+async function seedOfflineCacheNow() {
+  if (!('caches' in window)) return;
+  try {
+    const offlineCache = await caches.open(OFFLINE_CACHE_NAME);
+    // Check if we already have a fresh copy
+    const existing = await offlineCache.match('offline-index-html').catch(() => null);
+    if (existing) return; // already seeded
+    // Fetch and store
+    const response = await fetch('/index.html', { cache: 'no-cache' });
+    if (response && response.ok) {
+      await offlineCache.put('offline-index-html', response.clone());
+      await offlineCache.put('/index.html', response.clone());
+    }
+  } catch (e) {
+    console.warn('[PWA] seedOfflineCacheNow failed:', e);
   }
 }
 
@@ -273,6 +299,11 @@ document.addEventListener(
 const root = createRoot(document.getElementById('root')!);
 
 void (async () => {
+  // Seed the offline backup cache immediately — fire and forget, in parallel
+  // with the rest of the bootstrap so first-load users get offline coverage
+  // even if the SW install-time fetch is blocked (iOS Safari).
+  void seedOfflineCacheNow();
+
   try {
     await bootstrapWithTimeout();
   } catch (error) {

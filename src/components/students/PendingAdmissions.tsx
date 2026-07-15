@@ -12,10 +12,18 @@ import {
 } from '@/components/ui/table';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  detailDialogBodyClass,
+  detailDialogFooterClass,
+  detailDialogHeaderClass,
+  dialogLabelClass,
+  dialogSectionClass,
+  formDialogContentClass,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -31,7 +39,7 @@ import { apiService } from '../../services/api';
 import { mapStudent } from '../../utils/studentMappers';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { toast } from '@/hooks/use-toast';
-import { CheckCircle2, Clock, Loader2, UserX, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, GraduationCap, Info, Loader2, UserX, XCircle } from 'lucide-react';
 import LazyStudentAvatar from './LazyStudentAvatar';
 import type { Student } from '../../contexts/DataContext';
 
@@ -72,6 +80,11 @@ const PendingAdmissions = () => {
         (a, b) => new Date(b.dateOfAdmission || 0).getTime() - new Date(a.dateOfAdmission || 0).getTime()
       ),
     [rows]
+  );
+
+  const selectedClassName = useMemo(
+    () => classes.find((c) => c.id === selectedClassId)?.className || '',
+    [classes, selectedClassId]
   );
 
   const handleApprove = async () => {
@@ -197,7 +210,7 @@ const PendingAdmissions = () => {
                       <div className="flex justify-end gap-2">
                         <Button
                           size="sm"
-                          className="gap-1"
+                          className="gap-1 rounded-xl"
                           onClick={() => {
                             setApproveTarget(student);
                             setSelectedClassId('');
@@ -209,7 +222,7 @@ const PendingAdmissions = () => {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="gap-1 text-destructive hover:text-destructive"
+                          className="gap-1 rounded-xl text-destructive hover:text-destructive"
                           onClick={() => {
                             setRejectTarget(student);
                             setRejectReason('');
@@ -229,23 +242,54 @@ const PendingAdmissions = () => {
       </CardContent>
 
       <Dialog open={!!approveTarget} onOpenChange={(open) => !open && setApproveTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Approve &amp; enroll student</DialogTitle>
+        <DialogContent className={`${formDialogContentClass} sm:max-w-lg`}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className="flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                <GraduationCap className="h-4 w-4" />
+              </span>
+              Approve &amp; enroll student
+            </DialogTitle>
+            <DialogDescription>
+              Confirm full enrollment for this pending student. This step activates them in the school system.
+            </DialogDescription>
           </DialogHeader>
+
           {approveTarget && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Confirm enrollment for{' '}
-                <span className="font-medium text-foreground">
-                  {approveTarget.firstName} {approveTarget.lastName}
-                </span>
-                . Select the class to assign before confirming.
-              </p>
+            <DialogBody className={`${detailDialogBodyClass} space-y-5`}>
+              <div className="flex items-center gap-4 rounded-2xl border border-border/70 bg-muted/30 p-4">
+                <LazyStudentAvatar
+                  studentId={approveTarget.id}
+                  firstName={approveTarget.firstName}
+                  lastName={approveTarget.lastName}
+                  hasPassportPhoto={approveTarget.hasPassportPhoto}
+                  className="h-14 w-14"
+                />
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">
+                    {approveTarget.firstName} {approveTarget.lastName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{approveTarget.admissionNumber}</p>
+                </div>
+              </div>
+
+              <div className={dialogSectionClass}>
+                <p className="flex items-start gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                  What happens when you confirm
+                </p>
+                <ul className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+                  <li>Student status changes from pending to <strong className="text-foreground">active enrolled</strong>.</li>
+                  <li>They are assigned to the class you select below.</li>
+                  <li>Term fees may be posted automatically if a fee structure exists.</li>
+                  <li>Parent portal access and student ID card can be generated.</li>
+                </ul>
+              </div>
+
               <div className="space-y-2">
-                <Label>Class to assign *</Label>
+                <Label className={dialogLabelClass}>Class to assign *</Label>
                 <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11 rounded-xl">
                     <SelectValue placeholder="Select class…" />
                   </SelectTrigger>
                   <SelectContent>
@@ -256,15 +300,21 @@ const PendingAdmissions = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedClassName && (
+                  <p className="text-xs text-muted-foreground">
+                    {approveTarget.firstName} will be enrolled in <span className="font-medium text-foreground">{selectedClassName}</span>.
+                  </p>
+                )}
               </div>
-            </div>
+            </DialogBody>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveTarget(null)} disabled={saving}>
+
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button variant="outline" className="rounded-xl" onClick={() => setApproveTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleApprove} disabled={!selectedClassId || saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button className="rounded-xl" onClick={handleApprove} disabled={!selectedClassId || saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               Confirm enrollment
             </Button>
           </DialogFooter>
@@ -272,36 +322,49 @@ const PendingAdmissions = () => {
       </Dialog>
 
       <Dialog open={!!rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject pending admission</DialogTitle>
+        <DialogContent className={`${formDialogContentClass} border-t-red-500 sm:max-w-lg`}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className="flex items-center gap-2 text-red-900 dark:text-red-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">
+                <UserX className="h-4 w-4" />
+              </span>
+              Reject pending admission
+            </DialogTitle>
+            <DialogDescription>
+              This removes the student from the pending list and records the reason in the audit trail.
+            </DialogDescription>
           </DialogHeader>
+
           {rejectTarget && (
-            <div className="space-y-4">
+            <DialogBody className={`${detailDialogBodyClass} space-y-4`}>
               <p className="text-sm text-muted-foreground">
                 Reject{' '}
                 <span className="font-medium text-foreground">
                   {rejectTarget.firstName} {rejectTarget.lastName}
                 </span>
-                ? This removes them from the pending list and is logged in the audit trail.
+                ? This action cannot be undone from this screen.
               </p>
               <div className="space-y-2">
-                <Label htmlFor="reject-reason">Reason *</Label>
+                <Label htmlFor="reject-reason" className={dialogLabelClass}>
+                  Reason *
+                </Label>
                 <Textarea
                   id="reject-reason"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder="Explain why this admission was rejected…"
-                  rows={3}
+                  rows={4}
+                  className="rounded-xl"
                 />
               </div>
-            </div>
+            </DialogBody>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectTarget(null)} disabled={saving}>
+
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button variant="outline" className="rounded-xl" onClick={() => setRejectTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim() || saving}>
+            <Button variant="destructive" className="rounded-xl" onClick={handleReject} disabled={!rejectReason.trim() || saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
               Reject admission
             </Button>

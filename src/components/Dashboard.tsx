@@ -67,6 +67,7 @@ import StaffAttendanceDashboard from './staffAttendance/StaffAttendanceDashboard
 import MyAttendanceHistory from './staffAttendance/MyAttendanceHistory';
 import ComplaintsDashboard from './complaints/ComplaintsDashboard';
 import MyComplaintsPage from './complaints/MyComplaintsPage';
+import WebsiteManagementModule from './website/WebsiteManagementModule';
 import ChatModule from './chat/ChatModule';
 import { isHeadmasterRole } from '../utils/headmasterPortal';
 import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
@@ -395,6 +396,8 @@ const DashboardContent = () => {
             <ChatModule />
           </div>
         );
+      case 'website-management':
+        return <WebsiteManagementModule />;
       default:
         if (user?.role === 'headmaster') {
           return <HeadmasterDashboard onNavigate={setActiveModule} />;

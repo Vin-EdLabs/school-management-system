@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    allowedHosts: ['.lvh.me', '.scholarnerve.com', '.localhost'],
+    allowedHosts: ['.lvh.me', '.scholarnerve.com', '.localhost', '.edu.localhost', '.schoolsite.localhost'],
     proxy: {
       // Same-origin /api in dev (mirrors production reverse proxy) so the PWA
       // manifest + logo endpoints resolve without the service worker.

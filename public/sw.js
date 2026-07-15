@@ -1,7 +1,11 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v22';
+const CACHE_VERSION = '2026-07-13-v23';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
+// Dedicated offline backup cache — never deleted on activate, seeded from both
+// the SW and the client so iOS Safari always has an index.html to fall back to.
+const OFFLINE_CACHE = 'scholarnerve-offline-v1';
+const OFFLINE_INDEX_KEY = 'offline-index-html';
 const BRANDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const APP_SHELL = ['/', '/index.html'];
 
@@ -57,6 +61,10 @@ self.addEventListener('install', (event) => {
         if (response && response.ok) {
           await cache.put('/index.html', response.clone());
           await cache.put('/', response.clone());
+          // Also seed the dedicated offline backup cache
+          const offlineCache = await caches.open(OFFLINE_CACHE);
+          await offlineCache.put(OFFLINE_INDEX_KEY, response.clone());
+          await offlineCache.put('/index.html', response.clone());
           return; // success — done
         }
       } catch (e) {
@@ -69,6 +77,9 @@ self.addEventListener('install', (event) => {
         if (response && response.ok) {
           await cache.put('/index.html', response.clone());
           await cache.put('/', response.clone());
+          const offlineCache = await caches.open(OFFLINE_CACHE);
+          await offlineCache.put(OFFLINE_INDEX_KEY, response.clone());
+          await offlineCache.put('/index.html', response.clone());
           return;
         }
       } catch (e) {
@@ -90,7 +101,16 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== BRANDING_CACHE).map((k) => caches.delete(k))),
+        Promise.all(
+          keys
+            .filter(
+              (k) =>
+                k !== CACHE_NAME &&
+                k !== BRANDING_CACHE &&
+                k !== OFFLINE_CACHE,
+            )
+            .map((k) => caches.delete(k)),
+        ),
       )
       .then(() => {
         // Only claim clients on first install, not on every update,
@@ -396,6 +416,114 @@ async function handlePwaManifestRequest(request, apiUrl, params, origin) {
   }
 }
 
+function guaranteedOfflineResponse() {
+  // Layer 4: guaranteed non-null HTML response — Safari will accept this.
+  return new Response(
+    `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ScholarNerve — Offline</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          min-height: 100vh;
+          background: linear-gradient(145deg, #ffffff 0%, #e8f5f0 40%, #0f766e 100%);
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          font-family: system-ui, -apple-system, sans-serif;
+          gap: 16px; padding: 24px;
+        }
+        .logo {
+          width: 80px; height: 80px; border-radius: 16px;
+          background: #0f766e;
+          display: flex; align-items: center; justify-content: center;
+          color: white; font-size: 28px; font-weight: 700;
+        }
+        h1 { color: #0f766e; font-size: 20px; font-weight: 600; }
+        p { color: #0f766e; opacity: 0.7; font-size: 14px; text-align: center; }
+        .retry {
+          margin-top: 8px; padding: 10px 24px;
+          background: #0f766e; color: white;
+          border: none; border-radius: 8px;
+          font-size: 14px; font-weight: 600;
+          cursor: pointer;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="logo">SN</div>
+      <h1>ScholarNerve</h1>
+      <p>You are offline. Please check your connection and try again.</p>
+      <button class="retry" onclick="window.location.reload()">Try again</button>
+    </body>
+    </html>`,
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
+async function seedCachesFromNavigationResponse(response) {
+  // FIX 1: write every successful navigation response into BOTH the main app
+  // cache and the dedicated offline backup cache.
+  try {
+    const mainClone = response.clone();
+    const mainClone2 = response.clone();
+    const offlineClone = response.clone();
+    const offlineClone2 = response.clone();
+
+    const mainCache = await caches.open(CACHE_NAME);
+    await mainCache.put('/index.html', mainClone);
+    await mainCache.put('/', mainClone2);
+
+    const offlineCache = await caches.open(OFFLINE_CACHE);
+    await offlineCache.put(OFFLINE_INDEX_KEY, offlineClone);
+    await offlineCache.put('/index.html', offlineClone2);
+  } catch (e) {
+    console.warn('[SW] Seeding caches from navigation failed:', e);
+  }
+}
+
+async function offlineNavigationFallback() {
+  // FIX 2: triple-layered offline fallback — never return null or undefined.
+
+  // Layer 1: main app cache
+  const layer1 = await caches
+    .match('/index.html', { cacheName: CACHE_NAME })
+    .catch(() => null);
+  if (layer1) return layer1;
+
+  // Layer 2: dedicated offline backup cache
+  try {
+    const offlineCache = await caches.open(OFFLINE_CACHE);
+    const layer2 = await offlineCache.match(OFFLINE_INDEX_KEY).catch(() => null);
+    if (layer2) return layer2;
+  } catch {
+    // keep falling through
+  }
+
+  // Layer 3: scan ALL caches for any index.html
+  const allCacheKeys = await caches.keys().catch(() => []);
+  for (const key of allCacheKeys) {
+    try {
+      const c = await caches.open(key);
+      const match = await c.match('/index.html').catch(() => null);
+      if (match) return match;
+    } catch {
+      // try next cache
+    }
+  }
+
+  // Layer 4: guaranteed non-null HTML response
+  return guaranteedOfflineResponse();
+}
+
 async function handleNavigationRequest(event) {
   // Try network first with a 5 second timeout
   const networkWithTimeout = new Promise((resolve, reject) => {
@@ -408,23 +536,15 @@ async function handleNavigationRequest(event) {
   try {
     const response = await networkWithTimeout;
     if (response && response.ok) {
-      // Update the cached index.html in background
-      const clone = response.clone();
-      caches.open(CACHE_NAME).then((cache) => {
-        cache.put('/index.html', clone);
-        cache.put('/', clone.clone());
-      });
+      // FIX 1: seed BOTH caches from every successful navigation (background).
+      event.waitUntil(seedCachesFromNavigationResponse(response.clone()));
       return response;
     }
-    // Non-ok response — serve from cache
-    const cached = await caches.match('/index.html');
-    return cached || offlineHtmlResponse(false);
+    // Non-ok response — fall back through the offline layers
+    return await offlineNavigationFallback();
   } catch {
-    // Network failed or timed out — serve from cache
-    const cached = await caches.match('/index.html');
-    if (cached) return cached;
-    // Last resort — inline offline HTML (never null)
-    return offlineHtmlResponse(false);
+    // Network failed or timed out — fall back through the offline layers
+    return await offlineNavigationFallback();
   }
 }
 

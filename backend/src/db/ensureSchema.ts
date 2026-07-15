@@ -1042,6 +1042,10 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'school_websites.public_subdomain_idx'
   );
   await safe(
+    `ALTER TABLE school_websites ADD COLUMN IF NOT EXISTS website_url_suffix VARCHAR(20) NOT NULL DEFAULT 'edu'`,
+    'school_websites.website_url_suffix'
+  );
+  await safe(
     `CREATE TABLE IF NOT EXISTS school_website_about (
       tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
       history TEXT,

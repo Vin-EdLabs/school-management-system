@@ -4,9 +4,12 @@
  * Must run early - before auth for public routes
  */
 import { Request, Response, NextFunction } from 'express';
-import { resolveTenantById, resolveTenantBySlug, resolveTenantByWebsiteSubdomain, TenantInfo } from '../services/tenantResolver.js';
+import { resolveTenantById, resolveTenantBySlug, resolveTenantByWebsiteHost, resolveTenantByWebsiteSubdomain, TenantInfo } from '../services/tenantResolver.js';
 import { getTenantSlugFromHost, resolveClientHost } from '../utils/tenantHost.js';
-import { getSchoolWebsiteSubdomainFromHost } from '../utils/schoolWebsiteHost.js';
+import {
+  parseLegacySchoolWebsiteHost,
+  parsePublicWebsiteHost,
+} from '../utils/schoolWebsiteHost.js';
 
 export interface TenantRequest extends Request {
   tenant?: TenantInfo | null;
@@ -45,11 +48,17 @@ export async function resolveTenant(
       if (!tenant && querySlug) tenant = await resolveTenantBySlug(querySlug);
     }
 
-    // 4. Public school website host: {subdomain}.edu.scholarnerve.com
+    // 4. Public school website host: {slug}-{suffix}.scholarnerve.com
     if (!tenant) {
-      const websiteSubdomain = getSchoolWebsiteSubdomainFromHost(resolveClientHost(req));
-      if (websiteSubdomain) {
-        tenant = await resolveTenantByWebsiteSubdomain(websiteSubdomain);
+      const clientHost = resolveClientHost(req);
+      const parsed = parsePublicWebsiteHost(clientHost);
+      if (parsed) {
+        tenant = await resolveTenantByWebsiteHost(parsed.slug, parsed.suffix);
+      } else {
+        const legacy = parseLegacySchoolWebsiteHost(clientHost);
+        if (legacy) {
+          tenant = await resolveTenantByWebsiteSubdomain(legacy.slug);
+        }
       }
     }
 

@@ -8,6 +8,7 @@ import {
   listSuperAdminWebsiteEnableRequests,
   superAdminSetWebsiteEnabled,
   superAdminSetWebsiteSubdomain,
+  superAdminSetWebsiteUrlSuffix,
   superAdminWebsiteStats,
 } from '../services/schoolWebsiteService.js';
 
@@ -42,6 +43,17 @@ router.patch('/:tenantId/enabled', async (req: AuthRequest, res) => {
     if (!Number.isFinite(tenantId)) return res.status(400).json({ error: 'Invalid tenant ID' });
     const enabled = req.body.enabled === true;
     res.json(await superAdminSetWebsiteEnabled(tenantId, enabled));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.patch('/:tenantId/url-suffix', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = Number(req.params.tenantId);
+    if (!Number.isFinite(tenantId)) return res.status(400).json({ error: 'Invalid tenant ID' });
+    const suffix = String(req.body.suffix ?? req.body.websiteUrlSuffix ?? 'edu');
+    res.json(await superAdminSetWebsiteUrlSuffix(tenantId, suffix));
   } catch (err) {
     handleError(res, err);
   }

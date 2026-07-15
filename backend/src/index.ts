@@ -74,6 +74,7 @@ import publicCheckinsRoutes from './routes/publicCheckins.js';
 import complaintsRoutes from './routes/complaints.js';
 import chatRoutes from './routes/chat.js';
 import publicSchoolWebsiteRoutes from './routes/publicSchoolWebsite.js';
+import { schoolWebsiteHostRedirect } from './middleware/schoolWebsiteHostRedirect.js';
 import schoolWebsiteRoutes from './routes/schoolWebsite.js';
 import superAdminWebsitesRoutes from './routes/superAdminWebsites.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
@@ -180,6 +181,7 @@ app.use('/api/announcements', announcementsRoutes);
 // School registrations (POST public, GET requires super-admin)
 app.use('/api/school-registrations', schoolRegistrationsRoutes);
 
+app.use('/api/public-website', schoolWebsiteHostRedirect);
 app.use('/api/public-website', publicSchoolWebsiteRoutes);
 
 // Routes

@@ -4,8 +4,14 @@ import { writeAuditLog } from './auditService.js';
 import { getActiveAcademicTermId } from './studentTermTrackingService.js';
 import { notifySuperAdminsOfSupportMessage } from './commsNotifyService.js';
 import {
-  normalizePublicSubdomain,
-  validatePublicSubdomain,
+  buildSchoolWebsitePublicUrl,
+  DEFAULT_WEBSITE_URL_SUFFIX,
+  getEffectivePublicWebsiteSlug,
+  getSchoolUrls,
+  normalizePublicWebsiteSlug,
+  normalizeWebsiteUrlSuffix,
+  validatePublicWebsiteSlug,
+  validateWebsiteUrlSuffix,
 } from '../utils/schoolWebsiteHost.js';
 
 export type WebsiteHighlight = { icon: string; title: string; description: string };
@@ -167,13 +173,23 @@ async function ensureWebsiteRow(tenantId: number): Promise<void> {
 
 function mapWebsiteRow(row: Record<string, unknown>, tenant: Record<string, unknown>) {
   const tenantSlug = String(tenant.slug || '');
-  const publicSubdomain = (row.public_subdomain as string | null) || null;
+  const publicSubdomainRaw = (row.public_subdomain as string | null) || null;
+  const websiteUrlSuffix =
+    normalizeWebsiteUrlSuffix(String(row.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX)) ||
+    DEFAULT_WEBSITE_URL_SUFFIX;
+  const effectivePublicSlug = getEffectivePublicWebsiteSlug(tenantSlug, publicSubdomainRaw);
+  const urls = getSchoolUrls(tenantSlug, websiteUrlSuffix, publicSubdomainRaw);
   return {
     tenant_id: Number(row.tenant_id),
     school_name: tenant.name as string,
     slug: tenantSlug,
-    public_subdomain: publicSubdomain,
-    effective_public_subdomain: normalizePublicSubdomain(publicSubdomain || tenantSlug),
+    website_url_suffix: websiteUrlSuffix,
+    public_subdomain: publicSubdomainRaw,
+    effective_public_subdomain: effectivePublicSlug,
+    public_site_url: buildSchoolWebsitePublicUrl(tenantSlug, websiteUrlSuffix, {
+      publicSubdomain: publicSubdomainRaw,
+    }),
+    portal_url: `https://${urls.portal}`,
     is_enabled: !!row.is_enabled,
     is_published: !!row.is_published,
     accent_color: (row.accent_color as string) || (tenant.primary_color as string) || '#2563eb',
@@ -1362,8 +1378,8 @@ export async function listSuperAdminWebsiteEnableRequests() {
 export async function listSuperAdminWebsites() {
   const res = await query(
     `SELECT t.id AS tenant_id, t.name AS tenant_name, t.slug,
+            COALESCE(NULLIF(TRIM(sw.website_url_suffix), ''), 'edu') AS website_url_suffix,
             sw.public_subdomain,
-            COALESCE(NULLIF(TRIM(sw.public_subdomain), ''), t.slug) AS effective_public_subdomain,
             COALESCE(sw.is_enabled, false) AS is_enabled,
             COALESCE(sw.is_published, false) AS is_published,
             sw.updated_at,
@@ -1375,59 +1391,108 @@ export async function listSuperAdminWebsites() {
      WHERE t.is_active = true AND t.archived_at IS NULL
      ORDER BY t.name ASC`
   );
-  return res.rows;
+  return res.rows.map((row) => {
+    const tenantSlug = String(row.slug || '');
+    const publicSubdomain = (row.public_subdomain as string | null) || null;
+    const suffix = normalizeWebsiteUrlSuffix(String(row.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX));
+    const urls = getSchoolUrls(tenantSlug, suffix, publicSubdomain);
+    const effectivePublicSlug = getEffectivePublicWebsiteSlug(tenantSlug, publicSubdomain);
+    return {
+      ...row,
+      website_url_suffix: suffix,
+      public_site_url: buildSchoolWebsitePublicUrl(tenantSlug, suffix, { publicSubdomain }),
+      portal_url: `https://${urls.portal}`,
+      effective_public_subdomain: effectivePublicSlug,
+    };
+  });
 }
 
-export async function superAdminSetWebsiteSubdomain(tenantId: number, rawSubdomain: string | null) {
+export async function superAdminSetWebsiteUrlSuffix(tenantId: number, rawSuffix: string) {
+  await ensureWebsiteRow(tenantId);
+
+  const validationError = validateWebsiteUrlSuffix(rawSuffix);
+  if (validationError) throw httpError(400, validationError);
+
+  const suffix = normalizeWebsiteUrlSuffix(rawSuffix) || DEFAULT_WEBSITE_URL_SUFFIX;
+
+  const tenantRes = await query(`SELECT slug FROM tenants WHERE id = $1`, [tenantId]);
+  const tenantSlug = String(tenantRes.rows[0]?.slug || '');
+
+  await query(
+    `UPDATE school_websites SET website_url_suffix = $2, updated_at = NOW() WHERE tenant_id = $1`,
+    [tenantId, suffix]
+  );
+
+  const siteRes = await query(`SELECT public_subdomain FROM school_websites WHERE tenant_id = $1`, [tenantId]);
+  const publicSubdomain = (siteRes.rows[0]?.public_subdomain as string | null) || null;
+  const urls = getSchoolUrls(tenantSlug, suffix, publicSubdomain);
+  return {
+    tenant_id: tenantId,
+    slug: tenantSlug,
+    website_url_suffix: suffix,
+    public_site_url: buildSchoolWebsitePublicUrl(tenantSlug, suffix, { publicSubdomain }),
+    portal_url: `https://${urls.portal}`,
+    effective_public_subdomain: getEffectivePublicWebsiteSlug(tenantSlug, publicSubdomain),
+  };
+}
+
+export async function superAdminSetWebsitePublicSlug(tenantId: number, rawSubdomain: string | null) {
   await ensureWebsiteRow(tenantId);
 
   const tenantRes = await query(`SELECT slug FROM tenants WHERE id = $1`, [tenantId]);
   const tenantSlug = String(tenantRes.rows[0]?.slug || '');
 
   const trimmed = String(rawSubdomain || '').trim();
-  if (!trimmed) {
-    await query(
-      `UPDATE school_websites SET public_subdomain = NULL, updated_at = NOW() WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    return {
-      tenant_id: tenantId,
-      public_subdomain: null,
-      effective_public_subdomain: normalizePublicSubdomain(tenantSlug),
-    };
-  }
+  let stored: string | null = null;
 
-  const validationError = validatePublicSubdomain(trimmed);
-  if (validationError) throw httpError(400, validationError);
+  if (trimmed) {
+    const normalized = normalizePublicWebsiteSlug(trimmed);
+    const validationError = validatePublicWebsiteSlug(normalized);
+    if (validationError) throw httpError(400, validationError);
 
-  const subdomain = normalizePublicSubdomain(trimmed);
-
-  const conflict = await query(
-    `SELECT sw.tenant_id, t.slug
-     FROM school_websites sw
-     JOIN tenants t ON t.id = sw.tenant_id
-     WHERE sw.tenant_id <> $1
-       AND (
-         LOWER(COALESCE(NULLIF(TRIM(sw.public_subdomain), ''), t.slug)) = LOWER($2)
-         OR LOWER(t.slug) = LOWER($2)
-       )
-     LIMIT 1`,
-    [tenantId, subdomain]
-  );
-  if (conflict.rows.length > 0) {
-    throw httpError(409, 'This subdomain is already used by another school');
+    if (normalized !== normalizePublicWebsiteSlug(tenantSlug)) {
+      const conflict = await query(
+        `SELECT sw.tenant_id
+         FROM school_websites sw
+         JOIN tenants t ON t.id = sw.tenant_id
+         WHERE sw.tenant_id <> $1
+           AND LOWER(COALESCE(NULLIF(TRIM(sw.public_subdomain), ''), t.slug)) = LOWER($2)
+         LIMIT 1`,
+        [tenantId, normalized]
+      );
+      if (conflict.rows.length > 0) {
+        throw httpError(409, 'This public website slug is already used by another school');
+      }
+      stored = normalized;
+    }
   }
 
   await query(
     `UPDATE school_websites SET public_subdomain = $2, updated_at = NOW() WHERE tenant_id = $1`,
-    [tenantId, subdomain]
+    [tenantId, stored]
   );
+
+  const suffixRes = await query(
+    `SELECT COALESCE(NULLIF(TRIM(website_url_suffix), ''), 'edu') AS website_url_suffix
+     FROM school_websites WHERE tenant_id = $1`,
+    [tenantId]
+  );
+  const suffix = normalizeWebsiteUrlSuffix(String(suffixRes.rows[0]?.website_url_suffix || DEFAULT_WEBSITE_URL_SUFFIX));
+  const urls = getSchoolUrls(tenantSlug, suffix, stored);
 
   return {
     tenant_id: tenantId,
-    public_subdomain: subdomain,
-    effective_public_subdomain: subdomain,
+    slug: tenantSlug,
+    public_subdomain: stored,
+    effective_public_subdomain: getEffectivePublicWebsiteSlug(tenantSlug, stored),
+    website_url_suffix: suffix,
+    public_site_url: buildSchoolWebsitePublicUrl(tenantSlug, suffix, { publicSubdomain: stored }),
+    portal_url: `https://${urls.portal}`,
   };
+}
+
+export async function superAdminSetWebsiteSubdomain(tenantId: number, rawSubdomain: string | null) {
+  return superAdminSetWebsitePublicSlug(tenantId, rawSubdomain);
 }
 
 export async function requestWebsiteEnable(

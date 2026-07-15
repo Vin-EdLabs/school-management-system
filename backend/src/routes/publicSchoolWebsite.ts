@@ -3,7 +3,8 @@
  */
 import express from 'express';
 import multer from 'multer';
-import { resolveTenant, type TenantRequest } from '../middleware/tenantResolver.js';
+import { resolvePublicWebsiteTenant } from '../middleware/resolvePublicWebsiteTenant.js';
+import type { TenantRequest } from '../middleware/tenantResolver.js';
 import {
   bufferToDataUrl,
   getPublicWebsiteBundle,
@@ -21,7 +22,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-router.use(resolveTenant);
+router.use(resolvePublicWebsiteTenant);
 
 function tenantIdOf(req: TenantRequest): number {
   if (!req.tenantId) throw Object.assign(new Error('School not found'), { status: 404 });

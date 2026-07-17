@@ -247,6 +247,107 @@ function hexToRgba(hex: string): { r: number; g: number; b: number; alpha: numbe
   return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255, alpha: 1 };
 }
 
+// ---------------------------------------------------------------------------
+// Partner Network PWA — official ScholarNerve Partners logo (separate from
+// the main ScholarNerve school/tenant logo).
+// ---------------------------------------------------------------------------
+const PARTNER_LOGO_FILE = path.join(__dirname, '../../assets/partners/scholarnerve-partners-logo.png');
+const PARTNER_LOGO_PUBLIC = path.join(__dirname, '../../../public/partners/scholarnerve-partners-logo.png');
+const PARTNER_EMBLEM_FILE = path.join(__dirname, '../../assets/partners/scholarnerve-partner-emblem.png');
+const PARTNER_EMBLEM_PUBLIC = path.join(__dirname, '../../../public/partners/scholarnerve-partner-emblem.png');
+
+let partnerLogoCache: Buffer | null = null;
+let partnerEmblemCache: Buffer | null = null;
+let partnerEmblemVersionTag: string | null = null;
+
+async function getPartnerEmblemVersionTag(): Promise<string> {
+  if (partnerEmblemVersionTag) return partnerEmblemVersionTag;
+  const bytes = await loadPartnerEmblemBytes();
+  partnerEmblemVersionTag = crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+  return partnerEmblemVersionTag;
+}
+
+async function loadPartnerLogoBytes(): Promise<Buffer> {
+  if (partnerLogoCache) return partnerLogoCache;
+  try {
+    partnerLogoCache = await fs.readFile(PARTNER_LOGO_FILE);
+  } catch {
+    partnerLogoCache = await fs.readFile(PARTNER_LOGO_PUBLIC);
+  }
+  return partnerLogoCache;
+}
+
+/** Partner Network emblem — square mark for PWA icons and favicons. */
+async function loadPartnerEmblemBytes(): Promise<Buffer> {
+  if (partnerEmblemCache) return partnerEmblemCache;
+  try {
+    partnerEmblemCache = await fs.readFile(PARTNER_EMBLEM_FILE);
+  } catch {
+    try {
+      partnerEmblemCache = await fs.readFile(PARTNER_EMBLEM_PUBLIC);
+    } catch {
+      partnerEmblemCache = await loadPartnerLogoBytes();
+    }
+  }
+  return partnerEmblemCache;
+}
+
+router.get('/partner-icon', async (req, res) => {
+  try {
+    const sizeNum = Math.min(1024, Math.max(16, parseInt(String(req.query.size || '192'), 10) || 192));
+    const maskable = req.query.maskable === '1';
+    const emblemBytes = await loadPartnerEmblemBytes();
+    const version = await getPartnerEmblemVersionTag();
+    const png = await renderIcon(emblemBytes, sizeNum, maskable, '#ffffff');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400, must-revalidate');
+    res.setHeader('ETag', `"partner-emblem-${version}-${sizeNum}${maskable ? '-m' : ''}"`);
+    return res.send(png);
+  } catch (error: any) {
+    console.error('[PWA] Partner icon error:', error);
+    return res.status(500).send('Internal server error');
+  }
+});
+
+function isPartnersClientHost(host: string): boolean {
+  return host.split('.')[0] === 'partners';
+}
+
+function buildPartnerManifest(origin: string, emblemVersion: string) {
+  const icon = (size: number, maskable = false) =>
+    `${origin}/api/pwa/partner-icon?size=${size}${maskable ? '&maskable=1' : ''}&v=${emblemVersion}`;
+  return {
+    id: '/',
+    name: 'ScholarNerve Partners',
+    short_name: 'Partners',
+    description: 'ScholarNerve Partner Network — refer schools, earn monthly commissions.',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    display_override: ['standalone', 'minimal-ui'],
+    capture_links: 'existing-client-navigate',
+    launch_handler: { client_mode: 'navigate-existing' },
+    orientation: 'any',
+    background_color: '#ffffff',
+    theme_color: '#146c43',
+    categories: ['business', 'productivity'],
+    prefer_related_applications: false,
+    gcm_sender_id: '103953800507',
+    icons: [
+      { src: icon(128), sizes: '128x128', type: 'image/png', purpose: 'any' },
+      { src: icon(192), sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: icon(256), sizes: '256x256', type: 'image/png', purpose: 'any' },
+      { src: icon(512), sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: icon(192, true), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: icon(512, true), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+    shortcuts: [
+      { name: 'Open partner dashboard', short_name: 'Dashboard', url: '/' },
+      { name: 'Refer a school', short_name: 'Refer', url: '/schools' },
+    ],
+  };
+}
+
 router.get('/logo', async (req: TenantRequest, res) => {
   try {
     const tenant = req.tenant;
@@ -331,6 +432,17 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     const isTenantSubdomain = isTenantSubdomainHost(clientHost);
 
     const kindQuery = req.query.kind ? String(req.query.kind).toLowerCase() : null;
+
+    // Partner Network PWA gets its own standalone manifest.
+    if (isPartnersClientHost(clientHost) || kindQuery === 'partners') {
+      const partnerOrigin = pageOrigin(req, clientHost);
+      const emblemVersion = await getPartnerEmblemVersionTag();
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      return res
+        .type('application/manifest+json')
+        .json(buildPartnerManifest(partnerOrigin, emblemVersion));
+    }
+
     const kind = resolvePwaKind(req, clientHost, kindQuery);
 
     const baseName = tenant?.name || 'ScholarNerve';

@@ -369,6 +369,164 @@ html {
   box-shadow: 0 6px 16px rgba(8, 80, 65, 0.22);
 }
 
+/* ScholarNerve Partners — gold + green CTAs */
+.scholar-btn-partner,
+.scholar-nav-partner-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background: linear-gradient(135deg, #085041 0%, #0d9e75 48%, #b8922a 100%);
+  padding: 0.9rem 1.65rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(8, 80, 65, 0.25);
+  box-shadow:
+    0 6px 20px rgba(8, 80, 65, 0.22),
+    0 2px 8px rgba(201, 162, 39, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scholar-nav-partner-cta {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+}
+
+@media (min-width: 640px) {
+  .scholar-nav-partner-cta {
+    padding: 0.42rem 0.9rem;
+    font-size: 0.75rem;
+  }
+}
+
+.scholar-btn-partner:hover,
+.scholar-nav-partner-cta:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 28px rgba(8, 80, 65, 0.28),
+    0 4px 12px rgba(201, 162, 39, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Header CTA visibility — custom .scholar-nav-cta display overrides Tailwind hidden */
+.scholar-header-mobile-only {
+  display: inline-flex !important;
+}
+
+.scholar-header-desktop-only {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .scholar-header-mobile-only {
+    display: none !important;
+  }
+
+  .scholar-header-desktop-only {
+    display: inline-flex !important;
+  }
+
+  .scholar-mobile-menu-wrap {
+    display: none !important;
+  }
+}
+
+.scholar-mobile-menu-wrap {
+  display: block;
+}
+
+.scholar-back-home-mobile {
+  display: inline-flex;
+  max-width: min(42vw, 9.5rem);
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--sn-border-strong);
+  background: linear-gradient(135deg, #fff 0%, var(--brand-light) 100%);
+  padding: 0.32rem 0.55rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--brand-dark);
+  box-shadow: 0 2px 8px rgba(8, 80, 65, 0.08);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.scholar-back-home-mobile:hover {
+  transform: translateY(-1px);
+  border-color: rgba(201, 162, 39, 0.45);
+}
+
+.scholar-back-home-mobile span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scholar-nav-partner-login-mobile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--sn-border-strong);
+  background: #fff;
+  padding: 0.32rem 0.7rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--brand-dark);
+  box-shadow: 0 2px 6px rgba(8, 80, 65, 0.06);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.scholar-nav-partner-login-mobile:hover {
+  border-color: rgba(201, 162, 39, 0.45);
+  transform: translateY(-1px);
+}
+
+@media (min-width: 640px) {
+  .scholar-nav-partner-login-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .scholar-back-home-mobile {
+    display: none;
+  }
+}
+
+.scholar-partner-brand-title {
+  background: linear-gradient(135deg, var(--brand-dark) 0%, var(--brand) 55%, #b8922a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.scholar-mobile-nav-link--back {
+  border: 1px solid var(--sn-border-strong);
+  background: linear-gradient(135deg, #fff 0%, var(--brand-light) 100%);
+  font-weight: 700;
+  color: var(--brand-dark) !important;
+}
+
+.scholar-mobile-nav-partner-cta {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background: linear-gradient(135deg, #085041 0%, #0d9e75 48%, #b8922a 100%);
+  padding: 0.65rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(8, 80, 65, 0.2);
+}
+
 .scholar-mobile-menu-btn {
   display: inline-flex;
   height: 1.875rem;

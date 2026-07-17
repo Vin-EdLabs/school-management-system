@@ -31,7 +31,7 @@ export function detectTenantSlugFromHost(hostname: string = window.location.host
     return parts.length >= 3 ? parts[0] : null;
   }
 
-  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'schoolsite', 'edu'];  if (reservedSubdomains.includes(parts[0])) return null;
+  const reservedSubdomains = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'schoolsite', 'edu', 'partners'];  if (reservedSubdomains.includes(parts[0])) return null;
 
   // Production wildcard domains:
   // For .onrender.com (3 parts: appname.onrender.com), we need 4 parts for a tenant (tenant.appname.onrender.com)

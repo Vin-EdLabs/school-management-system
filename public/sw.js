@@ -1,5 +1,5 @@
 /* ScholarNerve service worker — caching + push. Bump CACHE_VERSION on breaking cache changes. */
-const CACHE_VERSION = '2026-07-13-v23';
+const CACHE_VERSION = '2026-07-17-partner-emblem-v1';
 const CACHE_NAME = `scholarnerve-app-${CACHE_VERSION}`;
 const BRANDING_CACHE = 'scholarnerve-branding-v1';
 // Dedicated offline backup cache — never deleted on activate, seeded from both

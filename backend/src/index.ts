@@ -77,6 +77,8 @@ import publicSchoolWebsiteRoutes from './routes/publicSchoolWebsite.js';
 import { schoolWebsiteHostRedirect } from './middleware/schoolWebsiteHostRedirect.js';
 import schoolWebsiteRoutes from './routes/schoolWebsite.js';
 import superAdminWebsitesRoutes from './routes/superAdminWebsites.js';
+import partnersRoutes from './routes/partners.js';
+import adminPartnersRoutes from './routes/adminPartners.js';
 import { startInvoiceStatusJob } from './jobs/invoiceStatusJob.js';
 import { initSocket } from './socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -246,6 +248,8 @@ app.use('/api/public-checkins', publicCheckinsRoutes);
 app.use('/api/complaints', complaintsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/school-website', schoolWebsiteRoutes);
+app.use('/api/partners', partnersRoutes);
+app.use('/api/admin/partners', adminPartnersRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

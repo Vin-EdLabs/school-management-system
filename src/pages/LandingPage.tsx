@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
 import LandingHeader from '../components/landing/LandingHeader';
+import LandingBrandMark from '../components/landing/LandingBrandMark';
 import { LandingStructuredData } from '../components/landing/LandingStructuredData';
 
 type IconProps = {
@@ -54,13 +55,7 @@ const formatMoney = (value: number) => {
   return `GHS ${value.toLocaleString()}`;
 };
 
-const BrandMark = ({ className = '' }: IconProps) => (
-  <img
-    src="/android-chrome-192x192.png"
-    alt="ScholarNerve"
-    className={`object-cover ${className}`}
-  />
-);
+const BrandMark = LandingBrandMark;
 
 const IconStudent = ({ className = '' }: IconProps) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -428,11 +423,14 @@ const LandingPage = () => {
             </p>
 
             <div
-              className="scholar-fade-up mt-7 flex flex-col items-stretch justify-center gap-3 sm:mt-8 sm:flex-row sm:items-center"
+              className="scholar-fade-up mt-7 flex flex-col items-stretch justify-center gap-3 sm:mt-8 sm:flex-row sm:items-center sm:flex-wrap"
               style={{ animationDelay: '0.3s' }}
             >
               <Link to="/register-school" className="scholar-btn-primary">
                 Register Your School →
+              </Link>
+              <Link to="/partners" className="scholar-btn-partner">
+                Become a Partner
               </Link>
               <a href="#features" className="scholar-btn-secondary">
                 See how it works
@@ -813,11 +811,18 @@ const LandingPage = () => {
                   ['#parent-app', 'Mobile App'],
                   ['#portals', 'Portals'],
                   ['#about', 'About'],
-                ].map(([href, label]) => (
-                  <a key={href} href={href} className="block text-sm text-white/50 transition-colors hover:text-white">
-                    {label}
-                  </a>
-                ))}
+                  ['/partners', 'Partners'],
+                ].map(([href, label]) =>
+                  href.startsWith('/') ? (
+                    <Link key={href} to={href} className="block text-sm text-white/50 transition-colors hover:text-white">
+                      {label}
+                    </Link>
+                  ) : (
+                    <a key={href} href={href} className="block text-sm text-white/50 transition-colors hover:text-white">
+                      {label}
+                    </a>
+                  )
+                )}
               </div>
             </div>
 

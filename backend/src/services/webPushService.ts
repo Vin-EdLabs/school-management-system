@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { query } from '../db/connection.js';
-import { sendFcmToParentAccount } from './fcmService.js';
+import { sendFcmToParentAccount, sendFcmToPartner } from './fcmService.js';
+import { resolvePartnerPortalBaseUrl } from '../utils/publicAppUrl.js';
 
 export type PushPayload = {
   title: string;
@@ -371,4 +372,69 @@ export async function sendPushToTenantParents(
     parentAccounts: parentRows.rows.length,
     subscribedAccounts: Number(subscribed.rows[0]?.total || 0),
   };
+}
+
+function resolvePartnerPushIconAbsolute(): string {
+  const base = resolvePartnerPortalBaseUrl().replace(/\/$/, '');
+  return `${base}/api/pwa/partner-icon?size=192&v=emblem-v2`;
+}
+
+export async function sendPushToPartner(partnerDbId: number, payload: PushPayload) {
+  const icon = payload.icon || resolvePartnerPushIconAbsolute();
+  const fullPayload: PushPayload = {
+    ...payload,
+    icon,
+    badge: payload.badge || icon,
+    url: payload.url || '/',
+  };
+
+  ensureConfigured();
+  const webPushEnabled = configured;
+
+  const subs = await query(
+    `SELECT endpoint, p256dh, auth FROM partner_push_subscriptions WHERE partner_id = $1`,
+    [partnerDbId]
+  );
+
+  if (webPushEnabled && subs.rows.length > 0) {
+    const unreadRes = await query(
+      `SELECT COUNT(*)::int AS total FROM partner_notifications
+        WHERE partner_id = $1 AND read_at IS NULL`,
+      [partnerDbId]
+    ).catch(() => ({ rows: [{ total: 0 }] as any[] }));
+    const unreadCount = Number(unreadRes.rows[0]?.total || 0);
+
+    const data = JSON.stringify({
+      title: fullPayload.title,
+      body: fullPayload.body,
+      icon: fullPayload.icon,
+      badge: fullPayload.badge || fullPayload.icon,
+      url: fullPayload.url || '/',
+      unreadCount,
+      tag: `partner-${partnerDbId}`,
+      at: Date.now(),
+    });
+
+    for (const sub of subs.rows) {
+      const subscription = {
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth },
+      };
+      try {
+        await webpush.sendNotification(subscription as any, data);
+      } catch (error: any) {
+        const statusCode = error?.statusCode;
+        if (statusCode === 404 || statusCode === 410) {
+          await query(
+            'DELETE FROM partner_push_subscriptions WHERE partner_id = $1 AND endpoint = $2',
+            [partnerDbId, sub.endpoint]
+          ).catch(() => {});
+        } else {
+          console.error('[web-push] partner send failed:', error?.message || error);
+        }
+      }
+    }
+  }
+
+  await sendFcmToPartner(partnerDbId, fullPayload).catch(() => undefined);
 }

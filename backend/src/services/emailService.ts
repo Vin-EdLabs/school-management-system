@@ -6,8 +6,15 @@ export async function sendAdminEmail(opts: {
   subject: string;
   text: string;
   html?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    cid?: string;
+    contentType?: string;
+    contentDisposition?: 'inline' | 'attachment';
+  }>;
 }): Promise<boolean> {
-  const { to, subject, text, html } = opts;
+  const { to, subject, text, html, attachments } = opts;
   if (!to) {
     console.warn('[email] No recipient — skipped:', subject);
     return false;
@@ -16,7 +23,7 @@ export async function sendAdminEmail(opts: {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const pass = process.env.SMTP_PASS?.replace(/\s/g, '');
   const from = process.env.SMTP_FROM || process.env.ADMIN_ALERT_FROM || 'noreply@scholarnerve.com';
 
   if (!host) {
@@ -38,6 +45,7 @@ export async function sendAdminEmail(opts: {
       subject,
       text,
       html: html || text.replace(/\n/g, '<br/>'),
+      attachments,
     });
     return true;
   } catch (err) {

@@ -102,12 +102,14 @@ import {
   Archive,
   ArchiveRestore,
   Settings,
+  Handshake,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
 import SupportModule from '../components/support/SupportModule';
 import ChatBroadcastPanel from '../components/chat/ChatBroadcastPanel';
 import SchoolWebsitesPanel from '@/components/superadmin/SchoolWebsitesPanel';
+import PartnersAdminPanel from '@/components/superadmin/PartnersAdminPanel';
 import { superAdminWebsiteService } from '@/services/schoolWebsiteService';
 import SuperAdminSchoolChatModule from '../components/chat/SuperAdminSchoolChatModule';
 import { resolveLogoUrl } from '../services/tenantService';
@@ -217,7 +219,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe' | 'partners';
 
 const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'schools', label: 'Schools', group: 'Overview' as const },
@@ -232,6 +234,7 @@ const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'school-general-chat', label: 'School General Chat', group: 'Overview' as const },
   { id: 'chat-broadcast', label: 'School Broadcast', group: 'Overview' as const },
   { id: 'school-websites', label: 'School Websites', group: 'Overview' as const },
+  { id: 'partners', label: 'Partners', group: 'Overview' as const },
   { id: 'platform-settings', label: 'Platform Settings', group: 'System' as const },
   { id: 'finance-wipe', label: 'Finance Config', group: 'System' as const },
   { id: 'removed-staff', label: 'Removed Staff', group: 'System' as const },
@@ -1385,6 +1388,7 @@ const SuperAdminDashboard = () => {
     { id: 'school-general-chat' as Section, label: 'School General Chat', icon: Globe },
     { id: 'chat-broadcast' as Section, label: 'School Broadcast', icon: Megaphone },
     { id: 'school-websites' as Section, label: 'School Websites', icon: Globe },
+    { id: 'partners' as Section, label: 'Partners', icon: Handshake },
   ];
   const systemItems = [
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
@@ -1538,6 +1542,7 @@ const SuperAdminDashboard = () => {
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'school-general-chat' && 'School General Chat'}
               {section === 'chat-broadcast' && 'School Broadcast'}
+              {section === 'partners' && 'Partner Network'}
               {section === 'school-websites' && (
                 <>
                   School Websites
@@ -3436,6 +3441,12 @@ const SuperAdminDashboard = () => {
             {section === 'school-websites' && (
               <div className="animate-in fade-in duration-700">
                 <SchoolWebsitesPanel onPendingCountChange={setWebsiteEnablePending} />
+              </div>
+            )}
+
+            {section === 'partners' && (
+              <div className="animate-in fade-in duration-700">
+                <PartnersAdminPanel />
               </div>
             )}
           </div>

@@ -20,6 +20,7 @@ const RESERVED_SUBDOMAINS = [
   'school',
   'schoolsite',
   'edu',
+  'partners',
 ];
 
 /** Normalize host from client-facing signals (query, forwarded header, or request hostname). */

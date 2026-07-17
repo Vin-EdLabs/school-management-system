@@ -1,0 +1,82 @@
+import { GraduationCap, Lock, Moon, Sun, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useTheme } from '@/contexts/ThemeContext';
+import { PartnerPage, PortalCard } from './partnerShared';
+
+export default function PartnerMore() {
+  const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
+
+  const items = [
+    {
+      icon: GraduationCap,
+      title: 'Training Videos',
+      desc: 'Watch practical lessons to win more schools',
+      action: () => navigate('/training'),
+      color: 'bg-emerald-50 text-emerald-600',
+    },
+    {
+      icon: User,
+      title: 'My Profile & ID Card',
+      desc: 'Photo, partner ID, payout details',
+      action: () => navigate('/profile'),
+      color: 'bg-teal-50 text-teal-600',
+    },
+    {
+      icon: Lock,
+      title: 'Change Password',
+      desc: 'Update your login password',
+      action: () => navigate('/profile?section=password'),
+      color: 'bg-amber-50 text-amber-600',
+    },
+  ];
+
+  return (
+    <PartnerPage>
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">More</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Settings, training, and account</p>
+      </div>
+
+      <div className="space-y-3">
+        {items.map(({ icon: Icon, title, desc, action, color }) => (
+          <button
+            key={title}
+            type="button"
+            onClick={action}
+            className="snp-glass-card flex w-full items-center gap-4 rounded-2xl border border-white/80 bg-white/95 p-4 text-left shadow-sm transition hover:-translate-y-0.5 dark:border-slate-700 dark:bg-slate-900/90"
+          >
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${color}`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-slate-900 dark:text-white">{title}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{desc}</p>
+            </div>
+          </button>
+        ))}
+
+        <PortalCard className="p-4">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex w-full items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-500" /> : <Moon className="h-5 w-5 text-slate-600" />}
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-slate-900 dark:text-white">Appearance</p>
+                <p className="text-xs text-slate-500">{theme === 'dark' ? 'Dark mode on' : 'Light mode on'}</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              Tap to switch
+            </span>
+          </button>
+        </PortalCard>
+      </div>
+    </PartnerPage>
+  );
+}

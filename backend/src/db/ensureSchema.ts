@@ -1355,6 +1355,236 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'idx_school_website_alumni_profiles_tenant'
   );
 
+  // --- ScholarNerve Partner Network ---
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partners (
+      id SERIAL PRIMARY KEY,
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      phone VARCHAR(20) NOT NULL,
+      whatsapp VARCHAR(20),
+      password_hash VARCHAR(255) NOT NULL,
+      region VARCHAR(100) NOT NULL,
+      occupation VARCHAR(100),
+      momo_number VARCHAR(20) NOT NULL,
+      momo_network VARCHAR(20) NOT NULL,
+      schools_target VARCHAR(20),
+      motivation TEXT,
+      status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+      rejection_note TEXT,
+      partner_id VARCHAR(20) UNIQUE,
+      tier VARCHAR(30) DEFAULT 'partner' CHECK (tier IN ('partner', 'senior_partner', 'team_leader', 'regional_director')),
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partners'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partners_status ON partners (status)`,
+    'idx_partners_status'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS profile_photo_url TEXT`,
+    'partners_profile_photo_url'
+  );
+  await safe(
+    `ALTER TABLE partners DROP CONSTRAINT IF EXISTS partners_status_check`,
+    'partners_status_check_drop'
+  );
+  await safe(
+    `ALTER TABLE partners ADD CONSTRAINT partners_status_check
+      CHECK (status IN ('pending', 'approved', 'rejected', 'suspended'))`,
+    'partners_status_check'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS suspension_note TEXT`,
+    'partners_suspension_note'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS town VARCHAR(100)`,
+    'partners_town'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS restoration_note TEXT`,
+    'partners_restoration_note'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS gender VARCHAR(10)`,
+    'partners_gender'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS heard_from VARCHAR(30)`,
+    'partners_heard_from'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      token_hash VARCHAR(64) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      used_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_password_reset_tokens'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_reset_token_hash ON partner_password_reset_tokens (token_hash)`,
+    'idx_partner_reset_token_hash'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_reset_partner ON partner_password_reset_tokens (partner_id, created_at DESC)`,
+    'idx_partner_reset_partner'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_school_leads (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER REFERENCES partners(id),
+      school_name VARCHAR(255) NOT NULL,
+      proprietor_name VARCHAR(255),
+      phone VARCHAR(20),
+      region VARCHAR(100),
+      student_count VARCHAR(50),
+      status VARCHAR(20) DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'demo_booked', 'converted', 'dead')),
+      converted_school_id INTEGER,
+      converted_at TIMESTAMP,
+      plan_amount NUMERIC(10,2),
+      commission_rate NUMERIC(5,2),
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_school_leads'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_leads_partner
+       ON partner_school_leads (partner_id, created_at DESC)`,
+    'idx_partner_leads_partner'
+  );
+  await safe(
+    `ALTER TABLE partner_school_leads ADD COLUMN IF NOT EXISTS demo_date DATE`,
+    'partner_school_leads_demo_date'
+  );
+  await safe(
+    `ALTER TABLE partner_school_leads ADD COLUMN IF NOT EXISTS demo_meeting_url TEXT`,
+    'partner_school_leads_demo_meeting_url'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_commissions (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER REFERENCES partners(id),
+      school_id INTEGER,
+      lead_id INTEGER REFERENCES partner_school_leads(id),
+      month INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      plan_amount NUMERIC(10,2) NOT NULL,
+      commission_rate NUMERIC(5,2) NOT NULL,
+      commission_amount NUMERIC(10,2) NOT NULL,
+      status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
+      paid_at TIMESTAMP,
+      momo_reference VARCHAR(100),
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (lead_id, month, year)
+    )`,
+    'partner_commissions'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner
+       ON partner_commissions (partner_id, year DESC, month DESC)`,
+    'idx_partner_commissions_partner'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_notifications (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER REFERENCES partners(id),
+      title VARCHAR(255) NOT NULL,
+      body TEXT NOT NULL,
+      read_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_notifications'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_notifications_partner
+       ON partner_notifications (partner_id, created_at DESC)`,
+    'idx_partner_notifications_partner'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_training_videos (
+      id SERIAL PRIMARY KEY,
+      youtube_url VARCHAR(500) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_training_videos'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_video_progress (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER REFERENCES partners(id),
+      video_id INTEGER REFERENCES partner_training_videos(id) ON DELETE CASCADE,
+      watched_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(partner_id, video_id)
+    )`,
+    'partner_video_progress'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (partner_id, endpoint)
+    )`,
+    'partner_push_subscriptions'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_push_subscriptions_partner
+       ON partner_push_subscriptions (partner_id)`,
+    'idx_partner_push_subscriptions_partner'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_fcm_tokens (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (partner_id, token)
+    )`,
+    'partner_fcm_tokens'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_fcm_tokens_partner
+       ON partner_fcm_tokens (partner_id)`,
+    'idx_partner_fcm_tokens_partner'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_emails (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER REFERENCES partners(id) ON DELETE SET NULL,
+      template VARCHAR(50) NOT NULL DEFAULT 'custom',
+      subject VARCHAR(255) NOT NULL,
+      body_preview TEXT,
+      batch_id UUID,
+      sent_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_emails'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_emails_sent ON partner_emails (sent_at DESC)`,
+    'idx_partner_emails_sent'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_emails_batch ON partner_emails (batch_id)`,
+    'idx_partner_emails_batch'
+  );
+
   const critical = [
     'subjects',
     'classes',

@@ -16,9 +16,6 @@
       var path = location.pathname || '/';
       var params = new URLSearchParams();
       params.set('host', host);
-      var kind = path.indexOf('/tn-7x4k2') === 0 ? 'super-admin'
-        : path.indexOf('/portal') === 0 ? 'parent' : 'school';
-      params.set('kind', kind);
       var schoolMatch = path.match(/^\/school\/(\d+)/);
       var portalMatch = path.match(/^\/portal\/(\d+)/);
       var schMatch = path.match(/^\/sch\/([^/]+)/);
@@ -27,8 +24,17 @@
       if (schMatch) params.set('slug', schMatch[1]);
 
       var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
-      var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+      var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'partners'];
       var slugFromHost = null;
+      var isPartnersHost = hostParts[0] === 'partners';
+      var isPartnersPath = path === '/partners' || path.indexOf('/partners/') === 0;
+
+      var kind = path.indexOf('/tn-7x4k2') === 0 ? 'super-admin'
+        : path.indexOf('/portal') === 0 ? 'parent'
+        : (isPartnersHost || isPartnersPath) ? 'partners'
+        : 'school';
+      params.set('kind', kind);
+
       if (host.indexOf('.localhost') > -1 && hostParts.length >= 2 && reserved.indexOf(hostParts[0]) === -1) {
         slugFromHost = hostParts[0];
       } else if (host.indexOf('.lvh.me') > -1 && hostParts.length >= 3 && reserved.indexOf(hostParts[0]) === -1) {
@@ -38,14 +44,52 @@
       }
       if (slugFromHost) params.set('slug', slugFromHost);
 
+      if (isPartnersHost || isPartnersPath) {
+        params.delete('slug');
+        params.delete('tenantId');
+      }
+
       var manifest = document.createElement('link');
       manifest.rel = 'manifest';
       manifest.href = '/api/pwa/manifest?' + params.toString();
       document.head.appendChild(manifest);
 
-      var isTenantHost = !!slugFromHost || schoolMatch || portalMatch || schMatch || path.indexOf('/portal') === 0;
+      var isPartnerBranding = isPartnersHost || isPartnersPath;
+      var isTenantHost = !isPartnerBranding && (!!slugFromHost || schoolMatch || portalMatch || schMatch || path.indexOf('/portal') === 0);
 
-      if (isTenantHost) {
+      if (isPartnerBranding) {
+        var pv = 'emblem-v2';
+        var pIconBase = location.origin + '/api/pwa/partner-icon?v=' + pv;
+        var pIcon = pIconBase + '&size=180';
+        var pApple = document.createElement('link');
+        pApple.rel = 'apple-touch-icon';
+        pApple.sizes = '180x180';
+        pApple.href = pIcon;
+        document.head.appendChild(pApple);
+        var pShortcut = document.createElement('link');
+        pShortcut.rel = 'shortcut icon';
+        pShortcut.href = pIconBase + '&size=48';
+        document.head.appendChild(pShortcut);
+        var pFavicon = document.createElement('link');
+        pFavicon.rel = 'icon';
+        pFavicon.type = 'image/png';
+        pFavicon.href = pIconBase + '&size=48';
+        document.head.appendChild(pFavicon);
+        var pIcon32 = document.createElement('link');
+        pIcon32.rel = 'icon';
+        pIcon32.type = 'image/png';
+        pIcon32.sizes = '32x32';
+        pIcon32.href = pIconBase + '&size=32';
+        document.head.appendChild(pIcon32);
+        var pIcon16 = document.createElement('link');
+        pIcon16.rel = 'icon';
+        pIcon16.type = 'image/png';
+        pIcon16.sizes = '16x16';
+        pIcon16.href = pIconBase + '&size=16';
+        document.head.appendChild(pIcon16);
+        var themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) themeMeta.setAttribute('content', '#146c43');
+      } else if (isTenantHost) {
         var logoUrl = location.origin + '/api/pwa/logo?' + params.toString() + '&size=180';
         function upsertIcon(rel, sizes, type) {
           var selector = 'link[rel="' + rel + '"]' + (sizes ? '[sizes="' + sizes + '"]' : '');
@@ -299,7 +343,8 @@
         host === 'scholarnerve.com' ||
         host === 'www.scholarnerve.com' ||
         host === 'localhost' ||
-        host === '127.0.0.1';
+        host === '127.0.0.1' ||
+        host.indexOf('partners.') === 0;
       var statusEl = document.getElementById('sn-splash-status');
       if (statusEl && isApex) {
         statusEl.textContent = 'Loading ScholarNerve…';
@@ -351,7 +396,8 @@
         host === 'scholarnerve.com' ||
         host === 'www.scholarnerve.com' ||
         host === 'localhost' ||
-        host === '127.0.0.1';
+        host === '127.0.0.1' ||
+        host.indexOf('partners.') === 0;
       var messages = isApex ? [
         'Loading ScholarNerve…',
         'Getting things ready…',
@@ -391,7 +437,7 @@
         var host = location.hostname;
         var path = location.pathname || '/';
         var hostParts = host.toLowerCase().replace(/^www\./, '').split('.');
-        var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school'];
+        var reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'partners'];
         var slug = null;
 
         if (host.indexOf('.localhost') > -1 && hostParts.length >= 2 && reserved.indexOf(hostParts[0]) === -1) {

@@ -14,7 +14,6 @@ import {
   Loader2,
   CheckCircle,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
@@ -159,7 +158,7 @@ const RegisterSchool = () => {
               </Link>
 
               <p className="scholar-register-hero-badge mb-4">
-                <Sparkles className="h-3.5 w-3.5" />
+                <Building2 className="h-3.5 w-3.5" />
                 School onboarding
               </p>
               <h1 className="scholar-display text-4xl font-extrabold tracking-tight text-[var(--ink)] md:text-5xl">

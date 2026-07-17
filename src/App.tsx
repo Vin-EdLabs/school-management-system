@@ -25,6 +25,9 @@ import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
+import { isPartnersHost } from "./utils/partnersHost";
+import PartnersLandingPage from "./pages/partners/PartnersLandingPage";
+import PartnerPortalApp from "./pages/partners/PartnerPortalApp";
 import {
   buildLegacyRedirectUrl,
   DEFAULT_WEBSITE_URL_SUFFIX,
@@ -393,8 +396,29 @@ const SchoolWebsitePreviewRoute = () => {
 };
 
 const App = () => {
-  const websiteSlug = detectSchoolWebsiteSlugFromHost();
-  const subdomainSlug = websiteSlug ? null : detectTenantSlugFromHost();
+  const partnersHost = isPartnersHost();
+  const websiteSlug = partnersHost ? null : detectSchoolWebsiteSlugFromHost();
+  const subdomainSlug = websiteSlug || partnersHost ? null : detectTenantSlugFromHost();
+
+  // partners.scholarnerve.com — the Partner Network PWA, fully isolated from
+  // the school/staff/parent app trees.
+  if (partnersHost) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <BrowserRouter>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <Routes>
+                <Route path="/*" element={<PartnerPortalApp />} />
+              </Routes>
+            </TooltipProvider>
+          </BrowserRouter>
+        </ThemeProvider>
+      </QueryClientProvider>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -442,6 +466,7 @@ const App = () => {
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/checkin" element={<PublicCheckinPage />} />
                     <Route path="/" element={<LandingPage />} />
+                    <Route path="/partners" element={<PartnersLandingPage />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
                     <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />

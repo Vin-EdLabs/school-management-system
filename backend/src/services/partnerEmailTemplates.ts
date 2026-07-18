@@ -12,6 +12,7 @@ export type PartnerEmailTemplate =
   | 'restored'
   | 'rejected'
   | 'password_reset'
+  | 'training_video'
   | 'custom';
 
 export type PartnerEmailVars = {
@@ -22,6 +23,8 @@ export type PartnerEmailVars = {
   customSubject?: string;
   customBody?: string;
   resetLink?: string;
+  videoTitle?: string;
+  videoDescription?: string | null;
 };
 
 const SUPPORT_EMAIL = 'scholarnerve@gmail.com';
@@ -305,6 +308,39 @@ export function buildPartnerEmail(
         heading: 'Application update',
         bodyHtml,
         accent: 'amber',
+        urls: emailUrls,
+      }),
+    };
+  }
+
+  if (template === 'training_video') {
+    const videoTitle = String(vars.videoTitle || 'New training video').trim();
+    const videoDescription = String(vars.videoDescription || '').trim();
+    const trainingLink = resolvePartnerPortalEmailLinkUrl('/training');
+    const trainingUrl = resolvePartnerPortalDirectUrl('/training');
+    const subject = `New training video: ${videoTitle}`;
+    const text = `Hi ${firstName},\n\nScholarNerve just published a new partner training video:\n\n${videoTitle}${videoDescription ? `\n\n${videoDescription}` : ''}\n\nWatch it in your partner portal:\n${trainingUrl}\n\nThe ScholarNerve Team`;
+    const descBlock = videoDescription
+      ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#334155;">${escapeHtml(videoDescription)}</p>`
+      : '';
+    const bodyHtml = `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#334155;">Hi <strong>${escapeHtml(firstName)}</strong>,</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#334155;">We just added a new training video to your partner dashboard:</p>
+      <div style="margin:20px 0;padding:16px 18px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;">New video</p>
+        <p style="margin:0;font-size:18px;font-weight:800;color:#065f46;">${escapeHtml(videoTitle)}</p>
+      </div>
+      ${descBlock}
+      <p style="margin:0;font-size:15px;line-height:1.65;color:#334155;">Watch it now to stay sharp and close more schools with confidence.</p>`;
+    return {
+      subject,
+      text,
+      preview: videoTitle,
+      html: wrapPartnerEmail({
+        preheader: `New training: ${videoTitle}`,
+        heading: 'New training video 🎬',
+        bodyHtml,
+        cta: { label: 'Watch training', href: trainingLink },
         urls: emailUrls,
       }),
     };

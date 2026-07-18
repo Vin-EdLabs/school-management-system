@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 const HOW_IT_WORKS = [
   {
     title: 'Apply and get approved',
-    body: 'Fill your application on scholarnerve.com/partners. The ScholarNerve team reviews it within 48 hours. Once approved you receive your official Partner ID and full dashboard access.',
+    body: 'Fill your application on scholarnerve.com/#partners. The ScholarNerve team reviews it within 48 hours. Once approved you receive your official Partner ID and full dashboard access.',
   },
   {
     title: 'Complete your training',

@@ -9,7 +9,7 @@ import {
 } from '../services/partnerService.js';
 import { notifyPartner } from '../services/partnerNotifyService.js';
 import { emitPartnerSupportMessage } from '../services/partnerSupportSocketService.js';
-import { sendPartnerEmail, sendPartnerEmailBatch, previewPartnerEmail } from '../services/partnerEmailService.js';
+import { sendPartnerEmail, sendPartnerEmailBatch, previewPartnerEmail, announcePartnerTrainingVideo } from '../services/partnerEmailService.js';
 
 const router = express.Router();
 
@@ -583,7 +583,15 @@ router.post('/training-videos', async (req: AuthRequest, res) => {
        VALUES ($1, $2, $3) RETURNING *`,
       [String(youtubeUrl).trim(), String(title).trim(), String(description || '').trim() || null]
     );
-    return res.status(201).json({ video: inserted.rows[0] });
+    const video = inserted.rows[0];
+    const delivery = await announcePartnerTrainingVideo(
+      { title: video.title, description: video.description },
+      req
+    ).catch((err) => {
+      console.error('[partner] Training video announce failed:', err);
+      return { notifiedCount: 0, emailedCount: 0, recipientCount: 0 };
+    });
+    return res.status(201).json({ video, ...delivery });
   } catch (error) {
     console.error('Admin add partner video error:', error);
     return res.status(500).json({ error: 'Failed to add video' });

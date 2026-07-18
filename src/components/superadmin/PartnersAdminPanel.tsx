@@ -1513,12 +1513,25 @@ function VideosTab() {
     }
     setAdding(true);
     try {
-      await apiService.post(
+      const result = await apiService.post<{
+        video: AdminVideo;
+        notifiedCount?: number;
+        emailedCount?: number;
+        recipientCount?: number;
+      }>(
         '/admin/partners/training-videos',
         { youtubeUrl: url.trim(), title: title.trim(), description: description.trim() },
         { skipTenant: true, skipTenantHeaders: true } as any
       );
-      toast({ title: 'Video added — live in the partner Training tab' });
+      const notified = result.notifiedCount ?? 0;
+      const emailed = result.emailedCount ?? 0;
+      toast({
+        title: 'Video published',
+        description:
+          notified > 0
+            ? `${notified} partner${notified === 1 ? '' : 's'} notified · ${emailed} email${emailed === 1 ? '' : 's'} sent`
+            : 'Live in the partner Training tab (no approved partners to notify yet)',
+      });
       setUrl('');
       setTitle('');
       setDescription('');

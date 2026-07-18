@@ -30,11 +30,26 @@ export function getPartnersPortalLoginUrl(): string {
   return `${getPartnersPortalUrl()}/login`;
 }
 
-/** Public partners landing / apply page (on the main ScholarNerve site). */
+/** Public partners section on the main ScholarNerve site. */
 export function getPartnersLandingUrl(options?: { apply?: boolean }): string {
   const base = getScholarNerveMainUrl().replace(/\/$/, '');
-  const url = `${base}/partners`;
-  return options?.apply ? `${url}#apply` : url;
+  return options?.apply ? `${base}/#apply` : `${base}/#partners`;
+}
+
+/** Main marketing homepage — no tenant subdomain, root path only. */
+export function isMainMarketingLanding(
+  pathname: string = typeof window !== 'undefined' ? window.location.pathname : '/',
+): boolean {
+  const path = pathname.replace(/\/$/, '') || '/';
+  if (path !== '/') return false;
+  if (typeof window === 'undefined') return true;
+  const host = window.location.hostname.toLowerCase();
+  if (host.includes('localhost') || host === '127.0.0.1' || host.endsWith('.lvh.me')) {
+    return !isPartnersHost(host);
+  }
+  const firstLabel = host.replace(/^www\./, '').split('.')[0];
+  const reserved = ['www', 'api', 'app', 'admin', 'dev', 'staging', 'scholarnerve', 'portal', 'school', 'partners'];
+  return reserved.includes(firstLabel) || host === 'scholarnerve.com' || host === 'www.scholarnerve.com';
 }
 
 /** Main marketing site — for back links from the partner subdomain. */

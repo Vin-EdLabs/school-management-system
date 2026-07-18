@@ -13,7 +13,7 @@ L.Icon.Default.mergeOptions({
 })
 
 import { detectTenantSlugFromHost } from './utils/tenantHost'
-import { isPartnersHost } from './utils/partnersHost'
+import { isPartnersHost, isMainMarketingLanding } from './utils/partnersHost'
 import { initSystemErrorReporter } from './utils/systemErrorReporter'
 import {
   applyTenantPwaBranding,
@@ -106,6 +106,7 @@ function applyCachedBrandingFallback() {
 
 async function bootstrapTenantBrandingAndManifest() {
   if (isPartnersHost()) return;
+  if (isMainMarketingLanding()) return;
 
   const path = window.location.pathname;
   const pathSlug = detectSchSlugFromPath(path);
@@ -215,6 +216,7 @@ async function cacheIndexHtmlFromClient(version?: string) {
 
 async function seedOfflineCacheNow() {
   if (!('caches' in window)) return;
+  if (isMainMarketingLanding()) return;
   const host = window.location.hostname;
   const isDevHost =
     host === 'localhost' ||
@@ -282,6 +284,10 @@ async function registerServiceWorker() {
 
 function mountAppAndHideSplash() {
   root.render(<App />);
+  if (isMainMarketingLanding()) {
+    hideSplash();
+    return;
+  }
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       window.setTimeout(() => {

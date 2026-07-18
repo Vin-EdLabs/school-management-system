@@ -348,6 +348,24 @@
   </div>
   <script>
     (function () {
+      var host = location.hostname.toLowerCase().replace(/^www\./, '');
+      var path = (location.pathname || '/').replace(/\/$/, '') || '/';
+      var isMainLanding =
+        path === '/' &&
+        (host === 'scholarnerve.com' ||
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host.endsWith('.lvh.me'));
+      if (!isMainLanding) return;
+      var splash = document.getElementById('sn-splash');
+      if (splash) {
+        splash.classList.add('sn-splash-hidden');
+        window.dispatchEvent(new Event('sn-splash-hidden'));
+      }
+    })();
+  </script>
+  <script>
+    (function () {
       var host = location.hostname.toLowerCase();
       var isApex =
         host === 'scholarnerve.com' ||

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowLeft, Menu, X } from 'lucide-react';
 import { getScholarNerveMainUrl, getPartnersPortalLoginUrl, isPartnersHost } from '@/utils/partnersHost';
 
@@ -8,6 +8,7 @@ const HOME_NAV = [
   { href: '/#parent-app', label: 'Mobile App' },
   { href: '/#portals', label: 'Portals' },
   { href: '/#about', label: 'About' },
+  { href: '/#partners', label: 'Partners' },
 ] as const;
 
 const PARTNERS_NAV = [
@@ -29,8 +30,7 @@ type LandingHeaderProps = {
 export default function LandingHeader({ brandMark, variant = 'home', brandLockup, brandHref = '/' }: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const location = useLocation();
-  const isPartners = variant === 'partners' || location.pathname.startsWith('/partners');
+  const isPartners = variant === 'partners';
   const navLinks = isPartners ? PARTNERS_NAV : HOME_NAV;
   const mainSiteUrl = getScholarNerveMainUrl();
   const partnerLoginUrl = getPartnersPortalLoginUrl();
@@ -73,7 +73,6 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
   }, [menuOpen, closeMenu]);
 
   const scrollToApply = (e: React.MouseEvent) => {
-    if (!isPartners) return;
     e.preventDefault();
     closeMenu();
     document.getElementById('apply')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -121,21 +120,16 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               {link.label}
             </a>
           ))}
-          {!isPartners && (
-            <Link to="/partners" className="scholar-nav-link font-semibold text-[var(--brand-dark)]">
-              Partners
-            </Link>
-          )}
         </nav>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {!isPartners && (
-            <Link
-              to="/partners"
+            <a
+              href="/#partners"
               className="scholar-nav-partner-cta scholar-header-desktop-only"
             >
               Become a Partner
-            </Link>
+            </a>
           )}
 
           {isPartners ? (
@@ -215,17 +209,6 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                     {link.label}
                   </a>
                 ))}
-                {!isPartners && (
-                  <Link
-                    to="/partners"
-                    className="scholar-mobile-nav-link"
-                    style={{ '--nav-delay': `${navLinks.length * 40}ms` } as React.CSSProperties}
-                    onClick={closeMenu}
-                    tabIndex={menuOpen ? 0 : -1}
-                  >
-                    Partners
-                  </Link>
-                )}
                 {isPartners && (
                   <a
                     href={partnerLoginUrl}
@@ -250,14 +233,14 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                   </a>
                 ) : (
                   <>
-                    <Link
-                      to="/partners"
+                    <a
+                      href="/#partners"
                       className="scholar-mobile-nav-partner-cta"
                       onClick={closeMenu}
                       tabIndex={menuOpen ? 0 : -1}
                     >
                       Become a Partner
-                    </Link>
+                    </a>
                     <Link
                       to="/register-school"
                       className="scholar-mobile-nav-cta"

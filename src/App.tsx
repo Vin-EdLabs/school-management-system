@@ -26,7 +26,6 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
 import { isPartnersHost } from "./utils/partnersHost";
-import PartnersLandingPage from "./pages/partners/PartnersLandingPage";
 import PartnerPortalApp from "./pages/partners/PartnerPortalApp";
 import {
   buildLegacyRedirectUrl,
@@ -72,6 +71,14 @@ const HostAwareLanding = () => {
   if (slug) return <Navigate to="/" replace />; // Keep URL clean, let the root route render it
   return <LandingPage />;
 };
+
+function PartnersLegacyRedirect() {
+  React.useEffect(() => {
+    const hash = window.location.hash === '#apply' ? '#apply' : '#partners';
+    window.location.replace(`/${hash}`);
+  }, []);
+  return null;
+}
 
 const SubdomainPathNormalizer = () => {
   const location = useLocation();
@@ -466,7 +473,8 @@ const App = () => {
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/checkin" element={<PublicCheckinPage />} />
                     <Route path="/" element={<LandingPage />} />
-                    <Route path="/partners" element={<PartnersLandingPage />} />
+                    <Route path="/partners" element={<PartnersLegacyRedirect />} />
+                    <Route path="/partners/*" element={<PartnersLegacyRedirect />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
                     <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />

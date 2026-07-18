@@ -4,10 +4,6 @@ import {
   IdCard, LayoutDashboard, Medal, Megaphone, PlayCircle, School, Smartphone, Star,
   Trophy, Users, Video, Wallet,
 } from 'lucide-react';
-import LandingHeader from '@/components/landing/LandingHeader';
-import LandingFooter from '@/components/landing/LandingFooter';
-import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
-import PartnersHeaderBrand from './PartnersHeaderBrand';
 import PartnerLogo from './PartnerLogo';
 import PartnerRegistrationWizard from './PartnerRegistrationWizard';
 import { getPartnersPortalLoginUrl } from '@/utils/partnersHost';
@@ -16,7 +12,7 @@ const STEPS = [
   {
     icon: CheckCircle2,
     title: 'Apply and get approved',
-    body: 'Fill your application on scholarnerve.com/partners. The ScholarNerve team reviews it within 48 hours. Once approved you receive your official Partner ID and full dashboard access.',
+    body: 'Fill your application on scholarnerve.com/#partners. The ScholarNerve team reviews it within 48 hours. Once approved you receive your official Partner ID and full dashboard access.',
   },
   {
     icon: PlayCircle,
@@ -88,51 +84,26 @@ const PERKS = [
   { icon: Smartphone, title: 'MoMo Payouts', body: 'Commissions paid directly to your mobile money — no bank account needed.' },
 ];
 
-export default function PartnersLandingPage() {
+export function PartnersLandingSection() {
   const formRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    document.title = 'Become a ScholarNerve Partner — Turn Your Network Into Monthly Income';
-    window.scrollTo(0, 0);
-  }, []);
-
-  useEffect(() => {
-    const elements = Array.from(document.querySelectorAll<HTMLElement>('.scroll-reveal'));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.12, rootMargin: '0px 0px -36px 0px' }
-    );
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
 
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const scrollToSteps = () => stepsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   useEffect(() => {
-    if (window.location.hash === '#apply') {
+    const hash = window.location.hash;
+    if (hash === '#apply') {
       window.setTimeout(() => scrollToForm(), 300);
+    } else if (hash === '#partners') {
+      window.setTimeout(() => {
+        document.getElementById('partners')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
     }
   }, []);
 
   return (
-    <div className="scholar-landing min-h-screen overflow-x-hidden">
-      <LandingHeader
-        brandMark={null}
-        brandLockup={<PartnersHeaderBrand />}
-        brandHref="/partners"
-        variant="partners"
-      />
-
-      <main className="pt-14 sm:pt-16">
+    <div id="partners" className="scroll-mt-20 border-t border-[var(--sn-border)]">
         {/* Hero */}
         <section className="scholar-hero-bg relative flex min-h-[calc(100dvh-64px)] items-center px-4 pb-16 pt-12 sm:px-5 sm:pb-20 sm:pt-16">
           <div className="relative mx-auto w-full max-w-[1100px] text-center">
@@ -416,10 +387,15 @@ export default function PartnersLandingPage() {
             <PartnerRegistrationWizard />
           </div>
         </section>
-      </main>
-
-      <LandingFooter />
-      <ScrollToTopButton />
     </div>
   );
+}
+
+/** Legacy /partners URL — redirects to the main landing page section. */
+export default function PartnersLandingPage() {
+  useEffect(() => {
+    const hash = window.location.hash === '#apply' ? '#apply' : '#partners';
+    window.location.replace(`/${hash}`);
+  }, []);
+  return null;
 }

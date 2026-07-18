@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Request } from 'express';
 import { query } from '../db/connection.js';
 import { sendAdminEmail } from './emailService.js';
+import { notifyPartner } from './partnerNotifyService.js';
 import {
   buildPartnerEmail,
   type PartnerEmailTemplate,
@@ -151,6 +152,46 @@ export async function sendPartnerEmailBatch(opts: {
 }
 
 /** Build preview HTML for super-admin Email tab (embedded logo). */
+/** Notify approved partners when a new training video is published. */
+export async function announcePartnerTrainingVideo(
+  video: { title: string; description?: string | null },
+  req?: UrlRequest
+): Promise<{ notifiedCount: number; emailedCount: number; recipientCount: number }> {
+  const recipients = await resolvePartnerEmailRecipients('approved');
+  if (recipients.length === 0) {
+    return { notifiedCount: 0, emailedCount: 0, recipientCount: 0 };
+  }
+
+  const batchId = randomUUID();
+  const videoTitle = String(video.title || 'New training video').trim();
+  const descPreview = String(video.description || '').trim().slice(0, 140);
+  const notifTitle = 'New training video';
+  const notifBody = descPreview
+    ? `${videoTitle} — ${descPreview}${descPreview.length >= 140 ? '…' : ''}`
+    : videoTitle;
+
+  let emailedCount = 0;
+  for (const partner of recipients) {
+    await notifyPartner(partner.id, notifTitle, notifBody, '/training').catch((err) => {
+      console.warn('[partner] training video notification failed for', partner.id, err);
+    });
+    const ok = await sendPartnerEmail(
+      partner,
+      'training_video',
+      { videoTitle, videoDescription: video.description || null },
+      batchId,
+      req
+    );
+    if (ok) emailedCount += 1;
+  }
+
+  return {
+    notifiedCount: recipients.length,
+    emailedCount,
+    recipientCount: recipients.length,
+  };
+}
+
 export async function previewPartnerEmail(opts: {
   template: PartnerEmailTemplate;
   note?: string;

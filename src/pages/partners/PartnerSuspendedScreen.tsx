@@ -7,7 +7,7 @@ import {
   SCHOLARNERVE_SUPPORT_WHATSAPP_URL,
 } from '@/constants/scholarNerveSupport';
 import PartnerLogo from './PartnerLogo';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import './partners.css';
 
 export default function PartnerSuspendedScreen() {

@@ -7,7 +7,10 @@
 import { getPartnersPortalUrl } from '@/utils/partnersHost';
 
 const PARTNER_TOKEN_KEY = 'snPartnerToken';
-const PARTNER_SAVED_LOGIN_KEY = 'snPartnerSavedLogin';
+/** Canonical realm — same saved login on partners.localhost and partners.scholarnerve.com */
+export const PARTNER_LOGIN_REALM = 'partners.scholarnerve.com';
+const PARTNER_SAVED_LOGIN_KEY = `snPartnerSavedLogin::${PARTNER_LOGIN_REALM}`;
+const LEGACY_PARTNER_SAVED_LOGIN_KEY = 'snPartnerSavedLogin';
 
 export type PartnerSavedLogin = {
   identifier: string;
@@ -66,11 +69,26 @@ async function request<T>(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${resolveBase()}${endpoint}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutMs = 20_000;
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${resolveBase()}${endpoint}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new PartnerApiError('Request timed out — is the server running?', 0);
+    }
+    throw new PartnerApiError('Network error — check your connection and that the server is running.', 0);
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   let payload: any = null;
   try {
@@ -135,6 +153,7 @@ export interface PartnerStats {
   totalAll: number;
   pendingPayout: number;
   unreadNotifications: number;
+  unreadSupportMessages?: number;
 }
 
 export interface PartnerActivityItem {
@@ -192,6 +211,16 @@ export interface PartnerNotification {
   created_at: string;
 }
 
+export interface PartnerSupportMessage {
+  id: number;
+  sender_role: 'partner' | 'super-admin';
+  sender_username: string | null;
+  message: string;
+  is_from_superadmin: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
 export const GHANA_REGIONS = [
   'Ahafo', 'Ashanti', 'Bono', 'Bono East', 'Central', 'Eastern',
   'Greater Accra', 'North East', 'Northern', 'Oti', 'Savannah',
@@ -237,7 +266,11 @@ export function youtubeThumb(url: string): string | null {
 
 export function savePartnerLoginCredentials(identifier: string, password: string): void {
   try {
-    localStorage.setItem(PARTNER_SAVED_LOGIN_KEY, JSON.stringify({ identifier, password }));
+    localStorage.setItem(
+      PARTNER_SAVED_LOGIN_KEY,
+      JSON.stringify({ identifier, password, realm: PARTNER_LOGIN_REALM }),
+    );
+    localStorage.removeItem(LEGACY_PARTNER_SAVED_LOGIN_KEY);
   } catch {
     /* storage unavailable */
   }
@@ -245,11 +278,13 @@ export function savePartnerLoginCredentials(identifier: string, password: string
 
 export function readPartnerLoginCredentials(): PartnerSavedLogin | null {
   try {
-    const raw = localStorage.getItem(PARTNER_SAVED_LOGIN_KEY);
+    const raw =
+      localStorage.getItem(PARTNER_SAVED_LOGIN_KEY) ||
+      localStorage.getItem(LEGACY_PARTNER_SAVED_LOGIN_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PartnerSavedLogin;
+    const parsed = JSON.parse(raw) as PartnerSavedLogin & { realm?: string };
     if (!parsed?.identifier) return null;
-    return parsed;
+    return { identifier: parsed.identifier, password: parsed.password || '' };
   } catch {
     return null;
   }

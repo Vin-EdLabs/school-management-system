@@ -398,7 +398,7 @@ const SchoolWebsitePreviewRoute = () => {
 const App = () => {
   const partnersHost = isPartnersHost();
   const websiteSlug = partnersHost ? null : detectSchoolWebsiteSlugFromHost();
-  const subdomainSlug = websiteSlug || partnersHost ? null : detectTenantSlugFromHost();
+  const subdomainSlug = partnersHost || websiteSlug ? null : detectTenantSlugFromHost();
 
   // partners.scholarnerve.com — the Partner Network PWA, fully isolated from
   // the school/staff/parent app trees.

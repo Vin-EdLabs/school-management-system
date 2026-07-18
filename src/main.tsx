@@ -13,6 +13,7 @@ L.Icon.Default.mergeOptions({
 })
 
 import { detectTenantSlugFromHost } from './utils/tenantHost'
+import { isPartnersHost } from './utils/partnersHost'
 import { initSystemErrorReporter } from './utils/systemErrorReporter'
 import {
   applyTenantPwaBranding,
@@ -104,6 +105,8 @@ function applyCachedBrandingFallback() {
 }
 
 async function bootstrapTenantBrandingAndManifest() {
+  if (isPartnersHost()) return;
+
   const path = window.location.pathname;
   const pathSlug = detectSchSlugFromPath(path);
   const hostSlug = detectTenantSlugFromHost();
@@ -212,6 +215,13 @@ async function cacheIndexHtmlFromClient(version?: string) {
 
 async function seedOfflineCacheNow() {
   if (!('caches' in window)) return;
+  const host = window.location.hostname;
+  const isDevHost =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.lvh.me');
+  if (isDevHost) return;
   try {
     const offlineCache = await caches.open(OFFLINE_CACHE_NAME);
     // Check if we already have a fresh copy

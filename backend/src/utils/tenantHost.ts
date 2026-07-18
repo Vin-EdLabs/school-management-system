@@ -65,7 +65,9 @@ export function getTenantSlugFromHost(host: string): string | null {
   }
 
   if (normalized.endsWith('.localhost')) {
-    return parts.length >= 2 ? parts[0] : null;
+    const slug = parts.length >= 2 ? parts[0] : null;
+    if (slug && RESERVED_SUBDOMAINS.includes(slug)) return null;
+    return slug;
   }
   if (normalized.endsWith('.lvh.me')) {
     return parts.length >= 3 ? parts[0] : null;

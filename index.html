@@ -51,16 +51,17 @@
 
       var manifest = document.createElement('link');
       manifest.rel = 'manifest';
-      manifest.href = '/api/pwa/manifest?' + params.toString();
+      // Partner PWA: static manifest + icons (works in dev without backend)
+      manifest.href = (isPartnersHost || isPartnersPath)
+        ? '/partners/manifest.webmanifest'
+        : '/api/pwa/manifest?' + params.toString();
       document.head.appendChild(manifest);
 
       var isPartnerBranding = isPartnersHost || isPartnersPath;
       var isTenantHost = !isPartnerBranding && (!!slugFromHost || schoolMatch || portalMatch || schMatch || path.indexOf('/portal') === 0);
 
       if (isPartnerBranding) {
-        var pv = 'emblem-v2';
-        var pIconBase = location.origin + '/api/pwa/partner-icon?v=' + pv;
-        var pIcon = pIconBase + '&size=180';
+        var pIcon = location.origin + '/partners/scholarnerve-partner-emblem.png';
         var pApple = document.createElement('link');
         pApple.rel = 'apple-touch-icon';
         pApple.sizes = '180x180';
@@ -68,24 +69,24 @@
         document.head.appendChild(pApple);
         var pShortcut = document.createElement('link');
         pShortcut.rel = 'shortcut icon';
-        pShortcut.href = pIconBase + '&size=48';
+        pShortcut.href = pIcon;
         document.head.appendChild(pShortcut);
         var pFavicon = document.createElement('link');
         pFavicon.rel = 'icon';
         pFavicon.type = 'image/png';
-        pFavicon.href = pIconBase + '&size=48';
+        pFavicon.href = pIcon;
         document.head.appendChild(pFavicon);
         var pIcon32 = document.createElement('link');
         pIcon32.rel = 'icon';
         pIcon32.type = 'image/png';
         pIcon32.sizes = '32x32';
-        pIcon32.href = pIconBase + '&size=32';
+        pIcon32.href = pIcon;
         document.head.appendChild(pIcon32);
         var pIcon16 = document.createElement('link');
         pIcon16.rel = 'icon';
         pIcon16.type = 'image/png';
         pIcon16.sizes = '16x16';
-        pIcon16.href = pIconBase + '&size=16';
+        pIcon16.href = pIcon;
         document.head.appendChild(pIcon16);
         var themeMeta = document.querySelector('meta[name="theme-color"]');
         if (themeMeta) themeMeta.setAttribute('content', '#146c43');
@@ -136,9 +137,14 @@
 
       if ('serviceWorker' in navigator) {
         if (isDevHost) {
-          // Dev: a cached service worker poisons Vite's module graph (stale
-          // optimized-dep chunks -> duplicate React / hook errors). Tear it down.
+          // Dev: tear down stale SW/caches (they break Vite HMR). Reload at most once
+          // per tab — otherwise *.localhost can loop forever if a controller lingers.
           var hadController = !!navigator.serviceWorker.controller;
+          var alreadyPurged = false;
+          try {
+            alreadyPurged = sessionStorage.getItem('sn-dev-sw-purge') === '1';
+          } catch (e) { /* ignore */ }
+
           navigator.serviceWorker.getRegistrations().then(function (regs) {
             return Promise.all(regs.map(function (r) { return r.unregister(); }));
           }).then(function () {
@@ -148,7 +154,11 @@
               });
             }
           }).then(function () {
-            if (hadController) location.reload();
+            if (!hadController || alreadyPurged) return;
+            try {
+              sessionStorage.setItem('sn-dev-sw-purge', '1');
+            } catch (e) { /* ignore */ }
+            location.reload();
           }).catch(function () {});
         } else {
           navigator.serviceWorker.register('/sw.js').catch(function () {});

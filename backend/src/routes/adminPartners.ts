@@ -8,6 +8,7 @@ import {
   upsertPartnerCommission,
 } from '../services/partnerService.js';
 import { notifyPartner } from '../services/partnerNotifyService.js';
+import { emitPartnerSupportMessage } from '../services/partnerSupportSocketService.js';
 import { sendPartnerEmail, sendPartnerEmailBatch, previewPartnerEmail } from '../services/partnerEmailService.js';
 
 const router = express.Router();
@@ -602,6 +603,160 @@ router.delete('/training-videos/:id', async (req: AuthRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/admin/partners/support/conversations — partner support threads
+// (Must be registered before /:id)
+// ---------------------------------------------------------------------------
+router.get('/support/conversations', async (_req: AuthRequest, res) => {
+  try {
+    const result = await query(
+      `WITH last_msg AS (
+         SELECT DISTINCT ON (partner_id) partner_id, message, is_from_superadmin, created_at
+           FROM partner_support_messages
+          WHERE is_deleted = false
+          ORDER BY partner_id, created_at DESC
+       ),
+       unread AS (
+         SELECT partner_id, COUNT(*)::int AS cnt
+           FROM partner_support_messages
+          WHERE is_from_superadmin = false AND read_at IS NULL AND is_deleted = false
+          GROUP BY partner_id
+       )
+       SELECT p.id AS partner_db_id, p.partner_id, p.first_name, p.last_name, p.email, p.phone,
+              lm.message AS last_message, lm.is_from_superadmin AS last_from_admin,
+              lm.created_at AS last_message_at,
+              COALESCE(u.cnt, 0)::int AS unread_count
+         FROM partners p
+         INNER JOIN last_msg lm ON lm.partner_id = p.id
+         LEFT JOIN unread u ON u.partner_id = p.id
+        ORDER BY COALESCE(u.cnt, 0) DESC, lm.created_at DESC`
+    );
+    return res.json({ conversations: result.rows });
+  } catch (error) {
+    console.error('Admin partner support conversations error:', error);
+    return res.status(500).json({ error: 'Failed to load support conversations' });
+  }
+});
+
+router.get('/support/messages', async (req: AuthRequest, res) => {
+  try {
+    const partnerDbId = parseInt(String(req.query.partnerId || ''), 10);
+    if (!Number.isInteger(partnerDbId)) {
+      return res.status(400).json({ error: 'partnerId is required' });
+    }
+    const result = await query(
+      `SELECT id, sender_role, sender_username, message, is_from_superadmin, read_at, created_at
+         FROM partner_support_messages
+        WHERE partner_id = $1 AND is_deleted = false
+        ORDER BY created_at ASC
+        LIMIT 500`,
+      [partnerDbId]
+    );
+    return res.json({ messages: result.rows });
+  } catch (error) {
+    console.error('Admin partner support messages error:', error);
+    return res.status(500).json({ error: 'Failed to load support messages' });
+  }
+});
+
+router.post('/support/messages', async (req: AuthRequest, res) => {
+  try {
+    const partnerDbId = parseInt(String(req.body?.partnerId || ''), 10);
+    const message = String(req.body?.message || '').trim();
+    if (!Number.isInteger(partnerDbId)) {
+      return res.status(400).json({ error: 'partnerId is required' });
+    }
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+    if (message.length > 4000) {
+      return res.status(400).json({ error: 'Message is too long (max 4000 characters)' });
+    }
+
+    const partnerRes = await query(
+      'SELECT id, first_name, last_name FROM partners WHERE id = $1',
+      [partnerDbId]
+    );
+    if (partnerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Partner not found' });
+    }
+
+    const username = String(req.user?.username || 'ScholarNerve Support').trim();
+    const insert = await query(
+      `INSERT INTO partner_support_messages (partner_id, sender_role, sender_username, message, is_from_superadmin)
+       VALUES ($1, 'super-admin', $2, $3, true)
+       RETURNING id, sender_role, sender_username, message, is_from_superadmin, read_at, created_at`,
+      [partnerDbId, username, message]
+    );
+
+    const row = insert.rows[0];
+    const preview = message.length > 120 ? `${message.slice(0, 117)}…` : message;
+    await notifyPartner(partnerDbId, 'Support reply', preview, '/support');
+    void emitPartnerSupportMessage(partnerDbId, row);
+
+    return res.status(201).json({ message: row });
+  } catch (error) {
+    console.error('Admin partner support message post error:', error);
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+router.put('/support/read', async (req: AuthRequest, res) => {
+  try {
+    const partnerDbId = parseInt(String(req.body?.partnerId || req.query.partnerId || ''), 10);
+    if (!Number.isInteger(partnerDbId)) {
+      return res.status(400).json({ error: 'partnerId is required' });
+    }
+    await query(
+      `UPDATE partner_support_messages SET read_at = NOW()
+        WHERE partner_id = $1 AND is_from_superadmin = false AND read_at IS NULL AND is_deleted = false`,
+      [partnerDbId]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin partner support read error:', error);
+    return res.status(500).json({ error: 'Failed to mark messages as read' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/partners/login-audit — partner sign-in / sign-out history
+// (Must be registered before /:id or "login-audit" is parsed as a partner id.)
+// ---------------------------------------------------------------------------
+router.get('/login-audit', async (req: AuthRequest, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
+    const partnerDbId = req.query.partnerId ? parseInt(String(req.query.partnerId), 10) : null;
+    const eventType = req.query.event ? String(req.query.event).toLowerCase() : null;
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (partnerDbId && !Number.isNaN(partnerDbId)) {
+      params.push(partnerDbId);
+      conditions.push(`e.partner_id = $${params.length}`);
+    }
+    if (eventType === 'login' || eventType === 'logout') {
+      params.push(eventType);
+      conditions.push(`e.event_type = $${params.length}`);
+    }
+    params.push(limit);
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await query(
+      `SELECT e.id, e.event_type, e.ip_address, e.user_agent, e.created_at,
+              p.id AS partner_db_id, p.partner_id, p.first_name, p.last_name, p.email, p.phone
+         FROM partner_login_events e
+         JOIN partners p ON p.id = e.partner_id
+        ${where}
+        ORDER BY e.created_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    return res.json({ events: result.rows });
+  } catch (error) {
+    console.error('Admin partner login audit error:', error);
+    return res.status(500).json({ error: 'Failed to load partner login audit' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/admin/partners/:id — detail with leads + commissions
 // ---------------------------------------------------------------------------
 router.get('/:id', async (req: AuthRequest, res) => {
@@ -667,10 +822,10 @@ router.put('/:id/approve', async (req: AuthRequest, res) => {
       id,
       'You are approved! 🎉',
       `Congratulations ${partner.first_name}! Your ScholarNerve Partner application has been approved. Your Partner ID is ${publicId}. Start referring schools and earning monthly commissions from your dashboard.`,
-      '/',
+      '/dashboard',
     );
 
-    sendPartnerEmail(updated.rows[0], 'approved', { partnerId: publicId }, undefined, req).catch(() => undefined);
+    void sendPartnerEmail(updated.rows[0], 'approved', { partnerId: publicId }, undefined, req);
 
     return res.json({ partner: updated.rows[0] });
   } catch (error) {

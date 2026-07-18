@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { usePartnerNotifications, useInvalidatePartnerQueries, type PartnerNotification } from './usePartnerQueries';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import { PartnerSkeletonBlock } from './PartnerLoading';
 import ReferSchoolModal from './ReferSchoolModal';
 import PartnerLogo from './PartnerLogo';
@@ -141,8 +141,8 @@ function NotificationsPanel({
 
   const handleMarkRead = (n: PartnerNotification) => {
     if (n.read_at) return;
-    markNotificationRead(n.id);
     patchRead(n.id);
+    markNotificationRead(n.id, Math.max(0, unreadCount - 1));
   };
 
   const handleMarkAllRead = () => {
@@ -220,7 +220,7 @@ function NotificationsPanel({
           ) : items.length === 0 ? (
             <div className="py-10 text-center">
               <Bell className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
-              <p className="mt-2 text-sm font-semibold text-slate-500">No notifications yet</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">No notifications yet</p>
             </div>
           ) : (
             <ul className="space-y-2">
@@ -230,20 +230,21 @@ function NotificationsPanel({
                   <li
                     key={n.id}
                     className={cn(
-                      'rounded-xl border px-3 py-2.5 transition',
+                      'snp-notif-item rounded-xl border px-3 py-2.5 transition',
+                      unread ? 'snp-notif-item--unread' : 'snp-notif-item--read',
                       unread
                         ? 'border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/25'
                         : 'border-slate-100 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/40',
                     )}
                   >
-                    <p className={cn('text-[13px] leading-snug', unread ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-700 dark:text-slate-200')}>
+                    <p className={cn('snp-notif-item-title text-[13px] leading-snug', unread ? 'font-bold text-slate-900 dark:text-white' : 'font-semibold text-slate-700 dark:text-slate-200')}>
                       {n.title}
                     </p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                    <p className="snp-notif-item-body mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-200">
                       {sanitizeNotificationBody(n.body)}
                     </p>
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-medium text-slate-400">{formatNotifTime(n.created_at)}</span>
+                      <span className="snp-notif-item-meta text-[10px] font-medium text-slate-400 dark:text-slate-400">{formatNotifTime(n.created_at)}</span>
                       {unread ? (
                         <button
                           type="button"
@@ -253,7 +254,7 @@ function NotificationsPanel({
                           Mark as read
                         </button>
                       ) : (
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Read</span>
+                        <span className="snp-notif-item-meta text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Read</span>
                       )}
                     </div>
                   </li>
@@ -514,7 +515,7 @@ export function PartnerShell({
 
   const handleTab = (tab: TabId) => {
     const routes: Record<TabId, string> = {
-      dashboard: '/',
+      dashboard: '/dashboard',
       schools: '/schools',
       commissions: '/commissions',
       more: '/more',

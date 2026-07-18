@@ -27,6 +27,36 @@ export interface SocketUser {
 
 export interface AuthenticatedSocket extends Socket {
   user?: SocketUser;
+  partnerUser?: { partnerId: number; email: string; fullName: string };
+}
+
+const PARTNER_JWT_SECRET = `sn-partners::${process.env.JWT_SECRET || 'secret'}`;
+
+async function authenticatePartnerSocket(
+  socket: AuthenticatedSocket,
+  token: string,
+): Promise<boolean> {
+  try {
+    const decoded = jwt.verify(token, PARTNER_JWT_SECRET) as { role?: string; partnerId?: number };
+    if (decoded.role !== 'sn-partner' || !decoded.partnerId) return false;
+
+    const result = await query(
+      `SELECT id, email, first_name, last_name, status FROM partners WHERE id = $1`,
+      [decoded.partnerId]
+    );
+    if (result.rows.length === 0) return false;
+    const row = result.rows[0];
+    if (row.status === 'rejected') return false;
+
+    socket.partnerUser = {
+      partnerId: Number(row.id),
+      email: String(row.email),
+      fullName: `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Partner',
+    };
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const initSocket = (server: HttpServer) => {
@@ -70,6 +100,10 @@ export const initSocket = (server: HttpServer) => {
     try {
       const token = socket.handshake.auth.token;
       if (!token) return next(new Error('Authentication error: No token'));
+
+      if (await authenticatePartnerSocket(socket, token)) {
+        return next();
+      }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
       const decodedRole = normalizeRole(decoded.role);
@@ -129,6 +163,13 @@ export const initSocket = (server: HttpServer) => {
   })();
 
   io.on('connection', (socket: AuthenticatedSocket) => {
+    if (socket.partnerUser) {
+      const { partnerId } = socket.partnerUser;
+      socket.join(`partner:${partnerId}`);
+      console.log(`Partner connected: ${socket.id} (Partner:${partnerId})`);
+      return;
+    }
+
     if (socket.user) {
       const { id, tenantId, role } = socket.user;
       const normalizedRole = normalizeRole(role);

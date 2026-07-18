@@ -9,25 +9,48 @@ import {
   PartnerAuthRequest,
 } from '../middleware/authenticatePartner.js';
 import { ensureMonthlyCommissions } from '../services/partnerService.js';
+import { logPartnerAuthEvent } from '../services/partnerAuthAuditService.js';
 import { notifyAdminNewPartnerApplication, sendPartnerEmail } from '../services/partnerEmailService.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
-import { resolvePartnerPortalEmailLinkUrl } from '../utils/publicAppUrl.js';
+import { resolvePartnerPortalDirectUrl } from '../utils/publicAppUrl.js';
+import { maskEmailAddress } from '../utils/maskEmail.js';
+import { notifyPartner } from '../services/partnerNotifyService.js';
+import { emitPartnerSupportMessage } from '../services/partnerSupportSocketService.js';
 
 const router = express.Router();
 
 const PARTNER_MIN_PASSWORD = 6;
 
-function maskPartnerEmail(email: string): string {
-  const clean = String(email || '').trim();
-  const at = clean.indexOf('@');
-  if (at <= 0) return '***';
-  const local = clean.slice(0, at);
-  const domain = clean.slice(at + 1);
-  const maskedLocal =
-    local.length <= 2
-      ? `${local.charAt(0) || '*'}*`
-      : `${local.charAt(0)}***${local.charAt(local.length - 1)}`;
-  return `${maskedLocal}@${domain}`;
+/** Last 9 digits — reliable match for Ghana numbers in any format. */
+function ghanaPhoneCore(input: string): string | null {
+  const digits = String(input || '').replace(/\D/g, '');
+  if (digits.length < 9) return null;
+  return digits.slice(-9);
+}
+
+async function findPartnerByLoginIdentifier(identifier: string) {
+  const trimmed = String(identifier || '').trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes('@')) {
+    const byEmail = await query(
+      `SELECT * FROM partners WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [trimmed]
+    );
+    return byEmail.rows[0] || null;
+  }
+
+  const core = ghanaPhoneCore(trimmed);
+  if (!core) return null;
+
+  const byPhone = await query(
+    `SELECT * FROM partners
+      WHERE RIGHT(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 9) = $1
+         OR RIGHT(regexp_replace(COALESCE(whatsapp, ''), '\\D', '', 'g'), 9) = $1
+      LIMIT 1`,
+    [core]
+  );
+  return byPhone.rows[0] || null;
 }
 
 async function findValidPartnerResetToken(token: string) {
@@ -147,6 +170,7 @@ router.post('/register', async (req, res) => {
     sendPartnerEmail(partner, 'application_received', {}, undefined, req).catch(() => undefined);
     notifyAdminNewPartnerApplication(partner).catch(() => undefined);
     const token = signPartnerToken({ id: Number(partner.id), email: partner.email });
+    void logPartnerAuthEvent(Number(partner.id), 'login', req);
     return res.status(201).json({ token, partner: publicPartner(partner) });
   } catch (error) {
     console.error('Partner register error:', error);
@@ -170,27 +194,29 @@ router.get('/regions', (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/forgot-password', async (req, res) => {
   try {
-    const phone = String(req.body?.phone || req.body?.identifier || '').trim();
-    if (!phone) {
+    const raw = String(req.body?.phone || req.body?.identifier || '').trim();
+    if (!raw) {
       return res.status(400).json({ error: 'Enter the phone number on your partner account' });
     }
-
-    const digits = phone.replace(/\D/g, '');
+    if (raw.includes('@')) {
+      return res.status(400).json({ error: 'Enter your phone number only — not your email' });
+    }
+    const digits = raw.replace(/\D/g, '');
     if (digits.length < 9) {
-      return res.status(400).json({ error: 'Enter a valid phone number from your partner account' });
+      return res.status(400).json({ error: 'Enter a valid phone number (at least 9 digits)' });
     }
 
-    const result = await query(
-      `SELECT * FROM partners
-        WHERE regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1
-           OR regexp_replace(COALESCE(whatsapp, ''), '\\D', '', 'g') = $1
-        LIMIT 1`,
-      [digits]
-    );
+    const partner = await findPartnerByLoginIdentifier(raw);
 
     let maskedEmail: string | null = null;
-    if (result.rows.length > 0) {
-      const partner = result.rows[0];
+    if (partner) {
+      const accountEmail = String(partner.email || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+        return res.status(400).json({
+          error: 'This account has no valid email on file. Contact ScholarNerve support for help.',
+        });
+      }
+
       const token = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -200,17 +226,23 @@ router.post('/forgot-password', async (req, res) => {
         [partner.id, tokenHash, expiresAt]
       );
       const resetPath = `/reset-password?token=${encodeURIComponent(token)}`;
-      const resetLink = resolvePartnerPortalEmailLinkUrl(resetPath, req);
-      sendPartnerEmail(partner, 'password_reset', { resetLink }, undefined, req).catch(() => undefined);
-      maskedEmail = maskPartnerEmail(String(partner.email || ''));
+      const resetLink = resolvePartnerPortalDirectUrl(resetPath, req);
+      const sent = await sendPartnerEmail(partner, 'password_reset', { resetLink }, undefined, req);
+      if (!sent) {
+        console.error('[partner] Password reset email failed for partner', partner.id, accountEmail);
+        return res.status(503).json({
+          error: 'Could not send the reset email right now. Check your connection and try again in a moment.',
+        });
+      }
+      maskedEmail = maskEmailAddress(accountEmail);
     }
 
     return res.json({
       success: true,
       maskedEmail,
       message: maskedEmail
-        ? `We sent a password reset link to ${maskedEmail} — the email on your partner account.`
-        : 'If an account exists with that phone number, we sent a password reset link to the email on your account.',
+        ? `We sent a password reset link to ${maskedEmail}.`
+        : 'If an account exists with those details, we sent a password reset link to the email on your account.',
     });
   } catch (error) {
     console.error('Partner forgot password error:', error);
@@ -232,7 +264,7 @@ router.get('/reset-password/preview', async (req, res) => {
       return res.status(400).json({ error: 'This reset link is invalid or has expired' });
     }
     return res.json({
-      email: String(row.email),
+      maskedEmail: maskEmailAddress(String(row.email)),
       firstName: String(row.first_name || ''),
     });
   } catch (error) {
@@ -272,6 +304,7 @@ router.post('/reset-password', async (req, res) => {
     return res.json({
       success: true,
       email: String(row.email),
+      maskedEmail: maskEmailAddress(String(row.email)),
       message: 'Password updated. You can sign in with your new password.',
     });
   } catch (error) {
@@ -291,19 +324,10 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Enter your email/phone and password' });
     }
 
-    const digits = identifier.replace(/\D/g, '');
-    const result = await query(
-      `SELECT * FROM partners
-        WHERE LOWER(email) = LOWER($1)
-           OR ($2 <> '' AND regexp_replace(phone, '\\D', '', 'g') = $2)
-        LIMIT 1`,
-      [identifier, digits.length >= 9 ? digits : '']
-    );
-    if (result.rows.length === 0) {
+    const partner = await findPartnerByLoginIdentifier(identifier);
+    if (!partner) {
       return res.status(401).json({ error: 'No partner account found with those details' });
     }
-
-    const partner = result.rows[0];
     const valid = await bcrypt.compare(password, String(partner.password_hash || ''));
     if (!valid) {
       return res.status(401).json({ error: 'Incorrect password. Please try again.' });
@@ -313,6 +337,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signPartnerToken({ id: Number(partner.id), email: partner.email });
+    void logPartnerAuthEvent(Number(partner.id), 'login', req);
     return res.json({ token, partner: publicPartner(partner) });
   } catch (error) {
     console.error('Partner login error:', error);
@@ -323,7 +348,8 @@ router.post('/login', async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/partners/logout — stateless JWT; endpoint exists for symmetry
 // ---------------------------------------------------------------------------
-router.post('/logout', (_req, res) => {
+router.post('/logout', authenticatePartner, async (req: PartnerAuthRequest, res) => {
+  void logPartnerAuthEvent(req.partner!.partnerId, 'logout', req);
   res.json({ success: true });
 });
 
@@ -348,7 +374,7 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
     const lastMonth = lastMonthDate.getMonth() + 1;
     const lastMonthYear = lastMonthDate.getFullYear();
 
-    const [leadStats, commStats, unreadRes, recentCommissions, recentLeads, recentNotifications] =
+    const [leadStats, commStats, unreadRes, unreadSupportRes, recentCommissions, recentLeads, recentNotifications] =
       await Promise.all([
         query(
           `SELECT COUNT(*)::int AS total,
@@ -369,6 +395,11 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
         query(
           `SELECT COUNT(*)::int AS unread FROM partner_notifications
             WHERE partner_id = $1 AND read_at IS NULL`,
+          [id]
+        ),
+        query(
+          `SELECT COUNT(*)::int AS unread FROM partner_support_messages
+            WHERE partner_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false`,
           [id]
         ),
         query(
@@ -448,6 +479,7 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
         totalAll: Number(commStats.rows[0].total_all),
         pendingPayout: Number(commStats.rows[0].pending),
         unreadNotifications: Number(unreadRes.rows[0].unread),
+        unreadSupportMessages: Number(unreadSupportRes.rows[0].unread),
       },
       recentActivity: activity.slice(0, 5),
     });
@@ -845,6 +877,79 @@ router.post('/push/fcm-unsubscribe', authenticatePartner, rejectIfSuspended, asy
   } catch (error) {
     console.error('Partner FCM token remove error:', error);
     return res.status(500).json({ error: 'Failed to remove FCM token' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Partner support chat — simple two-way messaging with ScholarNerve team
+// ---------------------------------------------------------------------------
+router.get('/support/messages', authenticatePartner, async (req: PartnerAuthRequest, res) => {
+  try {
+    const id = req.partner!.partnerId;
+    const result = await query(
+      `SELECT id, sender_role, sender_username, message, is_from_superadmin, read_at, created_at
+         FROM partner_support_messages
+        WHERE partner_id = $1 AND is_deleted = false
+        ORDER BY created_at ASC
+        LIMIT 500`,
+      [id]
+    );
+    const unread = await query(
+      `SELECT COUNT(*)::int AS c FROM partner_support_messages
+        WHERE partner_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false`,
+      [id]
+    );
+    return res.json({
+      messages: result.rows,
+      unreadCount: Number(unread.rows[0]?.c ?? 0),
+    });
+  } catch (error) {
+    console.error('Partner support messages get error:', error);
+    return res.status(500).json({ error: 'Failed to load support messages' });
+  }
+});
+
+router.post('/support/messages', authenticatePartner, async (req: PartnerAuthRequest, res) => {
+  try {
+    const id = req.partner!.partnerId;
+    const message = String(req.body?.message || '').trim();
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+    if (message.length > 4000) return res.status(400).json({ error: 'Message is too long (max 4000 characters)' });
+
+    const partnerRes = await query(
+      'SELECT first_name, last_name FROM partners WHERE id = $1',
+      [id]
+    );
+    const partnerRow = partnerRes.rows[0];
+    const senderName = `${partnerRow?.first_name || ''} ${partnerRow?.last_name || ''}`.trim() || 'Partner';
+
+    const insert = await query(
+      `INSERT INTO partner_support_messages (partner_id, sender_role, sender_username, message, is_from_superadmin)
+       VALUES ($1, 'partner', $2, $3, false)
+       RETURNING id, sender_role, sender_username, message, is_from_superadmin, read_at, created_at`,
+      [id, senderName, message]
+    );
+    const messageRow = insert.rows[0];
+    void emitPartnerSupportMessage(id, messageRow);
+    return res.status(201).json({ message: messageRow });
+  } catch (error) {
+    console.error('Partner support message post error:', error);
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+router.put('/support/read', authenticatePartner, async (req: PartnerAuthRequest, res) => {
+  try {
+    const id = req.partner!.partnerId;
+    await query(
+      `UPDATE partner_support_messages SET read_at = NOW()
+        WHERE partner_id = $1 AND is_from_superadmin = true AND read_at IS NULL AND is_deleted = false`,
+      [id]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Partner support read error:', error);
+    return res.status(500).json({ error: 'Failed to mark messages as read' });
   }
 });
 

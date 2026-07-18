@@ -28,6 +28,10 @@ export function resolveSocketBaseUrl(): string {
     return origin;
   }
 
+  if (hostname === 'partners.localhost' || hostname.endsWith('.localhost')) {
+    return origin;
+  }
+
   if (isLocalDev && import.meta.env.DEV) {
     // Vite dev server proxies /socket.io → backend; same-origin works in dev too.
     if (origin.includes(':8080') || origin.includes(':5173')) {

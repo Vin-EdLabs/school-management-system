@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Receipt, Wallet } from 'lucide-react';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import {
   MonthName, PartnerPage, PartnerPageHeader, PortalCard, VirtualEarningsCard,
 } from './partnerShared';

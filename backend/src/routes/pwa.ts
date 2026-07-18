@@ -271,25 +271,43 @@ async function loadPartnerLogoBytes(): Promise<Buffer> {
   if (partnerLogoCache) return partnerLogoCache;
   try {
     partnerLogoCache = await fs.readFile(PARTNER_LOGO_FILE);
+    return partnerLogoCache;
   } catch {
-    partnerLogoCache = await fs.readFile(PARTNER_LOGO_PUBLIC);
+    try {
+      partnerLogoCache = await fs.readFile(PARTNER_LOGO_PUBLIC);
+      return partnerLogoCache;
+    } catch {
+      partnerLogoCache = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      );
+      return partnerLogoCache;
+    }
   }
-  return partnerLogoCache;
 }
 
-/** Partner Network emblem — square mark for PWA icons and favicons. */
 async function loadPartnerEmblemBytes(): Promise<Buffer> {
   if (partnerEmblemCache) return partnerEmblemCache;
   try {
     partnerEmblemCache = await fs.readFile(PARTNER_EMBLEM_FILE);
+    return partnerEmblemCache;
   } catch {
     try {
       partnerEmblemCache = await fs.readFile(PARTNER_EMBLEM_PUBLIC);
+      return partnerEmblemCache;
     } catch {
-      partnerEmblemCache = await loadPartnerLogoBytes();
+      try {
+        partnerEmblemCache = await loadPartnerLogoBytes();
+        return partnerEmblemCache;
+      } catch {
+        partnerEmblemCache = Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'base64',
+        );
+        return partnerEmblemCache;
+      }
     }
   }
-  return partnerEmblemCache;
 }
 
 router.get('/partner-icon', async (req, res) => {
@@ -297,15 +315,28 @@ router.get('/partner-icon', async (req, res) => {
     const sizeNum = Math.min(1024, Math.max(16, parseInt(String(req.query.size || '192'), 10) || 192));
     const maskable = req.query.maskable === '1';
     const emblemBytes = await loadPartnerEmblemBytes();
-    const version = await getPartnerEmblemVersionTag();
-    const png = await renderIcon(emblemBytes, sizeNum, maskable, '#ffffff');
+    let version = 'default';
+    try {
+      version = await getPartnerEmblemVersionTag();
+    } catch {
+      /* use default version tag */
+    }
+
+    let png: Buffer;
+    try {
+      png = await renderIcon(emblemBytes, sizeNum, maskable, '#ffffff');
+    } catch (renderErr) {
+      console.warn('[PWA] Partner icon render fallback:', (renderErr as Error)?.message);
+      png = emblemBytes;
+    }
+
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400, must-revalidate');
     res.setHeader('ETag', `"partner-emblem-${version}-${sizeNum}${maskable ? '-m' : ''}"`);
     return res.send(png);
   } catch (error: any) {
     console.error('[PWA] Partner icon error:', error);
-    return res.status(500).send('Internal server error');
+    return res.redirect(302, '/partners/scholarnerve-partner-emblem.png');
   }
 });
 
@@ -318,10 +349,10 @@ function buildPartnerManifest(origin: string, emblemVersion: string) {
     `${origin}/api/pwa/partner-icon?size=${size}${maskable ? '&maskable=1' : ''}&v=${emblemVersion}`;
   return {
     id: '/',
-    name: 'ScholarNerve Partners',
-    short_name: 'Partners',
+    name: 'ScholarNerve',
+    short_name: 'ScholarNerve',
     description: 'ScholarNerve Partner Network — refer schools, earn monthly commissions.',
-    start_url: '/',
+    start_url: '/login',
     scope: '/',
     display: 'standalone',
     display_override: ['standalone', 'minimal-ui'],
@@ -342,7 +373,7 @@ function buildPartnerManifest(origin: string, emblemVersion: string) {
       { src: icon(512, true), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     shortcuts: [
-      { name: 'Open partner dashboard', short_name: 'Dashboard', url: '/' },
+      { name: 'Open partner dashboard', short_name: 'Dashboard', url: '/dashboard' },
       { name: 'Refer a school', short_name: 'Refer', url: '/schools' },
     ],
   };
@@ -436,7 +467,12 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     // Partner Network PWA gets its own standalone manifest.
     if (isPartnersClientHost(clientHost) || kindQuery === 'partners') {
       const partnerOrigin = pageOrigin(req, clientHost);
-      const emblemVersion = await getPartnerEmblemVersionTag();
+      let emblemVersion = 'default';
+      try {
+        emblemVersion = await getPartnerEmblemVersionTag();
+      } catch (err) {
+        console.warn('[PWA] Partner emblem version fallback:', (err as Error)?.message);
+      }
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       return res
         .type('application/manifest+json')
@@ -551,6 +587,19 @@ router.get('/manifest', async (req: TenantRequest, res) => {
     });
   } catch (error: any) {
     console.error('[PWA] Manifest error:', error);
+    const clientHost = resolveClientHost(req);
+    const kindQuery = req.query.kind ? String(req.query.kind).toLowerCase() : null;
+    if (isPartnersClientHost(clientHost) || kindQuery === 'partners') {
+      try {
+        const partnerOrigin = pageOrigin(req, clientHost);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res
+          .type('application/manifest+json')
+          .json(buildPartnerManifest(partnerOrigin, 'fallback'));
+      } catch {
+        /* fall through */
+      }
+    }
     captureSystemError({
       message: error?.message || 'PWA manifest error',
       stack: error?.stack || null,

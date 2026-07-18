@@ -56,12 +56,19 @@ export async function sendPartnerEmail(
   });
   const bid = batchId || randomUUID();
 
+  let attachments: Awaited<ReturnType<typeof getPartnerLogoAttachment>>[] = [];
+  try {
+    attachments = [await getPartnerLogoAttachment()];
+  } catch (err) {
+    console.warn('[partner-email] Logo attachment skipped:', err);
+  }
+
   const ok = await sendAdminEmail({
     to: String(partner.email),
     subject,
     text,
     html,
-    attachments: [await getPartnerLogoAttachment()],
+    attachments: attachments.length ? attachments : undefined,
   });
 
   if (ok) {

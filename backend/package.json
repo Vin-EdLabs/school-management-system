@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node start-server.js",
+    "dev:watch": "nodemon --watch src --ext ts,json --exec tsx src/index.ts",
+    "dev:once": "tsx src/index.ts",
     "start-server": "node start-server.js",
     "build": "tsc && node scripts/copy-migrations.cjs",
     "start": "node dist/index.js",

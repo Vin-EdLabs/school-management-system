@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, GraduationCap, Loader2, Lock, Play } from 'lucide-react';
+import { CheckCircle2, GraduationCap, Loader2, Lock, Play, RefreshCw } from 'lucide-react';
 import { PartnerVideo, partnerApi, youtubeId, youtubeThumb } from '@/services/partnerApi';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import { PartnerEmptyState, PartnerPage, PortalCard } from './partnerShared';
 import { PartnerTrainingSkeleton } from './PartnerLoading';
 import { usePartnerTrainingVideos } from './usePartnerQueries';
@@ -59,7 +59,7 @@ function VideoPlayerDialog({ video, onClose }: { video: PartnerVideo; onClose: (
 
 export default function PartnerTraining() {
   const { partner } = usePartnerSession();
-  const { data: videos = [], isLoading } = usePartnerTrainingVideos();
+  const { data: videos = [], isLoading, isFetching, refetch } = usePartnerTrainingVideos();
   const [active, setActive] = useState<PartnerVideo | null>(null);
   const locked = partner.status !== 'approved';
 
@@ -94,14 +94,24 @@ export default function PartnerTraining() {
               Short, practical lessons to help you talk to schools with confidence.
             </p>
           </div>
-          {videos.length > 0 && !locked && (
-            <div className="rounded-2xl border border-emerald-100 bg-white/90 px-4 py-3 text-center dark:border-emerald-900/50 dark:bg-slate-900/80">
-              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400">{progressPct}%</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                {watchedCount}/{videos.length} complete
-              </p>
-            </div>
-          )}
+          <div className="flex items-start gap-2">
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+              aria-label="Refresh training videos"
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </button>
+            {videos.length > 0 && !locked && (
+              <div className="rounded-2xl border border-emerald-100 bg-white/90 px-4 py-3 text-center dark:border-emerald-900/50 dark:bg-slate-900/80">
+                <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400">{progressPct}%</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {watchedCount}/{videos.length} complete
+                </p>
+              </div>
+            )}
+          </div>
         </div>
         {videos.length > 0 && !locked && (
           <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950">
@@ -170,7 +180,7 @@ export default function PartnerTraining() {
 
           {rest.length > 0 && (
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">More lessons</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">More lessons</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {rest.map((video, i) => {
                   const thumb = youtubeThumb(video.youtube_url);

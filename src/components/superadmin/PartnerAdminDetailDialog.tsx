@@ -14,6 +14,7 @@ import {
 import PartnerCardFront from '@/pages/partners/PartnerCardFront';
 import { ScaledCardPreview } from '@/components/id-cards/ScaledCardPreview';
 import type { PartnerProfile } from '@/services/partnerApi';
+import { HEARD_FROM_OPTIONS, PARTNER_GENDERS } from '@/services/partnerApi';
 import {
   Dialog,
   DialogContent,
@@ -37,12 +38,15 @@ export type AdminPartnerDetail = {
   email: string;
   phone: string;
   whatsapp: string | null;
+  gender: string | null;
   region: string;
+  town: string | null;
   occupation: string | null;
   momo_number: string;
   momo_network: string;
   schools_target: string | null;
   motivation: string | null;
+  heard_from: string | null;
   status: string;
   partner_id: string | null;
   tier: string;
@@ -93,6 +97,18 @@ function ghs(n: number | string | null | undefined): string {
 
 function monthLabel(month: number, year: number): string {
   return `${new Date(2000, month - 1, 1).toLocaleString('en', { month: 'short' })} ${year}`;
+}
+
+function genderLabel(value: string | null | undefined): string {
+  const match = PARTNER_GENDERS.find((g) => g.value === value);
+  if (match) return match.label;
+  if (!value) return '—';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function heardFromLabel(value: string | null | undefined): string {
+  const match = HEARD_FROM_OPTIONS.find((o) => o.value === value);
+  return match?.label || value || '—';
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -476,35 +492,80 @@ export function PartnerAdminDetailDialog({
 
             <TabsContent value="profile" className="mt-0 space-y-4">
               <div className={dialogSectionClass}>
-                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Contact & identity</p>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <DetailField label="Email"><span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-emerald-600" />{partner.email}</span></DetailField>
-                  <DetailField label="Phone"><span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-emerald-600" />{partner.phone}</span></DetailField>
-                  <DetailField label="WhatsApp">{partner.whatsapp || '—'}</DetailField>
-                  <DetailField label="Region"><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" />{partner.region}</span></DetailField>
-                  <DetailField label="Occupation">{partner.occupation || '—'}</DetailField>
-                  <DetailField label="Applied">
-                    {new Date(partner.created_at).toLocaleDateString('en-GH', { day: 'numeric', month: 'long', year: 'numeric' })}
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">About you</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailField label="First name">{partner.first_name}</DetailField>
+                  <DetailField label="Last name">{partner.last_name}</DetailField>
+                  <DetailField label="Gender">{genderLabel(partner.gender)}</DetailField>
+                  <DetailField label="Phone">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      {partner.phone}
+                    </span>
+                  </DetailField>
+                  <DetailField label="WhatsApp">{partner.whatsapp || partner.phone || '—'}</DetailField>
+                  <DetailField label="Email" className="sm:col-span-2">
+                    <span className="flex items-start gap-1.5 break-all">
+                      <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <span>{partner.email}</span>
+                    </span>
                   </DetailField>
                 </div>
               </div>
 
               <div className={dialogSectionClass}>
-                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Payout details</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Your area</p>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <DetailField label="MoMo number">{partner.momo_number}</DetailField>
-                  <DetailField label="MoMo network">{partner.momo_network}</DetailField>
-                  <DetailField label="Schools target">{partner.schools_target || '—'}</DetailField>
-                  <DetailField label="Partner ID">{partner.partner_id || 'Assigned on approval'}</DetailField>
+                  <DetailField label="Region">
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      {partner.region}
+                    </span>
+                  </DetailField>
+                  <DetailField label="Town / city">{partner.town || '—'}</DetailField>
+                  <DetailField label="Occupation" className="sm:col-span-2">{partner.occupation || '—'}</DetailField>
                 </div>
               </div>
 
-              {partner.motivation ? (
-                <div className={dialogSectionClass}>
-                  <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Why they want to partner</p>
-                  <p className="text-sm leading-relaxed text-foreground">{partner.motivation}</p>
+              <div className={dialogSectionClass}>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Get paid</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailField label="MoMo number">{partner.momo_number}</DetailField>
+                  <DetailField label="MoMo network">{partner.momo_network}</DetailField>
                 </div>
-              ) : null}
+              </div>
+
+              <div className={dialogSectionClass}>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Your goals</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailField label="How they heard about us" className="sm:col-span-2">
+                    {heardFromLabel(partner.heard_from)}
+                  </DetailField>
+                  <DetailField label="Schools they can reach">
+                    {partner.schools_target ? `${partner.schools_target} schools` : '—'}
+                  </DetailField>
+                  <DetailField label="Applied">
+                    {new Date(partner.created_at).toLocaleString('en-GH', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </DetailField>
+                  <DetailField label="Why they want to partner" className="sm:col-span-2">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{partner.motivation?.trim() || '—'}</p>
+                  </DetailField>
+                </div>
+              </div>
+
+              <div className={dialogSectionClass}>
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-800/70 dark:text-emerald-300/80">Account</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <DetailField label="Partner ID">{partner.partner_id || 'Assigned on approval'}</DetailField>
+                  <DetailField label="Tier">{TIER_LABELS[partner.tier] || partner.tier}</DetailField>
+                </div>
+              </div>
 
               {partner.rejection_note ? (
                 <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 dark:border-red-900/40 dark:bg-red-950/20">

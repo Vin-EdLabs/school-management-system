@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ChevronRight, X } from 'lucide-react';
 import { MOMO_NETWORKS, PartnerApiError, partnerApi } from '@/services/partnerApi';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import { PartnerPhotoUpload, PortalCard } from './partnerShared';
 import { Button } from '@/components/ui/button';
 import PartnerLogo from './PartnerLogo';

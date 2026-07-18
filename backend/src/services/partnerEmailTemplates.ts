@@ -1,4 +1,5 @@
 import {
+  resolvePartnerPortalDirectUrl,
   resolvePartnerPortalEmailLinkUrl,
   resolvePublicAppUrl,
   type PartnerEmailUrlContext,
@@ -34,6 +35,18 @@ export function partnerLogoUrl(urls?: PartnerEmailUrlContext): string {
 
 export function partnerLoginUrl(urls?: PartnerEmailUrlContext): string {
   return urls?.partnerLoginUrl || resolvePartnerPortalEmailLinkUrl('/login');
+}
+
+export function partnerDashboardUrl(urls?: PartnerEmailUrlContext): string {
+  return urls?.partnerDashboardUrl || resolvePartnerPortalEmailLinkUrl('/dashboard');
+}
+
+export function partnerLoginDirectUrl(urls?: PartnerEmailUrlContext): string {
+  return urls?.partnerLoginDirectUrl || resolvePartnerPortalDirectUrl('/login');
+}
+
+export function partnerDashboardDirectUrl(urls?: PartnerEmailUrlContext): string {
+  return urls?.partnerDashboardDirectUrl || resolvePartnerPortalDirectUrl('/dashboard');
 }
 
 function escapeHtml(value: string): string {
@@ -133,11 +146,14 @@ export function buildPartnerEmail(
 ): { subject: string; html: string; text: string; preview: string } {
   const firstName = String(vars.firstName || 'Partner').trim();
   const login = partnerLoginUrl(urls);
+  const loginDirect = urls?.partnerLoginDirectUrl || partnerLoginDirectUrl(urls);
+  const dashboard = partnerDashboardUrl(urls);
+  const dashboardDirect = urls?.partnerDashboardDirectUrl || partnerDashboardDirectUrl(urls);
   const emailUrls = urls;
 
   if (template === 'application_received') {
     const subject = 'We received your ScholarNerve Partner application';
-    const text = `Hi ${firstName},\n\nThank you for applying to the ScholarNerve Partner Network!\n\nWe've received your application and our team will review it within 48 hours. You'll get an email once a decision is made.\n\nYou can sign in anytime to check your status:\n${login}\n\nWe're excited about the possibility of working with you.\n\nThe ScholarNerve Team`;
+    const text = `Hi ${firstName},\n\nThank you for applying to the ScholarNerve Partner Network!\n\nWe've received your application and our team will review it within 48 hours. You'll get an email once a decision is made.\n\nYou can sign in anytime to check your status:\n${loginDirect}\n\nWe're excited about the possibility of working with you.\n\nThe ScholarNerve Team`;
     const bodyHtml = `
       <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#334155;">Hi <strong>${escapeHtml(firstName)}</strong>,</p>
       <p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:#334155;">Thank you for applying to the <strong>ScholarNerve Partner Network</strong>! We've received your application and our team will review it within <strong>48 hours</strong>.</p>
@@ -159,7 +175,7 @@ export function buildPartnerEmail(
   if (template === 'approved') {
     const partnerId = vars.partnerId || '';
     const subject = 'Welcome to the ScholarNerve Partner Network 🎉';
-    const text = `Hi ${firstName},\n\nCongratulations — your ScholarNerve Partner application has been approved!\n\nYour Partner ID: ${partnerId}\nOpen dashboard: ${login}\n\nIf you added ScholarNerve Partners to your home screen, this link may open directly in the app on Android.\n\nComplete your training, refer schools, and earn 30% recurring commission every month (50% for the first 2 months of every school you bring).\n\nWelcome aboard,\nThe ScholarNerve Team`;
+    const text = `Hi ${firstName},\n\nCongratulations — your ScholarNerve Partner application has been approved!\n\nYour Partner ID: ${partnerId}\nOpen dashboard: ${dashboardDirect}\n\nSign in at ${loginDirect} if needed.\n\nComplete your training, refer schools, and earn 30% recurring commission every month (50% for the first 2 months of every school you bring).\n\nWelcome aboard,\nThe ScholarNerve Team`;
     const idBlock = partnerId
       ? `<div style="margin:20px 0;padding:16px 18px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;">
            <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;">Your Partner ID</p>
@@ -179,7 +195,7 @@ export function buildPartnerEmail(
         preheader: 'You are approved! Your Partner ID is ready.',
         heading: 'You are approved! 🎉',
         bodyHtml,
-        cta: { label: 'Open partner dashboard', href: login },
+        cta: { label: 'Open partner dashboard', href: dashboard },
         urls: emailUrls,
       }),
     };
@@ -217,7 +233,7 @@ export function buildPartnerEmail(
   if (template === 'restored') {
     const note = String(vars.note || '').trim();
     const subject = 'Your ScholarNerve Partner account has been unsuspended';
-    const text = `Hi ${firstName},\n\nGood news — your ScholarNerve Partner account has been unsuspended!${note ? `\n\nNote from our team: ${note}` : ''}\n\nLog in to continue referring schools and earning commissions:\n${login}\n\nWelcome back,\nThe ScholarNerve Team`;
+    const text = `Hi ${firstName},\n\nGood news — your ScholarNerve Partner account has been unsuspended!${note ? `\n\nNote from our team: ${note}` : ''}\n\nOpen your dashboard: ${dashboardDirect}\n\nSign in at ${loginDirect} if needed.\n\nWelcome back,\nThe ScholarNerve Team`;
     const noteBlock = note
       ? `<div style="margin:20px 0;padding:16px 18px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;">
            <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;">Why your account was unsuspended</p>
@@ -237,7 +253,7 @@ export function buildPartnerEmail(
         preheader: 'Your partner account has been unsuspended.',
         heading: 'Account unsuspended ✓',
         bodyHtml,
-        cta: { label: 'Open partner dashboard', href: login },
+        cta: { label: 'Open partner dashboard', href: dashboard },
         urls: emailUrls,
       }),
     };
@@ -306,7 +322,7 @@ export function buildPartnerEmail(
       preheader: subject,
       heading: subject,
       bodyHtml,
-      cta: { label: 'Open partner portal', href: login },
+      cta: { label: 'Open partner dashboard', href: dashboard },
       urls: emailUrls,
     }),
   };

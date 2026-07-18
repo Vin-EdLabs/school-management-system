@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Building2, Plus, RefreshCw } from 'lucide-react';
 import { formatGhs } from '@/services/partnerApi';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import {
   PartnerEmptyState, PartnerPage, PartnerPageHeader, LeadStatusBadge, PortalCard,
 } from './partnerShared';

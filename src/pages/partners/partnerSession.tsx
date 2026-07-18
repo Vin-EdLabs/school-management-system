@@ -4,6 +4,7 @@ import React, {
 import { PartnerActivityItem, PartnerApiError, PartnerProfile, PartnerStats,
   getPartnerToken, partnerApi, setPartnerToken,
 } from '@/services/partnerApi';
+import { syncPwaAppBadge } from '@/utils/pwaAppBadge';
 
 export type PartnerSession = {
   partner: PartnerProfile;
@@ -11,7 +12,7 @@ export type PartnerSession = {
   recentActivity: PartnerActivityItem[];
   refresh: () => Promise<void>;
   markNotificationsRead: () => void;
-  markNotificationRead: (id: number) => void;
+  markNotificationRead: (id: number, remainingCount?: number) => void;
   logout: () => void;
 };
 
@@ -173,19 +174,25 @@ export function usePartnerSessionState() {
         if (p) writePartnerSessionCache({ partner: p, stats: next, recentActivity });
         return p;
       });
+      syncPwaAppBadge(0);
       return next;
     });
     void partnerApi.put('/partners/notifications/read-all').catch(() => undefined);
   }, [recentActivity]);
 
-  const markNotificationRead = useCallback((id: number) => {
+  const markNotificationRead = useCallback((id: number, remainingCount?: number) => {
     setStats((prev) => {
-      if (!prev || prev.unreadNotifications <= 0) return prev;
-      const next = { ...prev, unreadNotifications: Math.max(0, prev.unreadNotifications - 1) };
+      if (!prev) return prev;
+      const nextCount =
+        remainingCount != null
+          ? Math.max(0, remainingCount)
+          : Math.max(0, prev.unreadNotifications - 1);
+      const next = { ...prev, unreadNotifications: nextCount };
       setPartner((p) => {
         if (p) writePartnerSessionCache({ partner: p, stats: next, recentActivity });
         return p;
       });
+      syncPwaAppBadge(nextCount);
       return next;
     });
     void partnerApi.put(`/partners/notifications/${id}/read`).catch(() => undefined);

@@ -8,6 +8,14 @@ import { getPartnersLandingUrl } from '@/utils/partnersHost';
 
 const LOGIN_GRADIENT = 'linear-gradient(140deg, #050816 0%, #111a2f 38%, #085041 72%, #0d9e75 100%)';
 
+function MaskedEmailChip({ email }: { email: string }) {
+  return (
+    <span className="mt-1 inline-flex max-w-full items-center rounded-lg border border-emerald-400/25 bg-emerald-950/30 px-2.5 py-1.5 font-mono text-sm font-semibold tracking-wide text-emerald-50">
+      {email}
+    </span>
+  );
+}
+
 export default function PartnerResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -20,7 +28,7 @@ export default function PartnerResetPassword() {
   const [previewLoading, setPreviewLoading] = useState(!!token);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [accountEmail, setAccountEmail] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
   const [firstName, setFirstName] = useState('');
 
   useEffect(() => {
@@ -28,12 +36,12 @@ export default function PartnerResetPassword() {
     let cancelled = false;
     setPreviewLoading(true);
     void partnerApi
-      .getPublic<{ email: string; firstName?: string }>(
+      .getPublic<{ maskedEmail: string; firstName?: string }>(
         `/partners/reset-password/preview?token=${encodeURIComponent(token)}`,
       )
       .then((result) => {
         if (cancelled) return;
-        setAccountEmail(result.email || '');
+        setMaskedEmail(result.maskedEmail || '');
         setFirstName(result.firstName || '');
       })
       .catch((err) => {
@@ -58,7 +66,7 @@ export default function PartnerResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!token || !accountEmail) {
+    if (!token || !maskedEmail) {
       setError('Invalid reset link. Request a new one from the login page.');
       return;
     }
@@ -72,11 +80,12 @@ export default function PartnerResetPassword() {
     }
     setLoading(true);
     try {
-      await partnerApi.postPublic<{ email: string }>('/partners/reset-password', {
-        token,
-        newPassword: password,
-      });
-      await persistPartnerLogin(accountEmail, password);
+      const result = await partnerApi.postPublic<{ email: string; maskedEmail?: string }>(
+        '/partners/reset-password',
+        { token, newPassword: password },
+      );
+      if (result.maskedEmail) setMaskedEmail(result.maskedEmail);
+      if (result.email) await persistPartnerLogin(result.email, password);
       setDone(true);
       setTimeout(() => navigate('/login', { replace: true }), 2400);
     } catch (err) {
@@ -123,19 +132,22 @@ export default function PartnerResetPassword() {
             <div className="space-y-3 text-center">
               <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" />
               <p className="text-sm text-emerald-100">
-                Password updated for {accountEmail}. Redirecting to sign in…
+                Password updated{maskedEmail ? ' for' : ''}{' '}
+                {maskedEmail ? <MaskedEmailChip email={maskedEmail} /> : ' successfully'}.
               </p>
+              <p className="text-xs text-slate-400">Redirecting to sign in…</p>
             </div>
-          ) : accountEmail ? (
+          ) : maskedEmail ? (
             <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="on">
               <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-left">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-200/90">Partner account</p>
                 {firstName ? (
                   <p className="mt-1 text-sm font-semibold text-white">{firstName}</p>
                 ) : null}
-                <p className="mt-0.5 break-all text-sm font-medium text-emerald-50">{accountEmail}</p>
+                <p className="mt-2 text-xs font-medium text-emerald-100/90">Reset link sent to</p>
+                <MaskedEmailChip email={maskedEmail} />
                 <p className="mt-2 text-xs leading-relaxed text-emerald-100/80">
-                  This is the email on your ScholarNerve account. Your new password will apply to this account only.
+                  Your new password will apply to this account only.
                 </p>
               </div>
 

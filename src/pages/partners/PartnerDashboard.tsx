@@ -3,7 +3,7 @@ import {
   Bell, CalendarCheck, ClipboardCheck, Receipt, RefreshCw, Send, User, Users, Wallet,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import { TIER_META, type PartnerActivityItem } from '@/services/partnerApi';
 import { formatGhs } from '@/utils/currency';
 import {
@@ -137,7 +137,7 @@ export default function PartnerDashboard() {
       />
 
       {lockTip ? (
-        <p className="text-center text-xs font-semibold text-slate-400">Stats unlock after approval — read How it Works below anytime</p>
+        <p className="text-center text-xs font-semibold text-slate-400 dark:text-slate-500">Stats unlock after approval — read How it Works below anytime</p>
       ) : null}
 
       <PartnerActivityList

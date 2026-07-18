@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Eye, EyeOff, Lock, LogOut, RefreshCw, ArrowLeft,
 } from 'lucide-react';
@@ -8,7 +8,8 @@ import {
   parsePartnerLoginPrefillFromHash, clearPartnerLoginPrefillHash,
   readPartnerLoginCredentials, savePartnerLoginCredentials,
 } from '@/services/partnerApi';
-import { persistPartnerLogin } from './partnerPasswordUtils';
+import { persistPartnerLogin, PARTNER_LOGIN_AUTOCOMPLETE } from './partnerPasswordUtils';
+import { useBrowserAutofillSync } from './useBrowserAutofillSync';
 import PartnerForgotPassword from './PartnerForgotPassword';
 import PartnerResetPassword from './PartnerResetPassword';
 import PartnerOpenRedirect from './PartnerOpenRedirect';
@@ -18,18 +19,22 @@ import PartnerCommissions from './PartnerCommissions';
 import PartnerTraining from './PartnerTraining';
 import PartnerProfilePage from './PartnerProfile';
 import PartnerMore from './PartnerMore';
+import PartnerSupport from './PartnerSupport';
 import { PartnerShell } from './PartnerShell';
 import PartnerLogo from './PartnerLogo';
 import { PartnerLoadingScreen } from './PartnerLoading';
 import { usePartnerPushSync, ensurePartnerPushSubscription } from './usePartnerPush';
 import { usePartnerLiveSync } from './usePartnerLiveSync';
+import { usePartnerSupportSync } from './usePartnerSupportSync';
+import { PartnerSocketProvider } from './usePartnerSocket';
+import { PartnerErrorBoundary } from './PartnerErrorBoundary';
 import {
   PartnerSessionContextProvider,
   clearPartnerSessionCache,
-  usePartnerSession,
   usePartnerSessionState,
   type PartnerSession,
-} from './partnerSession';
+} from '@/pages/partners/partnerSession';
+import { syncPwaAppBadge } from '@/utils/pwaAppBadge';
 import PartnerSuspendedScreen from './PartnerSuspendedScreen';
 import './partners.css';
 import { getPartnersLandingUrl } from '@/utils/partnersHost';
@@ -64,6 +69,9 @@ function PartnerLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
     }
   }, []);
 
+  useBrowserAutofillSync(true, 'sn-partner-login-id', setIdentifier, { focus: false });
+  useBrowserAutofillSync(true, 'sn-partner-login-password', setPassword, { focus: false });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -89,7 +97,7 @@ function PartnerLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4" style={{ background: LOGIN_GRADIENT }}>
+    <div className="sn-partner-portal relative flex min-h-screen items-center justify-center overflow-hidden p-4" style={{ background: LOGIN_GRADIENT }}>
       <img
         src="/partners/scholarnerve-partner-emblem.png"
         alt=""
@@ -121,29 +129,44 @@ function PartnerLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
         </div>
 
         <div className="relative rounded-2xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-lg">
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="on">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+            noValidate
+            autoComplete="on"
+            name="sn-partner-login"
+            id="sn-partner-login-form"
+            action="/login"
+            method="post"
+          >
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-200">Email or phone</label>
+              <label htmlFor="sn-partner-login-id" className="mb-1.5 block text-sm font-medium text-slate-200">
+                Email or phone
+              </label>
               <input
+                id="sn-partner-login-id"
                 type="text"
-                name="username"
+                name="sn-partner-identifier"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="you@example.com or 024 123 4567"
-                autoComplete="username"
+                autoComplete={PARTNER_LOGIN_AUTOCOMPLETE.identifier}
                 className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-400"
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-200">Password</label>
+              <label htmlFor="sn-partner-login-password" className="mb-1.5 block text-sm font-medium text-slate-200">
+                Password
+              </label>
               <div className="relative">
                 <input
+                  id="sn-partner-login-password"
                   type={showPassword ? 'text' : 'password'}
-                  name="password"
+                  name="sn-partner-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
-                  autoComplete="current-password"
+                  autoComplete={PARTNER_LOGIN_AUTOCOMPLETE.password}
                   className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 pr-10 text-sm text-white placeholder-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-400"
                 />
                 <button
@@ -217,25 +240,63 @@ function SessionErrorScreen({ message, onRetry }: { message: string; onRetry: ()
   );
 }
 
-function PortalShell() {
+function PartnerAuthenticatedLayout({ session }: { session: PartnerSession }) {
   const [referOpen, setReferOpen] = useState(false);
-  const { refresh } = usePartnerSession();
-  usePartnerPushSync(true);
-  usePartnerLiveSync(refresh, true);
+  const liveEnabled = session.partner.status !== 'suspended';
 
   return (
-    <PartnerShell referOpen={referOpen} onReferOpenChange={setReferOpen}>
-      <Routes>
-        <Route path="/" element={<PartnerDashboard />} />
-        <Route path="/schools" element={<PartnerSchools />} />
-        <Route path="/commissions" element={<PartnerCommissions />} />
-        <Route path="/more" element={<PartnerMore />} />
-        <Route path="/training" element={<PartnerTraining />} />
-        <Route path="/profile" element={<PartnerProfilePage />} />
-        <Route path="/open" element={<PartnerOpenRedirect />} />
-        <Route path="*" element={<PartnerDashboard />} />
-      </Routes>
-    </PartnerShell>
+    <PartnerErrorBoundary label="portal">
+      <PartnerSocketProvider enabled={liveEnabled}>
+        <PartnerAuthenticatedInner session={session} referOpen={referOpen} setReferOpen={setReferOpen} liveEnabled={liveEnabled} />
+      </PartnerSocketProvider>
+    </PartnerErrorBoundary>
+  );
+}
+
+function PartnerAuthenticatedInner({
+  session,
+  referOpen,
+  setReferOpen,
+  liveEnabled,
+}: {
+  session: PartnerSession;
+  referOpen: boolean;
+  setReferOpen: (open: boolean) => void;
+  liveEnabled: boolean;
+}) {
+  const { pathname } = useLocation();
+
+  usePartnerPushSync(liveEnabled);
+  usePartnerLiveSync(session.refresh, liveEnabled);
+  usePartnerSupportSync(session.refresh, liveEnabled);
+
+  if (session.partner.status === 'suspended') {
+    return (
+      <PartnerSessionContextProvider value={session}>
+        <PartnerSuspendedScreen />
+      </PartnerSessionContextProvider>
+    );
+  }
+
+  return (
+    <PartnerSessionContextProvider value={session}>
+      <PartnerShell referOpen={referOpen} onReferOpenChange={setReferOpen}>
+        <PartnerErrorBoundary key={pathname} label={pathname}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<PartnerDashboard />} />
+            <Route path="/schools" element={<PartnerSchools />} />
+            <Route path="/commissions" element={<PartnerCommissions />} />
+            <Route path="/more" element={<PartnerMore />} />
+            <Route path="/support" element={<PartnerSupport />} />
+            <Route path="/training" element={<PartnerTraining />} />
+            <Route path="/profile" element={<PartnerProfilePage />} />
+            <Route path="/open" element={<PartnerOpenRedirect />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </PartnerErrorBoundary>
+      </PartnerShell>
+    </PartnerSessionContextProvider>
   );
 }
 
@@ -258,11 +319,18 @@ export default function PartnerPortalApp() {
     document.title = 'ScholarNerve Partners';
   }, []);
 
+  useEffect(() => {
+    if (stats?.unreadNotifications != null) {
+      syncPwaAppBadge(stats.unreadNotifications);
+    }
+  }, [stats?.unreadNotifications]);
+
   const logout = useCallback(() => {
     void partnerApi.post('/partners/logout').catch(() => undefined);
     setPartnerToken(null);
     resetSession();
-    navigate('/', { replace: true });
+    syncPwaAppBadge(0);
+    navigate('/login', { replace: true });
   }, [navigate, resetSession]);
 
   const refresh = useCallback(async () => {
@@ -304,37 +372,21 @@ export default function PartnerPortalApp() {
             <PartnerLogin
               onLoggedIn={() => {
                 setChecking(true);
-                void loadSession();
+                void loadSession()
+                  .finally(() => setChecking(false))
+                  .then(() => navigate('/dashboard', { replace: true }));
               }}
             />
           }
         />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route
           path="*"
-          element={
-            <PartnerLogin
-              onLoggedIn={() => {
-                setChecking(true);
-                void loadSession();
-              }}
-            />
-          }
+          element={<Navigate to="/login" replace />}
         />
       </Routes>
     );
   }
 
-  if (session.partner.status === 'suspended') {
-    return (
-      <PartnerSessionContextProvider value={session}>
-        <PartnerSuspendedScreen />
-      </PartnerSessionContextProvider>
-    );
-  }
-
-  return (
-    <PartnerSessionContextProvider value={session}>
-      <PortalShell />
-    </PartnerSessionContextProvider>
-  );
+  return <PartnerAuthenticatedLayout session={session} />;
 }

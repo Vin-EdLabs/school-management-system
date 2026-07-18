@@ -1585,6 +1585,48 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'idx_partner_emails_batch'
   );
 
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_login_events (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      event_type VARCHAR(20) NOT NULL CHECK (event_type IN ('login', 'logout')),
+      ip_address VARCHAR(64),
+      user_agent TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_login_events'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_login_events_created
+       ON partner_login_events (created_at DESC)`,
+    'idx_partner_login_events_created'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_login_events_partner
+       ON partner_login_events (partner_id, created_at DESC)`,
+    'idx_partner_login_events_partner'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS partner_support_messages (
+      id SERIAL PRIMARY KEY,
+      partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      sender_role VARCHAR(20) NOT NULL CHECK (sender_role IN ('partner', 'super-admin')),
+      sender_username VARCHAR(100),
+      message TEXT NOT NULL,
+      is_from_superadmin BOOLEAN NOT NULL DEFAULT false,
+      read_at TIMESTAMP,
+      is_deleted BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
+    'partner_support_messages'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partner_support_partner
+       ON partner_support_messages (partner_id, created_at DESC)`,
+    'idx_partner_support_partner'
+  );
+
   const critical = [
     'subjects',
     'classes',

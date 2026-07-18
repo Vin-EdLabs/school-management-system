@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
+import { useSocket } from '@/contexts/SocketContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,7 +25,7 @@ import {
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Banknote, Ban, Bell, Building2, Check, ClipboardList, Handshake, Loader2, Mail,
+  Banknote, Ban, Bell, Building2, Check, ClipboardList, Handshake, Headphones, Loader2, LogIn, Mail,
   PlaySquare, RefreshCw, Search, ShieldCheck, Trash2, Users, X,
 } from 'lucide-react';
 import {
@@ -44,12 +45,16 @@ type AdminPartner = {
   last_name: string;
   email: string;
   phone: string;
+  whatsapp?: string | null;
+  gender?: string | null;
   region: string;
+  town?: string | null;
   occupation: string | null;
   momo_number: string;
   momo_network: string;
   schools_target: string | null;
   motivation: string | null;
+  heard_from?: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   rejection_note?: string | null;
   suspension_note?: string | null;
@@ -137,6 +142,16 @@ const adminGet = <T,>(endpoint: string) =>
 
 function ghs(n: number | string | null | undefined): string {
   return `GHS ${Number(n || 0).toLocaleString('en-GH', { maximumFractionDigits: 2 })}`;
+}
+
+function formatAdminDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-GH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function monthLabel(month: number, year: number): string {
@@ -387,12 +402,16 @@ function ApplicationsTab({
     last_name: p.last_name,
     email: p.email,
     phone: p.phone,
+    whatsapp: 'whatsapp' in p ? p.whatsapp : null,
+    gender: 'gender' in p ? p.gender : null,
     region: p.region,
+    town: 'town' in p ? p.town : null,
     occupation: p.occupation,
     momo_number: p.momo_number,
     momo_network: p.momo_network,
     schools_target: p.schools_target,
     motivation: p.motivation,
+    heard_from: 'heard_from' in p ? p.heard_from : null,
     status: p.status as AdminPartner['status'],
     suspension_note: 'suspension_note' in p ? p.suspension_note : null,
     restoration_note: 'restoration_note' in p ? p.restoration_note : null,
@@ -538,8 +557,8 @@ function ApplicationsTab({
                       {mode === 'applications' ? (
                         <>
                           <TableCell>{p.schools_target || '—'}</TableCell>
-                          <TableCell>
-                            {new Date(p.created_at).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {formatAdminDateTime(p.created_at)}
                           </TableCell>
                           <TableCell><StatusBadge status={p.status} /></TableCell>
                         </>
@@ -1736,6 +1755,433 @@ function CommissionsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Support tab
+// ---------------------------------------------------------------------------
+
+type AdminSupportConversation = {
+  partner_db_id: number;
+  partner_id: string | null;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  last_message: string;
+  last_from_admin: boolean;
+  last_message_at: string;
+  unread_count: number;
+};
+
+type AdminSupportMessage = {
+  id: number;
+  partner_id?: number;
+  sender_role: 'partner' | 'super-admin';
+  sender_username: string | null;
+  message: string;
+  is_from_superadmin: boolean;
+  read_at: string | null;
+  created_at: string;
+};
+
+function SupportTab() {
+  const { socket } = useSocket();
+  const [conversations, setConversations] = useState<AdminSupportConversation[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<AdminSupportMessage[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingThread, setLoadingThread] = useState(false);
+  const [refreshingThread, setRefreshingThread] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [draft, setDraft] = useState('');
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  const selected = conversations.find((c) => c.partner_db_id === selectedId) || null;
+
+  const loadConversations = useCallback(async () => {
+    setLoadingList(true);
+    try {
+      const result = await adminGet<{ conversations: AdminSupportConversation[] }>(
+        '/admin/partners/support/conversations',
+      );
+      setConversations(result.conversations || []);
+    } catch (err: any) {
+      toast({ title: 'Failed to load support conversations', description: err?.message, variant: 'destructive' });
+    } finally {
+      setLoadingList(false);
+    }
+  }, []);
+
+  const loadThread = useCallback(async (partnerDbId: number, opts?: { manual?: boolean }) => {
+    const manual = opts?.manual ?? false;
+    if (manual) setRefreshingThread(true);
+    else setLoadingThread(true);
+    try {
+      const result = await adminGet<{ messages: AdminSupportMessage[] }>(
+        `/admin/partners/support/messages?partnerId=${partnerDbId}`,
+      );
+      setMessages(result.messages || []);
+      await apiService.put(
+        '/admin/partners/support/read',
+        { partnerId: partnerDbId },
+        { skipTenant: true, skipTenantHeaders: true },
+      ).catch(() => undefined);
+      await loadConversations();
+    } catch (err: any) {
+      toast({ title: 'Failed to load messages', description: err?.message, variant: 'destructive' });
+    } finally {
+      if (manual) setRefreshingThread(false);
+      else setLoadingThread(false);
+    }
+  }, [loadConversations]);
+
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (selectedId) void loadThread(selectedId);
+    else setMessages([]);
+  }, [selectedId, loadThread]);
+
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages.length, loadingThread]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const onMessage = (msg: AdminSupportMessage) => {
+      const partnerDbId = Number(msg.partner_id);
+      if (!partnerDbId) return;
+
+      if (selectedId === partnerDbId) {
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+        if (!msg.is_from_superadmin) {
+          void apiService.put(
+            '/admin/partners/support/read',
+            { partnerId: partnerDbId },
+            { skipTenant: true, skipTenantHeaders: true },
+          ).catch(() => undefined);
+        }
+      } else if (!msg.is_from_superadmin) {
+        const preview = msg.message.length > 120 ? `${msg.message.slice(0, 117)}…` : msg.message;
+        toast({
+          title: 'Partner support message',
+          description: preview,
+        });
+      }
+
+      void loadConversations();
+    };
+
+    socket.on('new-partner-support-message', onMessage);
+    return () => {
+      socket.off('new-partner-support-message', onMessage);
+    };
+  }, [socket, selectedId, loadConversations]);
+
+  const sendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedId || !draft.trim() || sending) return;
+
+    const text = draft.trim();
+    const tempId = -Date.now();
+    const optimistic: AdminSupportMessage = {
+      id: tempId,
+      partner_id: selectedId,
+      sender_role: 'super-admin',
+      sender_username: 'You',
+      message: text,
+      is_from_superadmin: true,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    };
+
+    setSending(true);
+    setDraft('');
+    setMessages((prev) => [...prev, optimistic]);
+
+    try {
+      const result = await apiService.post<{ message: AdminSupportMessage }>(
+        '/admin/partners/support/messages',
+        { partnerId: selectedId, message: text },
+        { skipTenant: true, skipTenantHeaders: true },
+      );
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message : m)));
+      await loadConversations();
+    } catch (err: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setDraft(text);
+      toast({ title: 'Failed to send reply', description: err?.message, variant: 'destructive' });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle className="text-lg">Partner support</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Reply to partner messages from the portal Support screen.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" disabled={loadingList} onClick={() => void loadConversations()}>
+          <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loadingList ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid min-h-[420px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-xl border">
+            {loadingList && conversations.length === 0 ? (
+              <PartnersAdminTableSkeleton rows={5} cols={1} />
+            ) : conversations.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">No support conversations yet.</p>
+            ) : (
+              <ul className="max-h-[420px] divide-y overflow-y-auto">
+                {conversations.map((c) => (
+                  <li key={c.partner_db_id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(c.partner_db_id)}
+                      className={`flex w-full flex-col gap-1 px-3 py-3 text-left transition hover:bg-muted/50 ${
+                        selectedId === c.partner_db_id ? 'bg-emerald-50/80 dark:bg-emerald-950/20' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold">
+                          {c.first_name} {c.last_name}
+                        </p>
+                        {c.unread_count > 0 ? (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-600">{c.unread_count}</Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {c.partner_id || 'Pending'} · {c.email}
+                      </p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">{c.last_message}</p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border">
+            {!selected ? (
+              <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
+                Select a conversation to reply.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+                  <div>
+                    <p className="font-semibold">
+                      {selected.first_name} {selected.last_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {selected.partner_id || 'Pending'} · {selected.email}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={refreshingThread}
+                    onClick={() => selectedId && void loadThread(selectedId, { manual: true })}
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${refreshingThread ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+                <div ref={threadRef} className="flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
+                  {loadingThread ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
+                    </div>
+                  ) : (
+                    messages.map((m) => (
+                      <div key={m.id} className={`flex ${m.is_from_superadmin ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                            m.is_from_superadmin
+                              ? 'rounded-br-md bg-emerald-600 text-white'
+                              : 'rounded-bl-md border bg-background'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap">{m.message}</p>
+                          <p className={`mt-1 text-[10px] ${m.is_from_superadmin ? 'text-emerald-100' : 'text-muted-foreground'}`}>
+                            {formatAdminDateTime(m.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <form onSubmit={sendReply} className="flex gap-2 border-t p-3">
+                  <Textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    rows={2}
+                    placeholder="Write a reply…"
+                    className="min-h-[44px] resize-none"
+                  />
+                  <Button type="submit" disabled={sending || !draft.trim()} className="self-end">
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Login audit tab
+// ---------------------------------------------------------------------------
+
+type AdminLoginAuditEvent = {
+  id: number;
+  event_type: 'login' | 'logout';
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  partner_db_id: number;
+  partner_id: string | null;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+};
+
+function LoginAuditTab({ partners }: { partners: AdminPartner[] }) {
+  const [events, setEvents] = useState<AdminLoginAuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterPartner, setFilterPartner] = useState<string>('all');
+  const [filterEvent, setFilterEvent] = useState<string>('all');
+
+  const loadAudit = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '200' });
+      if (filterPartner !== 'all') params.set('partnerId', filterPartner);
+      if (filterEvent === 'login' || filterEvent === 'logout') params.set('event', filterEvent);
+      const result = await adminGet<{ events: AdminLoginAuditEvent[] }>(
+        `/admin/partners/login-audit?${params.toString()}`,
+      );
+      setEvents(result.events || []);
+    } catch (err: any) {
+      toast({ title: 'Failed to load login audit', description: err?.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [filterPartner, filterEvent]);
+
+  useEffect(() => {
+    void loadAudit();
+  }, [loadAudit]);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        <div>
+          <CardTitle className="text-lg">Partner login audit</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign-in and sign-out activity across the partner portal.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" disabled={loading} onClick={() => void loadAudit()}>
+          <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-3">
+          <Select value={filterPartner} onValueChange={setFilterPartner}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="All partners" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All partners</SelectItem>
+              {partners.map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>
+                  {p.first_name} {p.last_name}{p.partner_id ? ` (${p.partner_id})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterEvent} onValueChange={setFilterEvent}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="All events" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All events</SelectItem>
+              <SelectItem value="login">Log in</SelectItem>
+              <SelectItem value="logout">Log out</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {loading && events.length === 0 ? (
+          <PartnersAdminTableSkeleton rows={8} cols={6} />
+        ) : events.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">No login activity recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Partner</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>IP</TableHead>
+                  <TableHead>Device</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {events.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {new Date(e.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <p className="font-medium">{e.first_name} {e.last_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.partner_id || 'Pending'} · {e.email}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          e.event_type === 'login'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-600'
+                        }
+                      >
+                        {e.event_type === 'login' ? 'Log in' : 'Log out'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{e.ip_address || '—'}</TableCell>
+                    <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground" title={e.user_agent || ''}>
+                      {e.user_agent || '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Panel root
 // ---------------------------------------------------------------------------
 
@@ -1806,7 +2252,7 @@ export default function PartnersAdminPanel() {
       </div>
 
       <Tabs defaultValue="applications" className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 overflow-x-auto p-1.5 sm:grid-cols-4 lg:grid-cols-7 lg:w-full dark:h-10 dark:p-1">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 overflow-x-auto p-1.5 sm:grid-cols-4 lg:grid-cols-8 lg:w-full dark:h-10 dark:p-1">
           <TabsTrigger value="applications" className="flex w-full items-center justify-center gap-1.5">
             <ClipboardList className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">Applications</span>
@@ -1840,6 +2286,14 @@ export default function PartnersAdminPanel() {
             <PlaySquare className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">Training Videos</span>
           </TabsTrigger>
+          <TabsTrigger value="support" className="flex w-full items-center justify-center gap-1.5">
+            <Headphones className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Support</span>
+          </TabsTrigger>
+          <TabsTrigger value="login-audit" className="flex w-full items-center justify-center gap-1.5">
+            <LogIn className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Login Audit</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="applications" className="mt-4">
@@ -1862,6 +2316,12 @@ export default function PartnersAdminPanel() {
         </TabsContent>
         <TabsContent value="videos" className="mt-4">
           <VideosTab />
+        </TabsContent>
+        <TabsContent value="support" className="mt-4">
+          <SupportTab />
+        </TabsContent>
+        <TabsContent value="login-audit" className="mt-4">
+          <LoginAuditTab partners={partners} />
         </TabsContent>
       </Tabs>
     </div>

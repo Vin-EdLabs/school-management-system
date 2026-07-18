@@ -5,7 +5,7 @@ import {
   MOMO_NETWORKS, PartnerApiError, PartnerProfile as PartnerProfileType,
   TIER_META, partnerApi,
 } from '@/services/partnerApi';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 import {
   PartnerPhotoUpload, PartnerPage, PortalCard, TierBadge,
 } from './partnerShared';
@@ -130,7 +130,6 @@ export default function PartnerProfilePage() {
     }
   };
 
-
   useEffect(() => {
     if (searchParams.get('section') === 'password' && passwordRef.current) {
       passwordRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -141,7 +140,7 @@ export default function PartnerProfilePage() {
     <PartnerPage>
       <div className="mb-1">
         <h1 className="text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">My Profile</h1>
-        <p className="text-sm text-slate-500">Partner ID, photo, and payout details</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Partner ID, photo, and payout details</p>
       </div>
 
       <PortalCard className="p-4 sm:p-6">
@@ -168,8 +167,8 @@ export default function PartnerProfilePage() {
             {tierProgress && partner.status === 'approved' ? (
               <div className="mt-4">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-500">
-                    Next tier: <span className="text-slate-900">{tierProgress.nextLabel}</span>
+                  <span className="font-semibold text-slate-500 dark:text-slate-400">
+                    Next tier: <span className="text-slate-900 dark:text-white">{tierProgress.nextLabel}</span>
                   </span>
                   <span className="font-bold text-emerald-600">{tierProgress.needed} more schools</span>
                 </div>
@@ -201,7 +200,7 @@ export default function PartnerProfilePage() {
           ['Member since', new Date(partner.createdAt).toLocaleDateString('en-GH', { month: 'long', year: 'numeric' })],
         ].map(([label, value]) => (
           <div key={label} className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
-            <span className="text-sm font-semibold text-slate-400">{label}</span>
+            <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">{label}</span>
             <span className="text-right text-sm font-bold text-slate-900 dark:text-white">{value}</span>
           </div>
         ))}
@@ -210,7 +209,7 @@ export default function PartnerProfilePage() {
       <form onSubmit={saveContact}>
         <PortalCard className="p-5 sm:p-6">
           <h2 className="text-base font-bold text-slate-900 dark:text-white">Contact & account</h2>
-          <p className="mt-1 text-xs text-slate-500">Emails from ScholarNerve are sent to your account email below.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Emails from ScholarNerve are sent to your account email below.</p>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="snp-profile-email">Email address</Label>

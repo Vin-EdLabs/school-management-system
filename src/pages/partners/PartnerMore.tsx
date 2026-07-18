@@ -1,11 +1,14 @@
-import { GraduationCap, Lock, Moon, Sun, User } from 'lucide-react';
+import { GraduationCap, Headphones, Lock, Moon, Sun, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PartnerPage, PortalCard } from './partnerShared';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 
 export default function PartnerMore() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { stats } = usePartnerSession();
+  const supportUnread = stats.unreadSupportMessages ?? 0;
 
   const items = [
     {
@@ -13,21 +16,29 @@ export default function PartnerMore() {
       title: 'Training Videos',
       desc: 'Watch practical lessons to win more schools',
       action: () => navigate('/training'),
-      color: 'bg-emerald-50 text-emerald-600',
+      color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300',
+    },
+    {
+      icon: Headphones,
+      title: 'Support',
+      desc: 'Message ScholarNerve — get help with payouts, referrals & more',
+      action: () => navigate('/support'),
+      color: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300',
+      badge: supportUnread,
     },
     {
       icon: User,
       title: 'My Profile & ID Card',
       desc: 'Photo, partner ID, payout details',
       action: () => navigate('/profile'),
-      color: 'bg-teal-50 text-teal-600',
+      color: 'bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-300',
     },
     {
       icon: Lock,
       title: 'Change Password',
       desc: 'Update your login password',
       action: () => navigate('/profile?section=password'),
-      color: 'bg-amber-50 text-amber-600',
+      color: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300',
     },
   ];
 
@@ -35,24 +46,29 @@ export default function PartnerMore() {
     <PartnerPage>
       <div className="mb-2">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">More</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Settings, training, and account</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Training, support, settings, and account</p>
       </div>
 
       <div className="space-y-3">
-        {items.map(({ icon: Icon, title, desc, action, color }) => (
+        {items.map(({ icon: Icon, title, desc, action, color, badge }) => (
           <button
             key={title}
             type="button"
             onClick={action}
-            className="snp-glass-card flex w-full items-center gap-4 rounded-2xl border border-white/80 bg-white/95 p-4 text-left shadow-sm transition hover:-translate-y-0.5 dark:border-slate-700 dark:bg-slate-900/90"
+            className="snp-glass-card relative flex w-full items-center gap-4 rounded-2xl border border-white/80 bg-white/95 p-4 text-left shadow-sm transition hover:-translate-y-0.5 dark:border-slate-700/80 dark:bg-slate-900/90"
           >
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${color}`}>
               <Icon className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-bold text-slate-900 dark:text-white">{title}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">{desc}</p>
             </div>
+            {badge && badge > 0 ? (
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold text-white">
+                {badge > 9 ? '9+' : badge}
+              </span>
+            ) : null}
           </button>
         ))}
 
@@ -68,7 +84,7 @@ export default function PartnerMore() {
               </div>
               <div className="text-left">
                 <p className="font-bold text-slate-900 dark:text-white">Appearance</p>
-                <p className="text-xs text-slate-500">{theme === 'dark' ? 'Dark mode on' : 'Light mode on'}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{theme === 'dark' ? 'Dark mode on' : 'Light mode on'}</p>
               </div>
             </div>
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">

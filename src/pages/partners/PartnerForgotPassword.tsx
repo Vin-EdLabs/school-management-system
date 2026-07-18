@@ -1,11 +1,24 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, Mail } from 'lucide-react';
+import { ArrowLeft, Loader2, Mail, Phone } from 'lucide-react';
 import { PartnerApiError, partnerApi } from '@/services/partnerApi';
 import PartnerLogo from './PartnerLogo';
 import { getPartnersLandingUrl } from '@/utils/partnersHost';
 
 const LOGIN_GRADIENT = 'linear-gradient(140deg, #050816 0%, #111a2f 38%, #085041 72%, #0d9e75 100%)';
+
+function MaskedEmailChip({ email }: { email: string }) {
+  return (
+    <span className="mt-3 inline-flex max-w-full items-center rounded-xl border border-emerald-400/30 bg-emerald-950/40 px-3 py-2 font-mono text-sm font-semibold tracking-wide text-emerald-50">
+      {email}
+    </span>
+  );
+}
+
+function isValidPartnerPhone(input: string): boolean {
+  if (input.includes('@')) return false;
+  return input.replace(/\D/g, '').length >= 9;
+}
 
 export default function PartnerForgotPassword() {
   const [phone, setPhone] = useState('');
@@ -17,15 +30,24 @@ export default function PartnerForgotPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!phone.trim()) {
+    const trimmed = phone.trim();
+    if (!trimmed) {
       setError('Enter the phone number on your partner account');
+      return;
+    }
+    if (trimmed.includes('@')) {
+      setError('Enter your phone number only — not your email');
+      return;
+    }
+    if (!isValidPartnerPhone(trimmed)) {
+      setError('Enter a valid phone number (at least 9 digits)');
       return;
     }
     setLoading(true);
     try {
       const result = await partnerApi.postPublic<{ maskedEmail?: string | null; message?: string }>(
         '/partners/forgot-password',
-        { phone: phone.trim() },
+        { phone: trimmed },
       );
       setMaskedEmail(result.maskedEmail || null);
       setSent(true);
@@ -63,20 +85,22 @@ export default function PartnerForgotPassword() {
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-200">
                 <Mail className="h-6 w-6" />
               </div>
-              <p className="text-sm leading-relaxed text-emerald-100">
-                {maskedEmail ? (
-                  <>
-                    We sent a password reset link to{' '}
-                    <span className="font-bold text-white">{maskedEmail}</span> — the email registered on your
-                    partner account. Check your inbox and spam folder.
-                  </>
-                ) : (
-                  <>
-                    If an account exists with that phone number, we sent a reset link to the email on your
-                    partner account. Check your inbox and spam folder.
-                  </>
-                )}
-              </p>
+              {maskedEmail ? (
+                <>
+                  <p className="text-sm leading-relaxed text-emerald-100">
+                    Reset link sent to:
+                  </p>
+                  <MaskedEmailChip email={maskedEmail} />
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    Check that inbox and spam folder. The link expires in 1 hour.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm leading-relaxed text-emerald-100">
+                  If an account exists with that phone number, we sent a reset link to the email on
+                  your partner account. Check your inbox and spam folder.
+                </p>
+              )}
               <Link to="/login" className="inline-block text-sm font-bold text-emerald-300 hover:text-emerald-200">
                 Back to sign in
               </Link>
@@ -84,17 +108,21 @@ export default function PartnerForgotPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-200">Phone number on your account</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="024 123 4567"
-                  autoComplete="tel"
-                  className="w-full rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                />
+                <label className="mb-1.5 block text-sm font-medium text-slate-200">Phone number</label>
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="024 123 4567"
+                    autoComplete="tel"
+                    className="w-full rounded-lg border border-white/20 bg-white/10 py-3 pl-10 pr-4 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  />
+                </div>
                 <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  The reset link is always sent to your registered email — not to a new address you type here.
+                  Use the same number you registered with. The reset link goes to your account email — we&apos;ll show you which one.
                 </p>
               </div>
               {error ? (

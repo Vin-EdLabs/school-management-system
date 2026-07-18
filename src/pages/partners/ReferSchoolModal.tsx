@@ -7,7 +7,7 @@ import {
 import { PartnerApiError, partnerApi, type PartnerLead } from '@/services/partnerApi';
 import { Button } from '@/components/ui/button';
 import RegionAutocomplete from './RegionAutocomplete';
-import { usePartnerSession } from './partnerSession';
+import { usePartnerSession } from '@/pages/partners/partnerSession';
 
 function ReferField({
   id,

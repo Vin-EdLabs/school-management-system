@@ -9,6 +9,7 @@ const EXPLORE = [
   { href: '/#parent-app', label: 'Mobile App' },
   { href: '/#portals', label: 'Portals' },
   { href: '/#about', label: 'About' },
+  { href: '/#school-website', label: 'School Website' },
   { href: '/#partners', label: 'Partners' },
 ] as const;
 

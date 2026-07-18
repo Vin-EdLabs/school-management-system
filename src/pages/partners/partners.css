@@ -49,6 +49,70 @@
   z-index: 1;
 }
 
+/* Partner landing — login CTA (not duplicate “Become a Partner” on /#partners) */
+.snp-partner-login-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: var(--radius-pill, 9999px);
+  border: 1.5px solid rgba(8, 80, 65, 0.22);
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf8 100%);
+  padding: 0.42rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--brand-dark, #085041);
+  box-shadow:
+    0 2px 8px rgba(8, 80, 65, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.snp-partner-login-nav-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(201, 162, 39, 0.45);
+  box-shadow:
+    0 6px 16px rgba(8, 80, 65, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+.snp-partner-login-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 10.5rem;
+  border-radius: var(--radius-pill, 9999px);
+  border: 2px solid rgba(8, 80, 65, 0.18);
+  background: #fff;
+  padding: 0.85rem 1.75rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--brand-dark, #085041);
+  box-shadow:
+    0 4px 14px rgba(8, 80, 65, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.snp-partner-login-hero-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(13, 158, 117, 0.45);
+  box-shadow:
+    0 8px 22px rgba(8, 80, 65, 0.14),
+    0 0 0 3px rgba(13, 158, 117, 0.08);
+}
+
+.snp-partner-login-inline-link {
+  font-weight: 700;
+  color: var(--brand-dark, #085041);
+  text-underline-offset: 2px;
+}
+
+.snp-partner-login-inline-link:hover {
+  text-decoration: underline;
+}
+
 .snp-field-input {
   border-radius: 14px;
   border: 1px solid rgba(13, 158, 117, 0.15);

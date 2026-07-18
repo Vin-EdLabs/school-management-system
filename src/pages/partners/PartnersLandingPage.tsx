@@ -4,9 +4,14 @@ import {
   IdCard, LayoutDashboard, Medal, Megaphone, PlayCircle, School, Smartphone, Star,
   Trophy, Users, Video, Wallet,
 } from 'lucide-react';
+import LandingHeader from '@/components/landing/LandingHeader';
+import LandingFooter from '@/components/landing/LandingFooter';
+import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
+import PartnersHeaderBrand from './PartnersHeaderBrand';
 import PartnerLogo from './PartnerLogo';
 import PartnerRegistrationWizard from './PartnerRegistrationWizard';
 import { getPartnersPortalLoginUrl } from '@/utils/partnersHost';
+import './partners.css';
 
 const STEPS = [
   {
@@ -91,19 +96,8 @@ export function PartnersLandingSection() {
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const scrollToSteps = () => stepsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash === '#apply') {
-      window.setTimeout(() => scrollToForm(), 300);
-    } else if (hash === '#partners') {
-      window.setTimeout(() => {
-        document.getElementById('partners')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 200);
-    }
-  }, []);
-
   return (
-    <div id="partners" className="scroll-mt-20 border-t border-[var(--sn-border)]">
+    <div id="partners">
         {/* Hero */}
         <section className="scholar-hero-bg relative flex min-h-[calc(100dvh-64px)] items-center px-4 pb-16 pt-12 sm:px-5 sm:pb-20 sm:pt-16">
           <div className="relative mx-auto w-full max-w-[1100px] text-center">
@@ -158,13 +152,13 @@ export function PartnersLandingSection() {
             </div>
 
             <div
-              className="scholar-fade-up mt-8 flex flex-col items-stretch justify-center gap-3 sm:mt-9 sm:flex-row sm:items-center"
+              className="scholar-fade-up mt-8 flex flex-col items-stretch justify-center gap-3 sm:mt-9 sm:flex-row sm:items-center sm:justify-center"
               style={{ animationDelay: '0.38s' }}
             >
-              <button type="button" onClick={scrollToForm} className="scholar-btn-partner">
-                Become a Partner <ArrowRight className="h-4 w-4" />
+              <button type="button" onClick={scrollToForm} className="scholar-btn-primary inline-flex items-center justify-center gap-2 !py-3.5">
+                Apply Now <ArrowRight className="h-4 w-4" />
               </button>
-              <a href={getPartnersPortalLoginUrl()} className="scholar-btn-secondary text-center">
+              <a href={getPartnersPortalLoginUrl()} className="snp-partner-login-hero-btn">
                 Partner Login
               </a>
               <button type="button" onClick={scrollToSteps} className="scholar-btn-secondary hidden sm:inline-flex">
@@ -176,7 +170,7 @@ export function PartnersLandingSection() {
               style={{ animationDelay: '0.42s' }}
             >
               Already approved?{' '}
-              <a href={getPartnersPortalLoginUrl()} className="font-bold text-[var(--brand-dark)] underline-offset-2 hover:underline">
+              <a href={getPartnersPortalLoginUrl()} className="snp-partner-login-inline-link">
                 Sign in to your dashboard
               </a>
             </p>
@@ -391,11 +385,54 @@ export function PartnersLandingSection() {
   );
 }
 
-/** Legacy /partners URL — redirects to the main landing page section. */
+/** Dedicated partner apply landing at /#partners — separate from the school homepage. */
 export default function PartnersLandingPage() {
   useEffect(() => {
-    const hash = window.location.hash === '#apply' ? '#apply' : '#partners';
-    window.location.replace(`/${hash}`);
+    document.title = 'Become a ScholarNerve Partner — Turn Your Network Into Monthly Income';
+    window.scrollTo(0, 0);
   }, []);
-  return null;
+
+  useEffect(() => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>('.scroll-reveal'));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -36px 0px' }
+    );
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash === '#apply') {
+      window.setTimeout(() => {
+        document.getElementById('apply')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    }
+  }, []);
+
+  return (
+    <div className="scholar-landing min-h-screen overflow-x-hidden">
+      <LandingHeader
+        brandMark={null}
+        brandLockup={<PartnersHeaderBrand />}
+        brandHref="/#partners"
+        variant="partners"
+      />
+
+      <main className="pt-14 sm:pt-16">
+        <PartnersLandingSection />
+      </main>
+
+      <LandingFooter />
+      <ScrollToTopButton />
+    </div>
+  );
 }

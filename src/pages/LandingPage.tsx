@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
+import SchoolWebsiteShowcase from '../components/landing/SchoolWebsiteShowcase';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingBrandMark from '../components/landing/LandingBrandMark';
 import { LandingStructuredData } from '../components/landing/LandingStructuredData';
-import { PartnersLandingSection } from '@/pages/partners/PartnersLandingPage';
-import '@/pages/partners/partners.css';
 
 type IconProps = {
   className?: string;
@@ -332,19 +331,6 @@ const LandingPage = () => {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const scrollToHash = (hash: string) => {
-      if (hash !== '#partners' && hash !== '#apply') return;
-      window.setTimeout(() => {
-        document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 120);
-    };
-    scrollToHash(window.location.hash);
-    const onHashChange = () => scrollToHash(window.location.hash);
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
-
   const featureCards = [
     {
       span: 'md:col-span-5',
@@ -444,7 +430,7 @@ const LandingPage = () => {
               <Link to="/register-school" className="scholar-btn-primary">
                 Register Your School →
               </Link>
-              <a href="#partners" className="scholar-btn-partner">
+              <a href="/#partners" className="scholar-btn-partner">
                 Become a Partner
               </a>
               <a href="#features" className="scholar-btn-secondary">
@@ -638,6 +624,8 @@ const LandingPage = () => {
 
         <ParentAppShowcase />
 
+        <SchoolWebsiteShowcase />
+
         <section id="portals" className="scholar-section bg-white px-4 sm:px-5">
           <div className="mx-auto max-w-[1100px]">
             <div className="max-w-2xl">
@@ -774,8 +762,6 @@ const LandingPage = () => {
           </div>
         </section>
 
-        <PartnersLandingSection />
-
         <section id="about" className="scholar-section relative overflow-hidden bg-[var(--ink)] px-4 text-center sm:px-5">
           <div className="absolute left-1/2 top-0 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--brand)]/20 blur-3xl" />
           <div className="absolute bottom-0 right-0 h-80 w-80 translate-x-1/3 translate-y-1/3 rounded-full bg-[var(--brand)]/15 blur-3xl" />
@@ -828,9 +814,14 @@ const LandingPage = () => {
                   ['#parent-app', 'Mobile App'],
                   ['#portals', 'Portals'],
                   ['#about', 'About'],
-                  ['#partners', 'Partners'],
+                  ['/#school-website', 'School Website'],
+                  ['/#partners', 'Partners'],
                 ].map(([href, label]) =>
-                  href.startsWith('/') ? (
+                  href.startsWith('/#') || href.startsWith('#') ? (
+                    <a key={href} href={href} className="block text-sm text-white/50 transition-colors hover:text-white">
+                      {label}
+                    </a>
+                  ) : href.startsWith('/') ? (
                     <Link key={href} to={href} className="block text-sm text-white/50 transition-colors hover:text-white">
                       {label}
                     </Link>

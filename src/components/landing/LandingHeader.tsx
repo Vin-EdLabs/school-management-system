@@ -8,7 +8,7 @@ const HOME_NAV = [
   { href: '/#parent-app', label: 'Mobile App' },
   { href: '/#portals', label: 'Portals' },
   { href: '/#about', label: 'About' },
-  { href: '/#partners', label: 'Partners' },
+  { href: '/#school-website', label: 'School Website' },
 ] as const;
 
 const PARTNERS_NAV = [
@@ -111,7 +111,7 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
             )
           )}
           {isPartners && (
-            <a href={partnerLoginUrl} className="scholar-nav-link font-semibold text-[var(--brand-dark)]">
+            <a href={partnerLoginUrl} className="snp-partner-login-nav-btn hidden md:inline-flex">
               Partner Login
             </a>
           )}
@@ -120,6 +120,11 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               {link.label}
             </a>
           ))}
+          {!isPartners && (
+            <a href="/#partners" className="scholar-nav-link font-semibold text-[var(--brand-dark)]">
+              Partners
+            </a>
+          )}
         </nav>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -209,10 +214,21 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                     {link.label}
                   </a>
                 ))}
+                {!isPartners && (
+                  <a
+                    href="/#partners"
+                    className="scholar-mobile-nav-link font-semibold text-[var(--brand-dark)]"
+                    style={{ '--nav-delay': `${navLinks.length * 40}ms` } as React.CSSProperties}
+                    onClick={closeMenu}
+                    tabIndex={menuOpen ? 0 : -1}
+                  >
+                    Partners
+                  </a>
+                )}
                 {isPartners && (
                   <a
                     href={partnerLoginUrl}
-                    className="scholar-mobile-nav-link font-semibold text-[var(--brand-dark)]"
+                    className="snp-partner-login-nav-btn w-full justify-center"
                     style={{ '--nav-delay': `${(navLinks.length + 1) * 40}ms` } as React.CSSProperties}
                     onClick={closeMenu}
                     tabIndex={menuOpen ? 0 : -1}

@@ -916,6 +916,52 @@ html {
   transform: translateY(0);
 }
 
+/* School website showcase — browser mock float + feature cards */
+.sn-school-website-mock {
+  animation: snSchoolWebsiteFloat 7s ease-in-out infinite;
+  animation-play-state: paused;
+  will-change: transform;
+}
+
+.scroll-reveal.visible .sn-school-website-mock {
+  animation-play-state: running;
+}
+
+@keyframes snSchoolWebsiteFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.sn-school-website-card {
+  transition:
+    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.45s ease;
+}
+
+.sn-school-website-card.visible:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 36px rgba(12, 35, 64, 0.12);
+  border-color: rgba(12, 35, 64, 0.14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sn-school-website-mock {
+    animation: none;
+  }
+
+  .sn-school-website-card,
+  .sn-school-website-card.visible:hover {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Parent app showcase — landing page */
 .parent-showcase-section {
   background: linear-gradient(165deg, #060d0a 0%, #0a1512 38%, #0f1a14 100%);

@@ -21,6 +21,7 @@ import PublicCheckinPage from "./pages/PublicCheckinPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
+import PublicLandingSwitch from "./pages/PublicLandingSwitch";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import { ParentPortalRoute } from "./pages/ParentPortal";
@@ -472,7 +473,7 @@ const App = () => {
                     {/* --- APEX DOMAIN / STATIC SUBDOMAIN ROUTING --- */}
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/checkin" element={<PublicCheckinPage />} />
-                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/" element={<PublicLandingSwitch />} />
                     <Route path="/partners" element={<PartnersLegacyRedirect />} />
                     <Route path="/partners/*" element={<PartnersLegacyRedirect />} />
                     <Route path="/register-school" element={<RegisterSchool />} />

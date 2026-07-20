@@ -10,6 +10,7 @@ import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
 import PartnersHeaderBrand from './PartnersHeaderBrand';
 import PartnerLogo from './PartnerLogo';
 import PartnerRegistrationWizard from './PartnerRegistrationWizard';
+import PartnerReferralSection from './PartnerReferralSection';
 import { getPartnersPortalLoginUrl } from '@/utils/partnersHost';
 import './partners.css';
 
@@ -360,6 +361,8 @@ export function PartnersLandingSection() {
             </div>
           </div>
         </section>
+
+        <PartnerReferralSection onApply={scrollToForm} />
 
         {/* Registration wizard */}
         <section

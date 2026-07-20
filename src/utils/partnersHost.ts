@@ -30,6 +30,11 @@ export function getPartnersPortalLoginUrl(): string {
   return `${getPartnersPortalUrl()}/login`;
 }
 
+/** Partner recruitment join link for a given public partner ID. */
+export function getPartnerReferralJoinUrl(partnerId: string): string {
+  return `${getPartnersPortalUrl()}/join?ref=${encodeURIComponent(partnerId)}`;
+}
+
 /** Public partners section on the main ScholarNerve site. */
 export function getPartnersLandingUrl(options?: { apply?: boolean }): string {
   const base = getScholarNerveMainUrl().replace(/\/$/, '');

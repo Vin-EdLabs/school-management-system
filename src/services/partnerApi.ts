@@ -141,6 +141,7 @@ export interface PartnerProfile {
   tier: PartnerTier;
   profilePhotoUrl?: string | null;
   suspensionNote?: string | null;
+  referredBy?: string | null;
   createdAt: string;
 }
 
@@ -154,6 +155,9 @@ export interface PartnerStats {
   pendingPayout: number;
   unreadNotifications: number;
   unreadSupportMessages?: number;
+  recruitedPartnersCount?: number;
+  recruitmentEarningsMonthly?: number;
+  referralLink?: string | null;
 }
 
 export interface PartnerActivityItem {
@@ -192,6 +196,7 @@ export interface PartnerCommission {
   status: 'pending' | 'paid';
   paid_at: string | null;
   momo_reference: string | null;
+  commission_type?: 'school' | 'recruitment_bonus' | string | null;
 }
 
 export interface PartnerVideo {
@@ -250,6 +255,51 @@ export const TIER_META: Record<PartnerTier, { label: string; range: string; min:
 export function formatGhs(amount: number | string | null | undefined): string {
   const n = Number(amount || 0);
   return `GHS ${n.toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+/** Ghana cedi symbol variant for partner referral UI. */
+export function formatGhCedi(amount: number | string | null | undefined): string {
+  const n = Number(amount || 0);
+  return `GH¢${n.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Matches any stored public partner ID (e.g. SN-245-36 or SN-2026-0001). */
+export const PARTNER_PUBLIC_ID_PATTERN = /^SN-[A-Z0-9-]{2,17}$/i;
+
+export function normalizePartnerPublicId(raw: unknown): string | null {
+  const id = String(raw || '').trim().toUpperCase();
+  if (!id || !PARTNER_PUBLIC_ID_PATTERN.test(id)) return null;
+  return id;
+}
+
+export function parsePartnerReferralCode(search?: string): string | null {
+  const raw = new URLSearchParams(search ?? window.location.search).get('ref');
+  return normalizePartnerPublicId(raw);
+}
+
+export async function copyPartnerReferralLink(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fallback below */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 export function youtubeId(url: string): string | null {

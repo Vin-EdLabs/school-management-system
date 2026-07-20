@@ -5,8 +5,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Bell, Building2, Home, LayoutGrid, LogOut, Moon, Plus, Sun, User, Wallet, X,
 } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 import { usePartnerNotifications, useInvalidatePartnerQueries, type PartnerNotification } from './usePartnerQueries';
@@ -16,78 +14,12 @@ import ReferSchoolModal from './ReferSchoolModal';
 import PartnerLogo from './PartnerLogo';
 import { PartnerPushPrompt } from './usePartnerPush';
 import PartnerWelcomeSetup from './PartnerWelcomeSetup';
+import { PartnerInstallBanner, PartnerInstallGuide } from './PartnerInstallGuide';
 import { usePartnerTab } from './usePartnerTab';
 import type { PartnerLead } from '@/services/partnerApi';
 import './partners.css';
 
-const A2HS_DISMISS_KEY = 'snPartnerA2hsDismissed';
-
 type TabId = 'dashboard' | 'schools' | 'commissions' | 'more';
-
-function detectMobilePlatform(): 'ios' | 'android' | 'other' {
-  const ua = navigator.userAgent || '';
-  if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
-    return 'ios';
-  }
-  if (/Android/i.test(ua)) return 'android';
-  return 'other';
-}
-
-function isStandalonePwa(): boolean {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
-
-function AddToHomeScreenBanner() {
-  const [visible, setVisible] = useState(false);
-  const [howOpen, setHowOpen] = useState(false);
-  const platform = detectMobilePlatform();
-
-  useEffect(() => {
-    if (isStandalonePwa()) return;
-    if (localStorage.getItem(A2HS_DISMISS_KEY) === '1') return;
-    setVisible(true);
-  }, []);
-
-  if (!visible) return null;
-
-  const dismiss = () => {
-    localStorage.setItem(A2HS_DISMISS_KEY, '1');
-    setVisible(false);
-    setHowOpen(false);
-  };
-
-  const instructions =
-    platform === 'ios'
-      ? 'Tap Share → scroll down → Add to Home Screen'
-      : platform === 'android'
-        ? 'Tap Menu (⋮) → Add to Home Screen'
-        : 'Use your browser menu to install this app.';
-
-  return (
-    <>
-      <div className="snp-a2hs-banner snp-fade-up">
-        <span className="text-lg" aria-hidden>📱</span>
-        <span className="snp-a2hs-text">Add to your home screen</span>
-        <button type="button" className="snp-a2hs-how" onClick={() => setHowOpen(true)}>How?</button>
-        <button type="button" className="snp-a2hs-dismiss" aria-label="Dismiss" onClick={dismiss}>
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <Sheet open={howOpen} onOpenChange={setHowOpen}>
-        <SheetContent side="bottom" className="rounded-t-2xl border-t bg-white dark:bg-slate-900">
-          <SheetHeader>
-            <SheetTitle className="text-left">Add to Home Screen</SheetTitle>
-          </SheetHeader>
-          <p className="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{instructions}</p>
-          <Button className="mt-6 w-full bg-emerald-600 hover:bg-emerald-700" onClick={dismiss}>Got it</Button>
-        </SheetContent>
-      </Sheet>
-    </>
-  );
-}
 
 function formatNotifTime(iso: string): string {
   const d = new Date(iso);
@@ -414,7 +346,7 @@ export function PartnerBottomNav({
 }) {
   return (
     <div className="snp-bottom-shell md:hidden">
-      <AddToHomeScreenBanner />
+      <PartnerInstallBanner />
       <nav className="snp-bottom-nav" aria-label="Partner navigation">
         <button type="button" className={cn('snp-nav-tab', activeTab === 'dashboard' && 'active')} onClick={() => onTabChange('dashboard')}>
           <Home strokeWidth={activeTab === 'dashboard' ? 2.5 : 2} />
@@ -531,6 +463,7 @@ export function PartnerShell({
       <div className="snp-portal-content flex min-h-screen flex-col">
         <PartnerShellHeader onReferOpen={() => onReferOpenChange(true)} />
         <PartnerPushPrompt />
+        <PartnerInstallGuide />
         <PartnerWelcomeSetup />
         <PartnerDesktopNav activeTab={activeTab} onTabChange={handleTab} onReferOpen={() => onReferOpenChange(true)} />
         <div className="mx-auto w-full max-w-5xl flex-1 px-0 pb-36 md:pb-10">{children}</div>

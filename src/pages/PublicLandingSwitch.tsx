@@ -9,6 +9,7 @@ const PARTNER_LANDING_HASHES = new Set([
   '#how-it-works',
   '#earnings',
   '#tiers',
+  '#referral',
 ]);
 
 export default function PublicLandingSwitch() {

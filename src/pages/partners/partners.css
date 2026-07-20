@@ -113,6 +113,161 @@
   text-decoration: underline;
 }
 
+/* Partner referral landing section */
+.snp-referral-section {
+  background: linear-gradient(165deg, #0a1f14 0%, #0d2b1f 48%, #071610 100%);
+}
+
+.snp-referral-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(13, 158, 117, 0.75);
+}
+
+.snp-referral-cta {
+  background: #ffffff;
+  color: #085041;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+
+.snp-referral-highlight {
+  backdrop-filter: blur(8px);
+}
+
+.snp-referral-phones {
+  position: relative;
+  width: 100%;
+}
+
+.snp-referral-phones-glow {
+  position: absolute;
+  inset: 10% 5% 5%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(13, 158, 117, 0.28), transparent 68%);
+  filter: blur(24px);
+}
+
+.snp-referral-phones-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .snp-referral-phones-grid {
+    gap: 1rem;
+    padding: 0.5rem;
+  }
+}
+
+.snp-referral-phone {
+  margin: 0;
+  animation: snpReferralPhoneIn 0.75s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: var(--phone-delay, 0ms);
+}
+
+.snp-referral-phone:nth-child(2) {
+  transform: translateY(-10px);
+}
+
+@media (min-width: 640px) {
+  .snp-referral-phone:nth-child(2) {
+    transform: translateY(-18px);
+  }
+}
+
+@keyframes snpReferralPhoneIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.snp-referral-phone-bezel {
+  overflow: hidden;
+  border-radius: 1.35rem;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  background: #0a1812;
+  padding: 5px;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.snp-referral-phone:hover .snp-referral-phone-bezel {
+  transform: translateY(-4px);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(245, 200, 66, 0.15) inset;
+}
+
+.snp-referral-phone-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1.05rem;
+}
+
+.snp-referral-phone-caption {
+  margin-top: 0.55rem;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@media (min-width: 640px) {
+  .snp-referral-phone-caption {
+    font-size: 11px;
+    margin-top: 0.65rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .snp-referral-phones-grid {
+    gap: 0.45rem;
+  }
+
+  .snp-referral-phone-caption {
+    font-size: 9px;
+  }
+}
+
+.snp-referral-badge {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  border-radius: 14px;
+  border: 1px solid rgba(13, 158, 117, 0.25);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.95), rgba(240, 253, 250, 0.9));
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.snp-referral-badge p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #065f46;
+}
+
+.snp-referral-field {
+  background: rgba(236, 253, 245, 0.6) !important;
+  color: #065f46 !important;
+  cursor: not-allowed;
+}
+
 .snp-field-input {
   border-radius: 14px;
   border: 1px solid rgba(13, 158, 117, 0.15);
@@ -561,6 +716,122 @@
   border: none;
   color: #94a3b8;
   cursor: pointer;
+}
+
+/* Partner install guide (mobile PWA) */
+.snp-install-guide-hero {
+  background: linear-gradient(165deg, rgba(236, 253, 245, 0.95) 0%, rgba(255, 255, 255, 0) 72%);
+}
+
+.dark .snp-install-guide-hero {
+  background: linear-gradient(165deg, rgba(6, 78, 59, 0.35) 0%, transparent 72%);
+}
+
+.snp-install-guide-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(13, 158, 117, 0.85);
+}
+
+.snp-install-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.snp-install-step {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.85rem 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(13, 158, 117, 0.12);
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.dark .snp-install-step {
+  border-color: rgba(13, 158, 117, 0.2);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.snp-install-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: #085041;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 0.15rem;
+}
+
+.snp-install-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 12px;
+  background: rgba(13, 158, 117, 0.12);
+  color: #085041;
+  flex-shrink: 0;
+}
+
+.dark .snp-install-step-icon {
+  background: rgba(13, 158, 117, 0.2);
+  color: #6ee7b7;
+}
+
+.snp-install-step-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.dark .snp-install-step-title {
+  color: #f8fafc;
+}
+
+.snp-install-step-detail {
+  margin: 0.25rem 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.dark .snp-install-step-detail {
+  color: #94a3b8;
+}
+
+.snp-login-install-hint {
+  margin-top: 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.snp-login-install-hint p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.snp-login-install-hint strong {
+  color: #a7f3d0;
+  font-weight: 700;
 }
 
 .dark .snp-stat-lock {

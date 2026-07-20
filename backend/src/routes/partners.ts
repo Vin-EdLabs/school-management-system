@@ -8,11 +8,11 @@ import {
   rejectIfSuspended,
   PartnerAuthRequest,
 } from '../middleware/authenticatePartner.js';
-import { ensureMonthlyCommissions } from '../services/partnerService.js';
+import { ensureMonthlyCommissions, normalizePartnerPublicId } from '../services/partnerService.js';
 import { logPartnerAuthEvent } from '../services/partnerAuthAuditService.js';
 import { notifyAdminNewPartnerApplication, sendPartnerEmail } from '../services/partnerEmailService.js';
 import { getVapidPublicKey } from '../services/webPushService.js';
-import { resolvePartnerPortalDirectUrl } from '../utils/publicAppUrl.js';
+import { resolvePartnerPortalDirectUrl, resolvePartnerPortalBaseUrl } from '../utils/publicAppUrl.js';
 import { maskEmailAddress } from '../utils/maskEmail.js';
 import { notifyPartner } from '../services/partnerNotifyService.js';
 import { emitPartnerSupportMessage } from '../services/partnerSupportSocketService.js';
@@ -99,8 +99,14 @@ function publicPartner(row: any) {
     tier: row.tier,
     profilePhotoUrl: row.profile_photo_url || null,
     suspensionNote: row.suspension_note || null,
+    referredBy: row.referred_by || null,
     createdAt: row.created_at,
   };
+}
+
+function buildPartnerReferralLink(partnerPublicId: string, req?: express.Request): string {
+  const base = resolvePartnerPortalBaseUrl(req);
+  return `${base}/join?ref=${encodeURIComponent(partnerPublicId)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +117,7 @@ router.post('/register', async (req, res) => {
     const {
       firstName, lastName, email, phone, whatsapp, password,
       region, town, occupation, momoNumber, momoNetwork, schoolsTarget, motivation,
-      gender, heardFrom,
+      gender, heardFrom, referredBy,
     } = req.body || {};
 
     const errors: Record<string, string> = {};
@@ -137,6 +143,18 @@ router.post('/register', async (req, res) => {
       errors.heardFrom = 'Tell us how you heard about the Partner Program';
     }
 
+    let referredByCode: string | null = null;
+    const rawRef = normalizePartnerPublicId(referredBy);
+    if (rawRef) {
+      const refRes = await query(
+        `SELECT partner_id FROM partners WHERE partner_id = $1 AND status = 'approved' LIMIT 1`,
+        [rawRef]
+      );
+      if (refRes.rows.length > 0) {
+        referredByCode = rawRef;
+      }
+    }
+
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({ error: 'Please fix the highlighted fields', fields: errors });
     }
@@ -153,8 +171,8 @@ router.post('/register', async (req, res) => {
     const inserted = await query(
       `INSERT INTO partners
          (first_name, last_name, email, phone, whatsapp, password_hash, region, town,
-          occupation, momo_number, momo_network, schools_target, motivation, gender, heard_from, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'pending')
+          occupation, momo_number, momo_network, schools_target, motivation, gender, heard_from, referred_by, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending')
        RETURNING *`,
       [
         String(firstName).trim(), String(lastName).trim(), cleanEmail, cleanPhone,
@@ -162,7 +180,7 @@ router.post('/register', async (req, res) => {
         String(town).trim(), String(occupation || '').trim() || null, String(momoNumber).trim(),
         String(momoNetwork), schoolsTarget ? String(schoolsTarget) : null,
         String(motivation || '').trim() || null,
-        String(gender), String(heardFrom),
+        String(gender), String(heardFrom), referredByCode,
       ]
     );
 
@@ -374,7 +392,10 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
     const lastMonth = lastMonthDate.getMonth() + 1;
     const lastMonthYear = lastMonthDate.getFullYear();
 
-    const [leadStats, commStats, unreadRes, unreadSupportRes, recentCommissions, recentLeads, recentNotifications] =
+    const partnerRow = partnerRes.rows[0];
+    const publicId = partnerRow.partner_id as string | null;
+
+    const [leadStats, commStats, unreadRes, unreadSupportRes, recentCommissions, recentLeads, recentNotifications, recruitStats] =
       await Promise.all([
         query(
           `SELECT COUNT(*)::int AS total,
@@ -420,6 +441,14 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
             WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 2`,
           [id]
         ),
+        publicId
+          ? query(
+              `SELECT COUNT(*)::int AS recruited
+                 FROM partners
+                WHERE referred_by = $1 AND status IN ('pending', 'approved')`,
+              [publicId]
+            )
+          : Promise.resolve({ rows: [{ recruited: 0 }] }),
       ]);
 
     const activity: Array<{
@@ -468,8 +497,18 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
 
     activity.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+    const recruitmentMonthlyRes = await query(
+      `SELECT COALESCE(SUM(commission_amount), 0) AS monthly
+         FROM partner_commissions
+        WHERE partner_id = $1
+          AND commission_type = 'recruitment_bonus'
+          AND month = $2
+          AND year = $3`,
+      [id, now.getMonth() + 1, now.getFullYear()]
+    );
+
     return res.json({
-      partner: publicPartner(partnerRes.rows[0]),
+      partner: publicPartner(partnerRow),
       stats: {
         totalSchools: Number(leadStats.rows[0].total),
         activeSchools: Number(leadStats.rows[0].converted),
@@ -480,6 +519,9 @@ router.get('/me', authenticatePartner, async (req: PartnerAuthRequest, res) => {
         pendingPayout: Number(commStats.rows[0].pending),
         unreadNotifications: Number(unreadRes.rows[0].unread),
         unreadSupportMessages: Number(unreadSupportRes.rows[0].unread),
+        recruitedPartnersCount: Number(recruitStats.rows[0]?.recruited || 0),
+        recruitmentEarningsMonthly: Number(recruitmentMonthlyRes.rows[0]?.monthly || 0),
+        referralLink: publicId ? buildPartnerReferralLink(publicId, req) : null,
       },
       recentActivity: activity.slice(0, 5),
     });

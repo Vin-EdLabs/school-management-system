@@ -1,12 +1,12 @@
 import React, { useRef, useState } from 'react';
 import {
-  Camera, ChevronRight, Loader2, TrendingUp,
+  Camera, Check, ChevronRight, Copy, Loader2, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatGhs } from '@/utils/currency';
 import type { PartnerProfile, PartnerStats } from '@/services/partnerApi';
-import { TIER_META, partnerApi } from '@/services/partnerApi';
+import { TIER_META, copyPartnerReferralLink, partnerApi } from '@/services/partnerApi';
 
 /* ── Layout ── */
 
@@ -76,6 +76,66 @@ export function PartnerDarkHero({
   );
 }
 
+/* ── Referral ID (compact, inside earnings card) ── */
+
+export function ReferralIdRow({
+  partnerId,
+  recruitedCount,
+}: {
+  partnerId: string;
+  recruitedCount: number;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  const handleCopy = async () => {
+    const ok = await copyPartnerReferralLink(partnerId);
+    if (!ok) return;
+    setCopied(true);
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-white/12 pt-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100/55">
+          Referral ID
+        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="truncate font-mono text-[13px] font-bold tracking-wide text-white">{partnerId}</p>
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition',
+              copied
+                ? 'border-emerald-400/50 text-emerald-300'
+                : 'border-white/25 text-white/85 hover:bg-white/10'
+            )}
+          >
+            {copied ? (
+              <>
+                <Check className="h-2.5 w-2.5" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-2.5 w-2.5" />
+                Copy ID
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100/55">Referred</p>
+        <p className="mt-0.5 text-sm font-bold tabular-nums">{recruitedCount}</p>
+      </div>
+    </div>
+  );
+}
+
 /* ── Virtual earnings card ── */
 
 export function VirtualEarningsCard({
@@ -92,6 +152,7 @@ export function VirtualEarningsCard({
   pending?: boolean;
 }) {
   const tierLabel = TIER_META[partner.tier]?.label ?? 'Partner';
+  const showReferral = !pending && !!partner.partnerId;
 
   return (
     <div className="snp-virtual-card relative overflow-hidden rounded-2xl p-4 text-white shadow-[0_12px_36px_rgba(8,80,65,0.28)]">
@@ -142,17 +203,18 @@ export function VirtualEarningsCard({
             </div>
             <div>
               <p className="text-[9px] font-semibold uppercase tracking-wide text-emerald-100/55">Pending</p>
-              <p className="mt-0.5 text-sm font-bold text-amber-200">{formatGhs(stats.pendingPayout).replace('.00', '')}</p>
+              <p className="mt-0.5 text-sm font-bold text-[#F5C842]">{formatGhs(stats.pendingPayout).replace('.00', '')}</p>
             </div>
           </div>
+
+          {showReferral && partner.partnerId ? (
+            <ReferralIdRow
+              partnerId={partner.partnerId}
+              recruitedCount={stats.recruitedPartnersCount ?? 0}
+            />
+          ) : null}
         </>
       )}
-
-      {!pending && partner.partnerId ? (
-        <p className="relative mt-3 font-mono text-[10px] tracking-[0.18em] text-emerald-100/45">
-          {partner.partnerId}
-        </p>
-      ) : null}
     </div>
   );
 }

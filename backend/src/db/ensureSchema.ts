@@ -1418,6 +1418,18 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'partners_heard_from'
   );
   await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS referred_by VARCHAR(20)`,
+    'partners_referred_by'
+  );
+  await safe(
+    `ALTER TABLE partners ADD COLUMN IF NOT EXISTS referral_earnings NUMERIC(12,2) DEFAULT 0`,
+    'partners_referral_earnings'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_partners_referred_by ON partners (referred_by)`,
+    'idx_partners_referred_by'
+  );
+  await safe(
     `CREATE TABLE IF NOT EXISTS partner_password_reset_tokens (
       id SERIAL PRIMARY KEY,
       partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
@@ -1492,6 +1504,20 @@ export async function ensureSupplementalSchema(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner
        ON partner_commissions (partner_id, year DESC, month DESC)`,
     'idx_partner_commissions_partner'
+  );
+  await safe(
+    `ALTER TABLE partner_commissions ADD COLUMN IF NOT EXISTS commission_type VARCHAR(30) DEFAULT 'school'`,
+    'partner_commissions_commission_type'
+  );
+  await safe(
+    `ALTER TABLE partner_commissions ADD COLUMN IF NOT EXISTS recruit_partner_id INTEGER REFERENCES partners(id)`,
+    'partner_commissions_recruit_partner_id'
+  );
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_partner_commissions_recruitment_unique
+       ON partner_commissions (partner_id, recruit_partner_id, month, year)
+       WHERE commission_type = 'recruitment_bonus'`,
+    'idx_partner_commissions_recruitment_unique'
   );
   await safe(
     `CREATE TABLE IF NOT EXISTS partner_notifications (

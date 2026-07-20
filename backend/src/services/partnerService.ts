@@ -4,6 +4,16 @@ import { query } from '../db/connection.js';
 export const PARTNER_BASE_COMMISSION_RATE = 30;
 export const PARTNER_BONUS_COMMISSION_RATE = 50;
 export const PARTNER_BONUS_MONTHS = 2;
+export const PARTNER_RECRUITMENT_BONUS_RATE = 20;
+
+/** Matches any stored public partner ID (e.g. SN-245-36 or SN-2026-0001). */
+export const PARTNER_PUBLIC_ID_PATTERN = /^SN-[A-Z0-9-]{2,17}$/;
+
+export function normalizePartnerPublicId(raw: unknown): string | null {
+  const id = String(raw || '').trim().toUpperCase();
+  if (!id || !PARTNER_PUBLIC_ID_PATTERN.test(id)) return null;
+  return id;
+}
 
 export type PartnerTier = 'partner' | 'senior_partner' | 'team_leader' | 'regional_director';
 
@@ -113,6 +123,85 @@ export async function ensureMonthlyCommissions(partnerDbId?: number): Promise<vo
         effectiveRate,
         amount,
       ]
+    );
+  }
+
+  await ensureRecruitmentBonuses(partnerDbId);
+}
+
+/**
+ * Credit referring partners with 20% of each recruit's school commissions for the month.
+ */
+export async function ensureRecruitmentBonuses(partnerDbId?: number): Promise<void> {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  const recruitsRes = await query(
+    `SELECT r.id AS recruit_db_id, ref.id AS referrer_db_id
+       FROM partners r
+       JOIN partners ref ON ref.partner_id = r.referred_by
+      WHERE r.referred_by IS NOT NULL
+        AND r.status = 'approved'
+        AND ref.status = 'approved'
+        ${partnerDbId ? 'AND (r.id = $1 OR ref.id = $1)' : ''}`,
+    partnerDbId ? [partnerDbId] : []
+  );
+
+  for (const row of recruitsRes.rows) {
+    const recruitDbId = Number(row.recruit_db_id);
+    const referrerDbId = Number(row.referrer_db_id);
+
+    const earnedRes = await query(
+      `SELECT COALESCE(SUM(commission_amount), 0) AS earned
+         FROM partner_commissions
+        WHERE partner_id = $1
+          AND month = $2
+          AND year = $3
+          AND COALESCE(commission_type, 'school') = 'school'`,
+      [recruitDbId, month, year]
+    );
+    const recruitEarned = Number(earnedRes.rows[0]?.earned || 0);
+    if (recruitEarned <= 0) continue;
+
+    const bonusAmount = Math.round(recruitEarned * PARTNER_RECRUITMENT_BONUS_RATE) / 100;
+    if (bonusAmount <= 0) continue;
+
+    const existingRes = await query(
+      `SELECT id, status FROM partner_commissions
+        WHERE partner_id = $1 AND recruit_partner_id = $2 AND month = $3 AND year = $4
+          AND commission_type = 'recruitment_bonus'
+        LIMIT 1`,
+      [referrerDbId, recruitDbId, month, year]
+    );
+
+    if (existingRes.rows[0]?.status === 'paid') continue;
+
+    if (existingRes.rows[0]) {
+      await query(
+        `UPDATE partner_commissions
+            SET commission_amount = $1, commission_rate = $2
+          WHERE id = $3 AND status = 'pending'`,
+        [bonusAmount, PARTNER_RECRUITMENT_BONUS_RATE, existingRes.rows[0].id]
+      );
+    } else {
+      await query(
+        `INSERT INTO partner_commissions
+           (partner_id, school_id, lead_id, month, year, plan_amount, commission_rate,
+            commission_amount, status, commission_type, recruit_partner_id)
+         VALUES ($1, NULL, NULL, $2, $3, 0, $4, $5, 'pending', 'recruitment_bonus', $6)`,
+        [referrerDbId, month, year, PARTNER_RECRUITMENT_BONUS_RATE, bonusAmount, recruitDbId]
+      );
+    }
+
+    await query(
+      `UPDATE partners SET referral_earnings = (
+         SELECT COALESCE(SUM(commission_amount), 0)
+           FROM partner_commissions
+          WHERE partner_id = $1 AND commission_type = 'recruitment_bonus'
+       ), updated_at = NOW()
+       WHERE id = $1`,
+      [referrerDbId]
     );
   }
 }

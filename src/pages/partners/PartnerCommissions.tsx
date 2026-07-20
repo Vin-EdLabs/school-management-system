@@ -8,6 +8,11 @@ import { PartnerCommissionsSkeleton } from './PartnerLoading';
 import { usePartnerCommissions } from './usePartnerQueries';
 import { formatGhs } from '@/utils/currency';
 
+function commissionLabel(r: { school_name: string | null; commission_type?: string | null }): string {
+  if (r.commission_type === 'recruitment_bonus') return 'Recruitment bonus (20%)';
+  return r.school_name || 'School';
+}
+
 function SummaryCard({ label, amount, delay = 0 }: { label: string; amount: number; delay?: number }) {
   return (
     <PortalCard className="snp-fade-up p-4 sm:p-5" style={{ animationDelay: `${delay}ms` }}>
@@ -83,9 +88,12 @@ export default function PartnerCommissions() {
             {records.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{r.school_name || 'School'}</p>
+                  <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{commissionLabel(r)}</p>
                   <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
-                    {MonthName(r.month)} {r.year} · {formatGhs(Number(r.plan_amount))} plan · {Number(r.commission_rate)}%
+                    {MonthName(r.month)} {r.year}
+                    {r.commission_type === 'recruitment_bonus'
+                      ? ' · Partner recruitment'
+                      : ` · ${formatGhs(Number(r.plan_amount))} plan · ${Number(r.commission_rate)}%`}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
@@ -111,7 +119,7 @@ export default function PartnerCommissions() {
               <div key={`payout-${p.id}`} className="flex items-center justify-between gap-3 px-5 py-3.5">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
-                    {p.school_name || 'School'} — {MonthName(p.month)} {p.year}
+                    {commissionLabel(p)} — {MonthName(p.month)} {p.year}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
                     {p.paid_at

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import {
   HEARD_FROM_OPTIONS, MOMO_NETWORKS, PartnerApiError, PARTNER_GENDERS, partnerApi,
-  GHANA_REGIONS, buildPartnerLoginPrefillUrl, readPartnerLoginCredentials,
+  GHANA_REGIONS, buildPartnerLoginPrefillUrl, parsePartnerReferralCode, readPartnerLoginCredentials,
 } from '@/services/partnerApi';
 import RegionAutocomplete from './RegionAutocomplete';
 import { PARTNER_MIN_PASSWORD, persistPartnerLogin, suggestPartnerPassword } from './partnerPasswordUtils';
@@ -37,13 +37,26 @@ type FormState = {
   schoolsTarget: string;
   heardFrom: string;
   motivation: string;
+  referredBy: string;
 };
 
 const EMPTY_FORM: FormState = {
   firstName: '', lastName: '', gender: '', phone: '', email: '', password: '', confirmPassword: '',
   region: '', town: '', occupation: '', momoNumber: '', momoNetwork: '', schoolsTarget: '',
-  heardFrom: '', motivation: '',
+  heardFrom: '', motivation: '', referredBy: '',
 };
+
+function ReferralBadge() {
+  return (
+    <div className="snp-referral-badge" role="status">
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+      <p>
+        <span className="font-bold">Referral applied.</span>
+        {' '}Your referrer will earn 20%.
+      </p>
+    </div>
+  );
+}
 
 function passwordStrength(pw: string): { score: number; label: string; color: string } {
   let score = 0;
@@ -111,6 +124,13 @@ export default function PartnerRegistrationWizard() {
   const stage = STAGES[stageIndex];
   const strength = useMemo(() => passwordStrength(form.password), [form.password]);
   const progressPct = ((stageIndex + 1) / STAGES.length) * 100;
+
+  useEffect(() => {
+    const refCode = parsePartnerReferralCode();
+    if (refCode) {
+      setForm((f) => ({ ...f, referredBy: refCode }));
+    }
+  }, []);
 
   useEffect(() => {
     const saved = readPartnerLoginCredentials();
@@ -191,6 +211,7 @@ export default function PartnerRegistrationWizard() {
         schoolsTarget: form.schoolsTarget || null,
         heardFrom: form.heardFrom,
         motivation: form.motivation.trim(),
+        referredBy: form.referredBy.trim().toUpperCase() || undefined,
       });
       const identifier = form.email.trim() || form.phone.trim();
       await persistPartnerLogin(identifier, form.password);
@@ -270,10 +291,29 @@ export default function PartnerRegistrationWizard() {
         </div>
       </div>
 
+      {form.referredBy ? <ReferralBadge /> : null}
+
       {/* Stage fields */}
       <div className="space-y-5">
         {stageIndex === 0 && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className={labelClass} htmlFor="snp-referred-by">
+                Referral partner ID <span className="font-normal text-[var(--ink-subtle)]">(optional)</span>
+              </label>
+              <input
+                id="snp-referred-by"
+                value={form.referredBy}
+                onChange={(e) => setForm((f) => ({ ...f, referredBy: e.target.value.toUpperCase() }))}
+                placeholder="e.g. SN-245-36"
+                className={`${fieldClass} font-mono uppercase tracking-wide ${errors.referredBy ? fieldErrorClass : ''}`}
+                autoComplete="off"
+              />
+              <p className="mt-1.5 text-[12px] text-[var(--ink-subtle)]">
+                Enter the Partner ID of whoever referred you — they&apos;ll earn 20%.
+              </p>
+              {fieldError('referredBy')}
+            </div>
             <div>
               <label className={labelClass} htmlFor="snp-first">First name</label>
               <input id="snp-first" className={`${fieldClass} ${errors.firstName ? fieldErrorClass : ''}`}

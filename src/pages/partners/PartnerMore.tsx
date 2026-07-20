@@ -1,14 +1,16 @@
-import { GraduationCap, Headphones, Lock, Moon, Sun, User } from 'lucide-react';
+import { GraduationCap, Headphones, Lock, Moon, Smartphone, Sun, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 import { PartnerPage, PortalCard } from './partnerShared';
 import { usePartnerSession } from '@/pages/partners/partnerSession';
+import { openPartnerInstallGuide, usePartnerInstallAvailable } from './PartnerInstallGuide';
 
 export default function PartnerMore() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { stats } = usePartnerSession();
   const supportUnread = stats.unreadSupportMessages ?? 0;
+  const showInstallGuide = usePartnerInstallAvailable();
 
   const items = [
     {
@@ -71,6 +73,22 @@ export default function PartnerMore() {
             ) : null}
           </button>
         ))}
+
+        {showInstallGuide ? (
+          <button
+            type="button"
+            onClick={() => openPartnerInstallGuide()}
+            className="snp-glass-card relative flex w-full items-center gap-4 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/95 to-teal-50/90 p-4 text-left shadow-sm transition hover:-translate-y-0.5 dark:border-emerald-900/40 dark:from-emerald-950/40 dark:to-teal-950/30"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+              <Smartphone className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-slate-900 dark:text-white">Install on your phone</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">Step-by-step guide to add the app to your home screen</p>
+            </div>
+          </button>
+        ) : null}
 
         <PortalCard className="p-4">
           <button

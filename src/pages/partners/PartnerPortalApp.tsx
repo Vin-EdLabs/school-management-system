@@ -13,6 +13,7 @@ import { useBrowserAutofillSync } from './useBrowserAutofillSync';
 import PartnerForgotPassword from './PartnerForgotPassword';
 import PartnerResetPassword from './PartnerResetPassword';
 import PartnerOpenRedirect from './PartnerOpenRedirect';
+import PartnerJoinPage from './PartnerJoinPage';
 import PartnerDashboard from './PartnerDashboard';
 import PartnerSchools from './PartnerSchools';
 import PartnerCommissions from './PartnerCommissions';
@@ -364,6 +365,7 @@ export default function PartnerPortalApp() {
     return (
       <Routes>
         <Route path="/open" element={<PartnerOpenRedirect />} />
+        <Route path="/join" element={<PartnerJoinPage />} />
         <Route path="/forgot-password" element={<PartnerForgotPassword />} />
         <Route path="/reset-password" element={<PartnerResetPassword />} />
         <Route

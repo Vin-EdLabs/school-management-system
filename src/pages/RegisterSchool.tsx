@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
+import { REGISTER_FORM_ID, scrollToRegisterForm } from '@/utils/landingScroll';
 
 const BENEFITS = [
   'Quick setup — we handle everything',
@@ -35,6 +36,7 @@ const inputClass = 'scholar-register-field w-full';
 
 const RegisterSchool = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
     schoolName: '',
     schoolAddress: '',
@@ -48,6 +50,13 @@ const RegisterSchool = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (submitted || location.hash !== `#${REGISTER_FORM_ID}`) return;
+
+    const timer = window.setTimeout(() => scrollToRegisterForm(), 80);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, location.hash, submitted]);
 
   const updateField = (field: keyof typeof formData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
@@ -206,7 +215,7 @@ const RegisterSchool = () => {
               </div>
             </div>
 
-            <div className="scholar-register-form-card">
+            <div id={REGISTER_FORM_ID} className="scholar-register-form-card scroll-mt-28">
               <div className="scholar-register-form-head">
                 <div className="scholar-register-steps">
                   <span className="scholar-register-step is-active">1. School</span>

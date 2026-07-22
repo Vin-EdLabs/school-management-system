@@ -449,19 +449,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const inFlightRef = useRef<Set<DataDomain>>(new Set());
   const loadGeneration = useRef(0);
   const skipStudentSocketRefreshUntil = useRef(0);
+  const studentsRef = useRef<Student[]>([]);
+  const schoolIdRef = useRef(schoolId);
+
+  studentsRef.current = students;
+  schoolIdRef.current = schoolId;
 
   const markStudentMutation = useCallback(() => {
     skipStudentSocketRefreshUntil.current = Date.now() + 4000;
   }, []);
 
   useEffect(() => {
-    bindStudentsStateSync(setStudents);
+    bindStudentsStateSync(setStudents, () => studentsRef.current);
     return () => bindStudentsStateSync(null);
   }, []);
 
   const clearAllData = useCallback(() => {
     loadedDomainsRef.current = new Set();
     inFlightRef.current = new Set();
+    queryClient.removeQueries({ queryKey: ['students'] });
     setStudents([]);
     setTeachers([]);
     setClasses([]);
@@ -472,7 +478,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setExpenses([]);
     setSubjects([]);
     setLoading(false);
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!isAuthenticated || schoolId == null) {
@@ -483,14 +489,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     apiService.setTenantContext(schoolId);
   }, [isAuthenticated, schoolId, clearAllData]);
 
-  const fetchDomain = useCallback(async (domain: DataDomain) => {
+  const fetchDomain = useCallback(async (domain: DataDomain): Promise<boolean> => {
+    const tenantId = schoolIdRef.current;
+    if (tenantId == null) return false;
+    const gen = loadGeneration.current;
+
     switch (domain) {
       case 'students': {
-        const studentsRes = await apiService.get('/students?status=all').catch(() => []);
-        const mapped = (Array.isArray(studentsRes) ? studentsRes : []).map(mapStudent);
-        setStudents(mapped);
-        setStudentsCache(queryClient, schoolId, mapped);
-        break;
+        try {
+          const studentsRes = await apiService.get('/students?status=all');
+          if (gen !== loadGeneration.current || tenantId !== schoolIdRef.current) return true;
+          if (!Array.isArray(studentsRes)) {
+            console.error('[DataContext] Invalid students response');
+            return false;
+          }
+          const mapped = studentsRes.map(mapStudent);
+          setStudents(mapped);
+          setStudentsCache(queryClient, tenantId, mapped);
+          return true;
+        } catch (error) {
+          console.error('[DataContext] Failed to load students:', error);
+          return false;
+        }
       }
       case 'teachers': {
         const teachersRes = await apiService.get('/teachers').catch(() => []);
@@ -620,7 +640,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       default:
         break;
     }
-  }, [queryClient, schoolId]);
+    return true;
+  }, [queryClient]);
 
   const loadDomains = useCallback(
     async (domains: DataDomain[], options?: { silent?: boolean; force?: boolean }) => {
@@ -642,8 +663,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await Promise.all(
           toLoad.map(async (domain) => {
-            await fetchDomain(domain);
-            loadedDomainsRef.current.add(domain);
+            const ok = await fetchDomain(domain);
+            if (ok) loadedDomainsRef.current.add(domain);
           })
         );
       } catch (error) {

@@ -8,6 +8,7 @@ import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
 import { startTodoReminderJob } from './jobs/todoReminderJob.js';
 import { startScheduledAnnouncementJob } from './jobs/announcementScheduleJob.js';
 import { startStaffAttendanceAutoCheckoutJobs } from './jobs/staffAttendanceAutoCheckoutJob.js';
+import { startClassPeriodReminderJob } from './jobs/classPeriodReminderJob.js';
 import authRoutes from './routes/auth.js';
 import impersonationRoutes from './routes/impersonation.js';
 import schoolRoutes from './routes/schools.js';
@@ -25,6 +26,7 @@ import expenseRoutes from './routes/expenses.js';
 import settingsRoutes from './routes/settings.js';
 import auditRoutes from './routes/audit.js';
 import superAdminPlatformRoutes from './routes/superAdminPlatform.js';
+import superAdminPaystackRoutes from './routes/superAdminPaystack.js';
 import superAdminFinanceRoutes from './routes/superAdminFinance.js';
 import feeCalculationsRoutes from './routes/feeCalculations.js';
 import payrollRoutes from './routes/payroll.js';
@@ -37,6 +39,7 @@ import termReportRoutes from './routes/termReport.js';
 import tenantRoutes from './routes/tenant.js';
 import pwaRoutes from './routes/pwa.js';
 import schoolRegistrationsRoutes from './routes/schoolRegistrations.js';
+import platformInquiriesRoutes from './routes/platformInquiries.js';
 import supportChatRoutes from './routes/supportChat.js';
 import recordsRoutes from './routes/records.js';
 import reportsRoutes from './routes/reports.js';
@@ -46,6 +49,7 @@ import termBudgetRoutes from './routes/termBudgets.js';
 import paymentAccountsRoutes from './routes/paymentAccounts.js';
 import parentRoutes from './routes/parent.js';
 import subjectsRoutes from './routes/subjects.js';
+import timetableRoutes from './routes/timetable.js';
 import eventsRoutes from './routes/events.js';
 import globalChatRoutes from './routes/globalChat.js';
 import conversationRoutes from './routes/conversations.js';
@@ -69,6 +73,9 @@ import invoiceRoutes from './routes/invoices.js';
 import transportRoutes from './routes/transport.js';
 import dailyFeesRoutes from './routes/dailyFees.js';
 import paymentSubmissionsRoutes from './routes/paymentSubmissions.js';
+import paystackOnlineRoutes from './routes/paystackOnline.js';
+import { paystackWebhookHandler } from './routes/paystackWebhook.js';
+import parentOnlinePaymentsRoutes from './routes/parentOnlinePayments.js';
 import studentCheckinsRoutes from './routes/studentCheckins.js';
 import publicCheckinsRoutes from './routes/publicCheckins.js';
 import complaintsRoutes from './routes/complaints.js';
@@ -160,6 +167,9 @@ app.use(cors({
     'X-Idempotency-Key',
   ],
 }));
+// Paystack webhook must receive raw body for HMAC verification
+app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), paystackWebhookHandler);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api', idempotencyGuard);
@@ -182,6 +192,7 @@ app.use('/api/announcements', announcementsRoutes);
 
 // School registrations (POST public, GET requires super-admin)
 app.use('/api/school-registrations', schoolRegistrationsRoutes);
+app.use('/api/platform-inquiries', platformInquiriesRoutes);
 
 app.use('/api/public-website', schoolWebsiteHostRedirect);
 app.use('/api/public-website', publicSchoolWebsiteRoutes);
@@ -195,6 +206,7 @@ app.use('/api/super-admin/tenants', tenantBackupRoutes);
 app.use('/api/super-admin/finance', superAdminFinanceRoutes);
 app.use('/api/super-admin/websites', superAdminWebsitesRoutes);
 app.use('/api/super-admin', superAdminPlatformRoutes);
+app.use('/api/super-admin/paystack', superAdminPaystackRoutes);
 app.use('/api/enrollments', enrollmentsRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
@@ -205,6 +217,7 @@ app.use('/api/class-levels', classLevelsRoutes);
 app.use('/api/fees', feeStructureItemRoutes);
 app.use('/api/fees', feeRoutes);
 app.use('/api/fee-structures', feeStructureItemRoutes);
+app.use('/api/payments', paystackOnlineRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/income', incomeRoutes);
 app.use('/api/expenses', expenseRoutes);
@@ -226,8 +239,10 @@ app.use('/api/reports', academicReportsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/term-budgets', termBudgetRoutes);
 app.use('/api/payment-accounts', paymentAccountsRoutes);
+app.use('/api/parent/payments', parentOnlinePaymentsRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/subjects', subjectsRoutes);
+app.use('/api/timetable', timetableRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/global-chat', globalChatRoutes);
 app.use('/api/conversations', conversationRoutes);
@@ -263,6 +278,7 @@ initializeDatabase()
     startTodoReminderJob();
     startScheduledAnnouncementJob();
     void startStaffAttendanceAutoCheckoutJobs();
+    startClassPeriodReminderJob();
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Database connected`);

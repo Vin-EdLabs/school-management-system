@@ -1009,7 +1009,7 @@ export default function WebsiteManagementModule() {
                   <strong>
                     {effectivePublicSlug}-{websiteSuffix}.scholarnerve.com
                   </strong>
-                  . The public slug and suffix are managed by ScholarNerve in the Super Admin panel.
+                  . The public slug and suffix are managed by the ScholarNerve team.
                 </p>
               </div>
             </div>

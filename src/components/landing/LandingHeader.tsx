@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Menu, X } from 'lucide-react';
 import { getScholarNerveMainUrl, getPartnersPortalLoginUrl, isPartnersHost } from '@/utils/partnersHost';
+import { REGISTER_SCHOOL_PATH, handleRegisterNavClick } from '@/utils/landingScroll';
 
 const HOME_NAV = [
   { href: '/#features', label: 'Features' },
   { href: '/#parent-app', label: 'Mobile App' },
-  { href: '/#portals', label: 'Portals' },
+  { href: '/#pricing', label: 'Pricing' },
   { href: '/#about', label: 'About' },
+  { href: '/#contact', label: 'Contact' },
   { href: '/#school-website', label: 'School Website' },
 ] as const;
 
@@ -30,6 +32,7 @@ type LandingHeaderProps = {
 export default function LandingHeader({ brandMark, variant = 'home', brandLockup, brandHref = '/' }: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
   const isPartners = variant === 'partners';
   const navLinks = isPartners ? PARTNERS_NAV : HOME_NAV;
   const mainSiteUrl = getScholarNerveMainUrl();
@@ -78,6 +81,10 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
     document.getElementById('apply')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const onRegisterClick = (e: React.MouseEvent) => {
+    handleRegisterNavClick(e, location.pathname, closeMenu);
+  };
+
   return (
     <header className="scholar-landing-header fixed left-0 right-0 top-0 z-[100]">
       <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-2 px-4 sm:h-16 sm:gap-3 sm:px-5">
@@ -115,11 +122,17 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               Partner Login
             </a>
           )}
-          {navLinks.map((link) => (
-            <a key={link.href} href={link.href} className="scholar-nav-link">
-              {link.label}
-            </a>
-          ))}
+          {navLinks.map((link) =>
+            'to' in link ? (
+              <Link key={link.to} to={link.to} className="scholar-nav-link">
+                {link.label}
+              </Link>
+            ) : (
+              <a key={link.href} href={link.href} className="scholar-nav-link">
+                {link.label}
+              </a>
+            )
+          )}
           {!isPartners && (
             <a href="/#partners" className="scholar-nav-link font-semibold text-[var(--brand-dark)]">
               Partners
@@ -142,13 +155,13 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               Apply Now
             </a>
           ) : (
-            <Link to="/register-school" className="scholar-nav-cta scholar-header-mobile-only">
+            <Link to={REGISTER_SCHOOL_PATH} onClick={onRegisterClick} className="scholar-nav-cta scholar-header-mobile-only">
               Register
             </Link>
           )}
 
           {!isPartners && (
-            <Link to="/register-school" className="scholar-nav-cta scholar-header-desktop-only">
+            <Link to={REGISTER_SCHOOL_PATH} onClick={onRegisterClick} className="scholar-nav-cta scholar-header-desktop-only">
               Register
             </Link>
           )}
@@ -202,18 +215,31 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                     </Link>
                   )
                 )}
-                {navLinks.map((link, index) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="scholar-mobile-nav-link"
-                    style={{ '--nav-delay': `${(isPartners ? index + 1 : index) * 40}ms` } as React.CSSProperties}
-                    onClick={closeMenu}
-                    tabIndex={menuOpen ? 0 : -1}
-                  >
-                    {link.label}
-                  </a>
-                ))}
+                {navLinks.map((link, index) =>
+                  'to' in link ? (
+                    <Link
+                      key={link.to}
+                      to={link.to}
+                      className="scholar-mobile-nav-link"
+                      style={{ '--nav-delay': `${index * 40}ms` } as React.CSSProperties}
+                      onClick={closeMenu}
+                      tabIndex={menuOpen ? 0 : -1}
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      className="scholar-mobile-nav-link"
+                      style={{ '--nav-delay': `${index * 40}ms` } as React.CSSProperties}
+                      onClick={closeMenu}
+                      tabIndex={menuOpen ? 0 : -1}
+                    >
+                      {link.label}
+                    </a>
+                  )
+                )}
                 {!isPartners && (
                   <a
                     href="/#partners"
@@ -258,9 +284,9 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                       Become a Partner
                     </a>
                     <Link
-                      to="/register-school"
+                      to={REGISTER_SCHOOL_PATH}
                       className="scholar-mobile-nav-cta"
-                      onClick={closeMenu}
+                      onClick={onRegisterClick}
                       tabIndex={menuOpen ? 0 : -1}
                     >
                       Register school

@@ -20,9 +20,14 @@ const photoStatuses = new Map<string, PhotoUploadStatus>();
 const pendingPhotoUploads = new Map<string, PendingPhotoUpload>();
 const photoListeners = new Set<() => void>();
 let studentsStateSync: ((students: Student[]) => void) | null = null;
+let getStudentsSnapshot: (() => Student[]) | null = null;
 
-export function bindStudentsStateSync(sync: ((students: Student[]) => void) | null) {
+export function bindStudentsStateSync(
+  sync: ((students: Student[]) => void) | null,
+  getSnapshot?: () => Student[]
+) {
   studentsStateSync = sync;
+  getStudentsSnapshot = getSnapshot ?? null;
 }
 
 function notifyPhotoListeners() {
@@ -53,16 +58,35 @@ export function useStudentPhotoUploadStatus(studentId: string): PhotoUploadStatu
   );
 }
 
+function resolveStudentsBase(old: StudentsCacheData | undefined): Student[] {
+  if (old?.students?.length) return old.students;
+  const snapshot = getStudentsSnapshot?.() ?? [];
+  if (snapshot.length) return snapshot;
+  return old?.students ?? [];
+}
+
 export function patchStudentsCache(
   queryClient: QueryClient,
   tenantId: number | string | null,
   updater: (students: Student[]) => Student[]
 ): Student[] {
-  queryClient.setQueryData<StudentsCacheData>(studentsQueryKeys.list(tenantId), (old) => ({
-    students: updater(old?.students ?? []),
-  }));
-  const next =
+  let hadCachedList = false;
+
+  queryClient.setQueryData<StudentsCacheData>(studentsQueryKeys.list(tenantId), (old) => {
+    hadCachedList = Boolean(old?.students?.length);
+    const base = resolveStudentsBase(old);
+    return { students: updater(base) };
+  });
+
+  let next =
     queryClient.getQueryData<StudentsCacheData>(studentsQueryKeys.list(tenantId))?.students ?? [];
+
+  const snapshot = getStudentsSnapshot?.() ?? [];
+  if (next.length === 0 && snapshot.length > 0 && !hadCachedList) {
+    queryClient.setQueryData<StudentsCacheData>(studentsQueryKeys.list(tenantId), { students: snapshot });
+    next = snapshot;
+  }
+
   studentsStateSync?.(next);
   return next;
 }
@@ -100,9 +124,10 @@ export function patchStudentInCache(
   studentId: string,
   patch: Partial<Student>
 ): Student[] {
-  return patchStudentsCache(queryClient, tenantId, (list) =>
-    list.map((s) => (s.id === studentId ? { ...s, ...patch } : s))
-  );
+  return patchStudentsCache(queryClient, tenantId, (list) => {
+    if (!list.some((s) => s.id === studentId)) return list;
+    return list.map((s) => (s.id === studentId ? { ...s, ...patch } : s));
+  });
 }
 
 export function removeStudentFromCache(

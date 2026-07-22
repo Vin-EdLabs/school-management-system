@@ -1,5 +1,6 @@
 import { isPlatformAdminPath } from '@/constants/platformAdminRoute';
 import { detectTenantSlugFromHost } from '@/utils/tenantHost';
+import { resolveLogoUrl } from '@/services/tenantService';
 
 export type PwaKind = 'parent' | 'school' | 'super-admin';
 

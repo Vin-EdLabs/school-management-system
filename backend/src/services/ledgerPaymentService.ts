@@ -27,7 +27,7 @@ export type RecordLedgerPaymentInput = {
   termLabel: string | null;
   notes: string | null;
   receiptNumber: string;
-  createdByUserId: number;
+  createdByUserId: number | null;
 };
 
 export type RecordLedgerPaymentResult = {

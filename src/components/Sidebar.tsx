@@ -22,6 +22,7 @@ import {
   BarChart3,
   Wallet,
   PiggyBank,
+  CreditCard,
   Settings,
   Shield,
   FileText,
@@ -154,6 +155,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('teachers') || hasAccess('teachers-view-only') ? [{ id: 'other-staff', label: 'Other Staff', icon: UserCog }] : []),
     ...(hasAccess('classes') ? [{ id: 'classes', label: 'Classes', icon: BookOpen }] : []),
     ...(hasAccess('subjects') ? [{ id: 'subjects', label: 'Subjects', icon: BookOpen }] : []),
+    ...(hasAccess('timetable') ? [{ id: 'timetable', label: 'Timetable', icon: CalendarDays }] : []),
     ...(hasAccess('calendar') && userRole !== 'finance' ? [{ id: 'calendar', label: 'Calendar', icon: Calendar }] : []),
     ...(hasAccess('birthdays') ? [{ id: 'birthdays', label: 'Birthdays', icon: Cake }] : []),
     ...(hasAccess('id-cards') && userRole !== 'teacher'
@@ -170,6 +172,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ],
   teaching: [
     ...(hasAccess('teacher-classes') ? [{ id: 'teacher-classes', label: 'My Classes', icon: BookOpen }] : []),
+    ...(hasAccess('timetable') ? [{ id: 'timetable', label: 'My Schedule', icon: CalendarDays }] : []),
     ...(hasAccess('attendance') ? [{ id: 'attendance', label: 'Attendance', icon: UserCheck }] : []),
     ...(hasAccess('grades') ? [{ id: 'grades', label: 'Grades', icon: Award }] : []),
     ...(hasAccess('grades') ? [{ id: 'teacher-quizzes', label: 'Online assessments', icon: ClipboardList }] : []),
@@ -194,6 +197,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('term-budget') ? [{ id: 'term-budget', label: 'Budget', icon: PiggyBank }] : []),
     ...(hasAccess('transactions') ? [{ id: 'transactions', label: 'Transactions', icon: ReceiptText }] : []),
     ...(hasAccess('payment-submissions') ? [{ id: 'payment-submissions', label: 'Payment Submissions', icon: ClipboardCheck }] : []),
+    ...(hasAccess('paystack') ? [{ id: 'paystack', label: 'Paystack', icon: CreditCard }] : []),
     ...(hasAccess('cash-bank') ? [{ id: 'cash-bank', label: 'Cash & Bank', icon: Landmark }] : []),
     ...(hasAccess('payroll') ? [{ id: 'payroll', label: 'Payroll', icon: Wallet }] : []),
     ...(hasAccess('reports') ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }] : []),

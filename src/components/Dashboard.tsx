@@ -31,6 +31,8 @@ import IdCardsModule from './id-cards/IdCardsModule';
 import LostCardsModule from './lost-cards/LostCardsModule';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import PaymentSubmissionsModule from './finance/PaymentSubmissionsModule';
+import PaystackModule from './paystack/PaystackModule';
+import TimetableModule from './timetable/TimetableModule';
 import TermBudgetModule from './finance/TermBudgetModule';
 import FinanceStatementModule from './finance/FinanceStatementModule';
 import TeacherDashboard from './teacher/TeacherDashboard';
@@ -308,6 +310,8 @@ const DashboardContent = () => {
         return <ManualAdjustmentsReport />;
       case 'payment-submissions':
         return <PaymentSubmissionsModule />;
+      case 'paystack':
+        return <PaystackModule />;
       case 'users':
         return <UsersModule />;
       case 'settings':
@@ -348,6 +352,8 @@ const DashboardContent = () => {
         return <RecordsModule />;
       case 'subjects':
         return <SubjectsModule />;
+      case 'timetable':
+        return <TimetableModule />;
       case 'support-chat':
         return <SupportModule />;
       case 'push-notifications':

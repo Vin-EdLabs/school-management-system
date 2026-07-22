@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,30 @@ import { Eye, UserPlus, TrendingUp, UserX, GraduationCap, RotateCcw, Clock } fro
 const StudentsModule = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [activeTab, setActiveTab] = useState('view-all');
   const [promoteStudentIdSeed, setPromoteStudentIdSeed] = useState<string | null>(null);
-  const { students, refresh } = useData();
+  const { students, refresh, loading } = useData();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const hadStudentsRef = useRef(false);
+  const recoveryAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (students.length > 0) {
+      hadStudentsRef.current = true;
+      recoveryAttemptedRef.current = false;
+    }
+  }, [students.length]);
+
+  useEffect(() => {
+    if (
+      hadStudentsRef.current &&
+      students.length === 0 &&
+      !loading &&
+      !isRefreshing &&
+      !recoveryAttemptedRef.current
+    ) {
+      recoveryAttemptedRef.current = true;
+      void refresh(['students', 'classes']);
+    }
+  }, [students.length, loading, isRefreshing, refresh]);
 
 
   const pendingCount = useMemo(

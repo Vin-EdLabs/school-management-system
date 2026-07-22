@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
 import SchoolWebsiteShowcase from '../components/landing/SchoolWebsiteShowcase';
+import PricingSection from '../components/landing/PricingSection';
+import ContactSection from '../components/landing/ContactSection';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingBrandMark from '../components/landing/LandingBrandMark';
 import { LandingStructuredData } from '../components/landing/LandingStructuredData';
+import { REGISTER_SCHOOL_PATH, scrollToHashSection } from '@/utils/landingScroll';
 
 type IconProps = {
   className?: string;
@@ -314,6 +317,17 @@ const LandingPage = () => {
   }, []);
 
   useEffect(() => {
+    const scrollToHash = () => {
+      if (!window.location.hash) return;
+      window.setTimeout(() => scrollToHashSection(), 80);
+    };
+
+    scrollToHash();
+    window.addEventListener('hashchange', scrollToHash);
+    return () => window.removeEventListener('hashchange', scrollToHash);
+  }, []);
+
+  useEffect(() => {
     const elements = Array.from(document.querySelectorAll<HTMLElement>('.scroll-reveal'));
     const observer = new IntersectionObserver(
       (entries) => {
@@ -427,7 +441,7 @@ const LandingPage = () => {
               className="scholar-fade-up mt-7 flex flex-col items-stretch justify-center gap-3 sm:mt-8 sm:flex-row sm:items-center sm:flex-wrap"
               style={{ animationDelay: '0.3s' }}
             >
-              <Link to="/register-school" className="scholar-btn-primary">
+              <Link to={REGISTER_SCHOOL_PATH} className="scholar-btn-primary">
                 Register Your School →
               </Link>
               <a href="/#partners" className="scholar-btn-partner">
@@ -626,68 +640,9 @@ const LandingPage = () => {
 
         <SchoolWebsiteShowcase />
 
-        <section id="portals" className="scholar-section bg-white px-4 sm:px-5">
-          <div className="mx-auto max-w-[1100px]">
-            <div className="max-w-2xl">
-              <SectionLabel>Portals</SectionLabel>
-              <h2 className="scholar-display scholar-section-title text-[var(--ink)]">
-                One school. Three powerful views.
-              </h2>
-              <p className="mt-4 text-[var(--ink-muted)]">
-                Every role sees exactly what they need, with clean tools for the way schools actually work.
-              </p>
-            </div>
+        <PricingSection />
 
-            <div className="mt-12 grid gap-5 md:grid-cols-3">
-              {[
-                {
-                  number: '01',
-                  label: 'Admin Portal',
-                  title: 'Admin Dashboard',
-                  features: ['Full school management', 'Fee collection & payroll', 'Staff management', 'Custom school branding', 'Real-time reports & exports'],
-                },
-                {
-                  number: '02',
-                  label: 'Teacher PWA',
-                  title: 'Teacher PWA',
-                  featured: true,
-                  features: ['Class & timetable management', 'Mark attendance fast', 'Enter & view grades', 'Works offline (PWA)', 'View assigned classes'],
-                },
-                {
-                  number: '03',
-                  label: 'Parent PWA',
-                  title: 'Parent PWA',
-                  featured: true,
-                  features: ['Real-time fee status', 'View receipts & statements', 'Term report cards', 'Attendance notifications', 'Student learning mode'],
-                },
-              ].map((portal, index) => (
-                <div
-                  key={portal.title}
-                  className={`scroll-reveal relative overflow-hidden rounded-[calc(var(--radius)+2px)] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-premium-lg)] ${
-                    portal.featured ? 'border-[var(--brand)] shadow-[0_18px_55px_rgba(13,158,117,0.12)]' : 'border-[var(--sn-border)]'
-                  }`}
-                  style={{ '--reveal-delay': `${index * 100}ms` } as React.CSSProperties}
-                >
-                  {portal.featured && (
-                    <span className="absolute right-5 top-5 z-10 rounded-[var(--radius-pill)] bg-[var(--brand)] px-3 py-1 text-xs font-bold text-white">
-                      Most Used
-                    </span>
-                  )}
-                  <div className={`p-7 ${portal.featured ? 'bg-[var(--brand-light)]' : 'bg-[var(--surface-2)]'}`}>
-                    <p className="scholar-display text-7xl font-extrabold leading-none text-[rgba(13,158,117,0.10)]">{portal.number}</p>
-                    <p className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-[var(--brand)]">{portal.label}</p>
-                    <h3 className="scholar-display mt-2 text-[1.3rem] font-bold text-[var(--ink)]">{portal.title}</h3>
-                  </div>
-                  <ul className="space-y-4 p-7">
-                    {portal.features.map((feature) => (
-                      <CheckItem key={feature}>{feature}</CheckItem>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        <ContactSection />
 
         <section className="scholar-section bg-[var(--surface-2)] px-4 sm:px-5">
           <div className="mx-auto max-w-[1100px]">
@@ -775,7 +730,7 @@ const LandingPage = () => {
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link
-                to="/register-school"
+                to={REGISTER_SCHOOL_PATH}
                 className="inline-flex items-center justify-center rounded-[var(--radius-pill)] bg-white px-7 py-3.5 font-semibold text-[var(--ink)] shadow-[0_18px_45px_rgba(255,255,255,0.12)] transition-transform hover:-translate-y-0.5"
               >
                 Register Your School →
@@ -812,7 +767,8 @@ const LandingPage = () => {
                 {[
                   ['#features', 'Features'],
                   ['#parent-app', 'Mobile App'],
-                  ['#portals', 'Portals'],
+                  ['#pricing', 'Pricing'],
+                  ['#contact', 'Contact'],
                   ['#about', 'About'],
                   ['/#school-website', 'School Website'],
                   ['/#partners', 'Partners'],

@@ -486,6 +486,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
               <span>Download Receipt</span>
             </Button>
             <Button
+              id="receipt-print-trigger"
               onClick={handlePrint}
               className="w-full py-6 rounded-xl bg-slate-900 hover:bg-black text-white font-bold flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 transition-all active:scale-95"
             >

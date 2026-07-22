@@ -26,6 +26,7 @@ export const HEADMASTER_MODULES = [
   'settings',
   'settings-password-only',
   'grade-configuration',
+  'timetable',
   'checkin-staff',
   'staff-attendance',
   'my-staff-attendance',

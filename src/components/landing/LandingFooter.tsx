@@ -7,8 +7,9 @@ type LegalDocKey = 'privacy' | 'terms';
 const EXPLORE = [
   { href: '/#features', label: 'Features' },
   { href: '/#parent-app', label: 'Mobile App' },
-  { href: '/#portals', label: 'Portals' },
+  { href: '/#pricing', label: 'Pricing' },
   { href: '/#about', label: 'About' },
+  { href: '/#contact', label: 'Contact' },
   { href: '/#school-website', label: 'School Website' },
   { href: '/#partners', label: 'Partners' },
 ] as const;
@@ -78,7 +79,7 @@ export default function LandingFooter() {
               </div>
               <p className="mb-4 mt-8 text-sm font-bold text-white">Support</p>
               <div className="space-y-3">
-                <a href="tel:+233506741322" className="block text-sm text-white/50 transition-colors hover:text-white">
+                <a href="/#contact" className="block text-sm text-white/50 transition-colors hover:text-white">
                   Contact Us
                 </a>
               </div>

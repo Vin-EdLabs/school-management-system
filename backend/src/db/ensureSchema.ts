@@ -1653,6 +1653,169 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'idx_partner_support_partner'
   );
 
+  await safe(
+    `CREATE TABLE IF NOT EXISTS tenant_paystack_config (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+      mode VARCHAR(20) NOT NULL DEFAULT 'scholarnerve',
+      enabled BOOLEAN NOT NULL DEFAULT false,
+      super_admin_enabled BOOLEAN NOT NULL DEFAULT false,
+      fee_bearer VARCHAR(20) NOT NULL DEFAULT 'parent',
+      subaccount_code VARCHAR(80),
+      payout_account VARCHAR(120),
+      own_secret_key_encrypted TEXT,
+      own_public_key VARCHAR(120),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'tenant_paystack_config'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_tenant_paystack_config_tenant ON tenant_paystack_config(tenant_id)`,
+    'idx_tenant_paystack_config_tenant'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS payment_transactions (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      reference VARCHAR(80) NOT NULL UNIQUE,
+      amount_kobo INTEGER NOT NULL,
+      fee_kobo INTEGER NOT NULL DEFAULT 0,
+      total_kobo INTEGER NOT NULL,
+      currency VARCHAR(10) NOT NULL DEFAULT 'GHS',
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      mode VARCHAR(20) NOT NULL,
+      paystack_id VARCHAR(80),
+      payment_channel VARCHAR(40),
+      paid_at TIMESTAMPTZ,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'payment_transactions'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_payment_transactions_tenant ON payment_transactions(tenant_id, created_at DESC)`,
+    'idx_payment_transactions_tenant'
+  );
+  await safe(
+    `ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_transaction_id INTEGER REFERENCES payment_transactions(id) ON DELETE SET NULL`,
+    'payments_payment_transaction_id'
+  );
+  await safe(
+    `ALTER TABLE tenant_paystack_config ADD COLUMN IF NOT EXISTS super_admin_enabled BOOLEAN NOT NULL DEFAULT false`,
+    'tenant_paystack_config_super_admin_enabled'
+  );
+  await safe(
+    `ALTER TABLE tenant_paystack_config ADD COLUMN IF NOT EXISTS fee_bearer VARCHAR(20) NOT NULL DEFAULT 'parent'`,
+    'tenant_paystack_config_fee_bearer'
+  );
+  await safe(
+    `INSERT INTO platform_settings (key, value) VALUES ('paystack', '{"useLiveKeys":false}'::jsonb) ON CONFLICT (key) DO NOTHING`,
+    'platform_settings_paystack_seed'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS periods (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name VARCHAR(120) NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'periods'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_periods_tenant_order ON periods(tenant_id, order_index)`,
+    'idx_periods_tenant_order'
+  );
+  await safe(
+    `ALTER TABLE periods ADD COLUMN IF NOT EXISTS is_break BOOLEAN NOT NULL DEFAULT false`,
+    'periods.is_break'
+  );
+  await safe(
+    `ALTER TABLE periods ADD COLUMN IF NOT EXISTS class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE`,
+    'periods.class_id'
+  );
+  await safe(
+    `ALTER TABLE periods ADD COLUMN IF NOT EXISTS term_id INTEGER REFERENCES terms(id) ON DELETE CASCADE`,
+    'periods.term_id'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_periods_class_term_order ON periods(tenant_id, class_id, term_id, order_index)`,
+    'idx_periods_class_term_order'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS class_timetable (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+      day_of_week VARCHAR(12) NOT NULL CHECK (day_of_week IN ('Monday','Tuesday','Wednesday','Thursday','Friday')),
+      period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+      subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+      teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, class_id, term_id, day_of_week, period_id)
+    )`,
+    'class_timetable'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_class_timetable_lookup ON class_timetable(tenant_id, class_id, term_id)`,
+    'idx_class_timetable_lookup'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_class_timetable_teacher ON class_timetable(tenant_id, term_id, teacher_id, day_of_week, period_id)`,
+    'idx_class_timetable_teacher'
+  );
+  await safe(
+    `CREATE TABLE IF NOT EXISTS exam_timetable (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+      subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+      exam_date DATE NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      venue VARCHAR(200),
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'exam_timetable'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_exam_timetable_lookup ON exam_timetable(tenant_id, class_id, term_id, exam_date)`,
+    'idx_exam_timetable_lookup'
+  );
+
+  await safe(
+    `CREATE TABLE IF NOT EXISTS platform_inquiries (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(200) NOT NULL,
+      school_name VARCHAR(200),
+      email VARCHAR(255) NOT NULL,
+      phone VARCHAR(50),
+      inquiry_type VARCHAR(40) NOT NULL DEFAULT 'contact',
+      message TEXT,
+      status VARCHAR(30) NOT NULL DEFAULT 'pending',
+      internal_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    'platform_inquiries'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_platform_inquiries_status ON platform_inquiries(status, created_at DESC)`,
+    'idx_platform_inquiries_status'
+  );
+
   const critical = [
     'subjects',
     'classes',

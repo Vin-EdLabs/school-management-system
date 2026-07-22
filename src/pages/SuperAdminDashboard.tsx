@@ -103,6 +103,7 @@ import {
   ArchiveRestore,
   Settings,
   Handshake,
+  CreditCard,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -117,6 +118,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import PwaInstallButton from '../components/common/PwaInstallButton';
 import SystemHealthModule from '../components/superadmin/SystemHealthModule';
 import PlatformSettingsModule from '../components/superadmin/PlatformSettingsModule';
+import PaystackPlatformPanel from '../components/superadmin/PaystackPlatformPanel';
+import SuperAdminTenantPaystackCard from '../components/superadmin/SuperAdminTenantPaystackCard';
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
 import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
 import SuperAdminFinanceWipeModule from '../components/superadmin/SuperAdminFinanceWipeModule';
@@ -173,6 +176,19 @@ interface Registration {
   created_at: string;
 }
 
+interface PlatformInquiry {
+  id: number;
+  name: string;
+  school_name?: string | null;
+  email: string;
+  phone?: string | null;
+  inquiry_type: string;
+  message?: string | null;
+  status: string;
+  internal_note?: string | null;
+  created_at: string;
+}
+
 interface AuditLog {
   id: number;
   tenant_id?: number | null;
@@ -219,7 +235,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe' | 'partners';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'contact-inquiries' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'paystack' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe' | 'partners';
 
 const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'schools', label: 'Schools', group: 'Overview' as const },
@@ -230,11 +246,13 @@ const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'tracker', label: 'Tracker', group: 'Overview' as const },
   { id: 'school-data', label: 'School Data', group: 'Overview' as const },
   { id: 'registrations', label: 'Registration Requests', group: 'Overview' as const },
+  { id: 'contact-inquiries', label: 'Contact Inquiries', group: 'Overview' as const },
   { id: 'support-chat', label: 'Support Chat', group: 'Overview' as const },
   { id: 'school-general-chat', label: 'School General Chat', group: 'Overview' as const },
   { id: 'chat-broadcast', label: 'School Broadcast', group: 'Overview' as const },
   { id: 'school-websites', label: 'School Websites', group: 'Overview' as const },
   { id: 'partners', label: 'Partners', group: 'Overview' as const },
+  { id: 'paystack', label: 'Paystack', group: 'System' as const },
   { id: 'platform-settings', label: 'Platform Settings', group: 'System' as const },
   { id: 'finance-wipe', label: 'Finance Config', group: 'System' as const },
   { id: 'removed-staff', label: 'Removed Staff', group: 'System' as const },
@@ -315,6 +333,7 @@ const SuperAdminDashboard = () => {
   const [websiteEnablePending, setWebsiteEnablePending] = useState(0);
   const [schools, setSchools] = useState<School[]>([]);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [platformInquiries, setPlatformInquiries] = useState<PlatformInquiry[]>([]);
   const [landingVisitors, setLandingVisitors] = useState(0);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -622,14 +641,16 @@ const SuperAdminDashboard = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [schoolsList, regs, admins, visitStats] = await Promise.all([
+      const [schoolsList, regs, inquiries, admins, visitStats] = await Promise.all([
         apiService.get<School[]>('/schools', { skipTenant: true }),
         apiService.get<Registration[]>('/school-registrations', { skipTenant: true }).catch(() => []),
+        apiService.get<PlatformInquiry[]>('/platform-inquiries', { skipTenant: true }).catch(() => []),
         apiService.get<Array<{ id: number; username: string; email?: string; full_name?: string; phone?: string }>>('/schools/super-admins', { skipTenant: true }).catch(() => []),
         apiService.get<{ landingVisitors: number }>('/stats/visits', { skipTenant: true }).catch(() => ({ landingVisitors: 0 })),
       ]);
       setSchools(Array.isArray(schoolsList) ? schoolsList : []);
       setRegistrations(Array.isArray(regs) ? regs : []);
+      setPlatformInquiries(Array.isArray(inquiries) ? inquiries : []);
       setSuperAdmins(Array.isArray(admins) ? admins : []);
       setLandingVisitors(Number(visitStats?.landingVisitors ?? 0));
     } catch (err: unknown) {
@@ -942,6 +963,27 @@ const SuperAdminDashboard = () => {
       loadData();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message || 'Failed to delete registration', variant: 'destructive' });
+    }
+  };
+
+  const updateInquiryStatus = async (id: number, status: string) => {
+    try {
+      await apiService.patch(`/platform-inquiries/${id}/status`, { status }, { skipTenant: true });
+      toast({ title: 'Inquiry updated' });
+      loadData();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to update inquiry', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteInquiry = async (id: number) => {
+    if (!window.confirm('Delete this contact inquiry?')) return;
+    try {
+      await apiService.delete(`/platform-inquiries/${id}`, { skipTenant: true });
+      toast({ title: 'Inquiry deleted' });
+      loadData();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to delete inquiry', variant: 'destructive' });
     }
   };
 
@@ -1384,6 +1426,7 @@ const SuperAdminDashboard = () => {
     { id: 'tracker' as Section, label: 'Tracker', icon: ShieldCheck },
     { id: 'school-data' as Section, label: 'School Data', icon: FileText },
     { id: 'registrations' as Section, label: 'Registration Requests', icon: ClipboardList },
+    { id: 'contact-inquiries' as Section, label: 'Contact Inquiries', icon: Mail },
     { id: 'support-chat' as Section, label: 'Support Chat', icon: MessageCircle },
     { id: 'school-general-chat' as Section, label: 'School General Chat', icon: Globe },
     { id: 'chat-broadcast' as Section, label: 'School Broadcast', icon: Megaphone },
@@ -1391,6 +1434,7 @@ const SuperAdminDashboard = () => {
     { id: 'partners' as Section, label: 'Partners', icon: Handshake },
   ];
   const systemItems = [
+    { id: 'paystack' as Section, label: 'Paystack', icon: CreditCard },
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
     { id: 'finance-wipe' as Section, label: 'Finance Config', icon: Trash2 },
     { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
@@ -1446,6 +1490,11 @@ const SuperAdminDashboard = () => {
                         {id === 'registrations' && registrations.filter((r) => r.status === 'pending').length > 0 && (
                           <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
                             {registrations.filter((r) => r.status === 'pending').length}
+                          </Badge>
+                        )}
+                        {id === 'contact-inquiries' && platformInquiries.filter((r) => r.status === 'pending').length > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                            {platformInquiries.filter((r) => r.status === 'pending').length}
                           </Badge>
                         )}
                         {id === 'support-chat' && supportInboxUnread > 0 && (
@@ -1534,10 +1583,12 @@ const SuperAdminDashboard = () => {
               {section === 'tracker' && 'Tracker'}
               {section === 'school-data' && 'School Data Management'}
               {section === 'registrations' && 'Registration Requests'}
+              {section === 'contact-inquiries' && 'Contact Inquiries'}
               {section === 'super-admins' && 'Super Admins'}
               {section === 'audit' && 'Audit Logs'}
               {section === 'system-health' && 'System Health / Errors'}
               {section === 'platform-settings' && 'Platform Settings'}
+              {section === 'paystack' && 'Paystack Payments'}
               {section === 'finance-wipe' && 'Finance Configuration'}
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'school-general-chat' && 'School General Chat'}
@@ -2137,6 +2188,13 @@ const SuperAdminDashboard = () => {
                             <p><span className="text-slate-500">Address:</span> {String(schoolOverview.school_settings.physical_address || '—')}</p>
                           </div>
                         )}
+
+                        {selectedSchoolDetail ? (
+                          <SuperAdminTenantPaystackCard
+                            tenantId={selectedSchoolDetail.id}
+                            tenantName={selectedSchoolDetail.name}
+                          />
+                        ) : null}
                       </div>
                     )}
                     </DialogBody>
@@ -2958,6 +3016,65 @@ const SuperAdminDashboard = () => {
               </div>
             )}
 
+            {section === 'contact-inquiries' && (
+              <div className="space-y-6 animate-in fade-in duration-700">
+                <div className="border-b border-slate-200 pb-6 dark:border-slate-800">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Website Contact Inquiries</h3>
+                  <p className="text-sm font-medium text-slate-500">Messages from the pricing and contact pages on scholarnerve.com.</p>
+                </div>
+                {loading ? (
+                  <BrandedLoading label="Loading inquiries…" className="py-20" />
+                ) : platformInquiries.length === 0 ? (
+                  <Card className="border-slate-200 bg-white p-16 text-center dark:border-slate-800 dark:bg-slate-900/50">
+                    <Mail className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+                    <p className="text-sm text-slate-500">No contact inquiries yet.</p>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4">
+                    {platformInquiries.map((inq) => (
+                      <Card key={inq.id} className="border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
+                        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant={inq.status === 'pending' ? 'secondary' : inq.status === 'contacted' ? 'outline' : 'default'}>
+                                {inq.status}
+                              </Badge>
+                              <Badge variant="outline" className="capitalize">{inq.inquiry_type}</Badge>
+                              <span className="text-xs text-slate-500">{formatDate(inq.created_at)}</span>
+                            </div>
+                            <h4 className="text-lg font-bold text-slate-900 dark:text-white">{inq.name}</h4>
+                            {inq.school_name ? <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{inq.school_name}</p> : null}
+                            <div className="flex flex-col gap-1 text-sm">
+                              <a href={`mailto:${inq.email}`} className="font-semibold text-indigo-600 hover:underline">{inq.email}</a>
+                              {inq.phone ? <span className="text-slate-500">{inq.phone}</span> : null}
+                            </div>
+                            {inq.message ? (
+                              <p className="rounded-xl bg-slate-50 p-3 text-sm italic text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">&quot;{inq.message}&quot;</p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            {inq.status === 'pending' && (
+                              <Button size="sm" variant="outline" onClick={() => void updateInquiryStatus(inq.id, 'contacted')}>
+                                Mark contacted
+                              </Button>
+                            )}
+                            {inq.status !== 'closed' && (
+                              <Button size="sm" variant="outline" onClick={() => void updateInquiryStatus(inq.id, 'closed')}>
+                                Close
+                              </Button>
+                            )}
+                            <Button size="sm" variant="destructive" onClick={() => void handleDeleteInquiry(inq.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {section === 'super-admins' && (
               <div className="space-y-6 animate-in fade-in duration-700">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
@@ -3049,6 +3166,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'platform-settings' && (
               <PlatformSettingsModule />
+            )}
+
+            {section === 'paystack' && (
+              <PaystackPlatformPanel />
             )}
 
             {section === 'finance-wipe' && (

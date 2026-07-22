@@ -15,6 +15,7 @@ import MessageDeleteConfirmDialog, { type MessageDeleteKind } from '@/components
 import { BrandedLoading, BrandedLoadingScreen, isSplashGone } from '@/components/common/BrandedLoading';
 import { getFriendlyLoginMessage } from '@/utils/loginErrors';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import { formatGhs } from '@/utils/currency';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
 import FinanceStatementModal from '@/components/finance/FinanceStatementModal';
 import TermBillBreakdown from '@/components/fees/TermBillBreakdown';
@@ -28,6 +29,7 @@ import {
   type Invoice,
 } from '@/services/invoiceApi';
 import ParentMakePaymentPanel from '@/components/parent/ParentMakePaymentPanel';
+import type { OnlinePaymentReceipt } from '@/services/onlinePaymentApi';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import ParentCheckinPanel from '@/components/checkins/ParentCheckinPanel';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
@@ -1575,7 +1577,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       if (evt?.tenantId && Number(evt.tenantId) !== Number(tenantId)) return;
       const sessionId = studentSessionRef.current;
       const entity = String(evt?.entity || '');
-      if (entity === 'payment' || entity === 'finance-payment') {
+      if (entity === 'payment' || entity === 'finance-payment' || entity === 'online-payment') {
         const d = await parentFetch('/parent/finance', {}, token).catch(() => null);
         if (studentSessionRef.current !== sessionId) return;
         if (d) setFinance(d);
@@ -1795,8 +1797,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   // Tab-scoped fetches only — no background bulk refresh of every parent endpoint.
 
-  const openReceipt = (payment: any) => {
-    if (!student || !finance) return;
+  const openReceipt = (payment: any, financeData?: typeof finance, options?: { silent?: boolean }) => {
+    const fin = financeData || finance;
+    if (!student || !fin) return;
     const snap = parseReceiptSnapshot(payment?.receipt_snapshot);
     if (snap) {
       setSelectedReceipt({
@@ -1806,7 +1809,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         amount: parseFloat(payment?.amount_paid || '0'),
         date: payment?.payment_date,
         paymentMethod: payment?.payment_method || 'N/A',
-        term: payment?.term || finance.currentTermLabel || finance.currentTerm,
+        term: payment?.term || fin.currentTermLabel || fin.currentTerm,
         receiptNumber: payment?.receipt_number || 'N/A',
         notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
         remainingBalance: snap.balanceAfter,
@@ -1814,15 +1817,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         currentTermFee: snap.termFee,
         totalAmountDue: snap.totalDue,
       });
-      setShowReceipt(true);
+      if (!options?.silent) setShowReceipt(true);
       return;
     }
 
-    const anchorTerm = String(payment?.term || finance.currentTermLabel || finance.currentTerm || '').trim();
-    const totalDue = Number(finance.totalDue || 0);
-    const termFee = Number(finance.termFee || 0);
-    const arrears = Number(finance.arrears || 0);
-    const list = [...(finance.payments || [])]
+    const anchorTerm = String(payment?.term || fin.currentTermLabel || fin.currentTerm || '').trim();
+    const totalDue = Number(fin.totalDue || 0);
+    const termFee = Number(fin.termFee || 0);
+    const arrears = Number(fin.arrears || 0);
+    const list = [...(fin.payments || [])]
       .filter((p: any) => {
         const pt = String(p.term || '').trim();
         if (!anchorTerm) return true;
@@ -1848,7 +1851,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       amount: parseFloat(payment?.amount_paid || '0'),
       date: payment?.payment_date,
       paymentMethod: payment?.payment_method || 'N/A',
-      term: payment?.term || finance.currentTermLabel || finance.currentTerm,
+      term: payment?.term || fin.currentTermLabel || fin.currentTerm,
       receiptNumber: payment?.receipt_number || 'N/A',
       notes: payment?.notes || (payment?.reference_number ? `Ref: ${payment.reference_number}` : ''),
       remainingBalance: Math.max(0, totalDue - cumulative),
@@ -1856,8 +1859,36 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       currentTermFee: termFee,
       totalAmountDue: totalDue,
     });
-    setShowReceipt(true);
+    if (!options?.silent) setShowReceipt(true);
   };
+
+  const handleOnlinePaymentSuccess = useCallback(async (payment: OnlinePaymentReceipt) => {
+    if (!token) return;
+    const d = await parentFetch('/parent/finance', {}, token).catch(() => null);
+    if (d) setFinance(d);
+    const payRow =
+      d?.payments?.find((p: { id?: number }) => Number(p.id) === Number(payment.id))
+      || d?.payments?.find((p: { receipt_number?: string }) => p.receipt_number === payment.receipt_number)
+      || payment;
+    const amountPaid = parseFloat(String(payRow?.amount_paid ?? payment.amount_paid ?? payment.amount ?? 0));
+    const receiptNumber = String(payRow?.receipt_number || payment.receipt_number || 'N/A');
+    const reference = String(payRow?.reference_number || payment.reference_number || '');
+
+    if (student && (d || finance)) {
+      openReceipt(payRow, d || finance, { silent: true });
+    }
+
+    const notifTitle = 'Payment successful';
+    const notifMessage = `${formatGhs(amountPaid)} received${receiptNumber !== 'N/A' ? `. Receipt #${receiptNumber}` : ''}${reference ? `. Ref ${reference}` : ''}. Your child's balance has been updated. View the receipt anytime under Payment history.`;
+
+    pushNotification(notifTitle, notifMessage);
+    await loadServerNotifications(token, studentSessionRef.current).catch(() => undefined);
+
+    toast({
+      title: notifTitle,
+      description: notifMessage,
+    });
+  }, [token, student, finance, pushNotification, loadServerNotifications]);
 
   // Resolved school logo — from student record (richer) or prop fallback
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
@@ -2349,7 +2380,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       {showNotifPanel && (
         <div
           ref={notifPanelRef}
-          className="fixed z-[110] left-3 right-3 top-[4.75rem] sm:left-auto sm:right-6 sm:top-[7rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
+          className="fixed z-[115] left-3 right-3 top-[5.25rem] sm:left-auto sm:right-5 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
           role="dialog"
           aria-label="Notifications"
         >
@@ -3178,6 +3209,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 defaultStudentId={student?.id}
                 resolveMediaUrl={resolveMediaUrl}
                 logoUrl={schoolLogoUrl ?? student?.school_logo_url}
+                outstandingAmount={finance?.outstanding}
+                schoolName={student?.school_name || student?.schoolName}
+                onOnlinePaymentSuccess={handleOnlinePaymentSuccess}
               />
             ) : financeSubTab === 'make-payment' ? null : showTabLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />

@@ -313,7 +313,7 @@ const SettingsModule: React.FC<{ onNavigateModule?: (module: string) => void }> 
                 Create Backup
               </Button>
               <p className="mt-3 text-[11px] text-muted-foreground">
-                Restore and reset are managed by Super Admin only.
+                Restore and reset are managed by the ScholarNerve team only.
               </p>
             </CardContent>
           </Card>
@@ -727,7 +727,7 @@ const SettingsModule: React.FC<{ onNavigateModule?: (module: string) => void }> 
                   Create Backup
                 </Button>
                 <p className="text-[11px] text-muted-foreground">
-                  Restore and reset are managed by Super Admin only.
+                  Restore and reset are managed by the ScholarNerve team only.
                 </p>
               </CardContent>
             </Card>

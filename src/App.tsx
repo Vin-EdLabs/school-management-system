@@ -21,6 +21,8 @@ import PublicCheckinPage from "./pages/PublicCheckinPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
+import PricingPage from "./pages/PricingPage";
+import ContactPage from "./pages/ContactPage";
 import PublicLandingSwitch from "./pages/PublicLandingSwitch";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -462,6 +464,8 @@ const App = () => {
                     
                     {/* Standard Shared Dashboard Routes */}
                     <Route path="/register-school" element={<RegisterSchool />} />
+                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/contact" element={<ContactPage />} />
                     <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     
                     {/* School Portal Dashboard mounts directly at root and handles all sub-navigation (e.g. /teachers) */}
@@ -477,6 +481,8 @@ const App = () => {
                     <Route path="/partners" element={<PartnersLegacyRedirect />} />
                     <Route path="/partners/*" element={<PartnersLegacyRedirect />} />
                     <Route path="/register-school" element={<RegisterSchool />} />
+                    <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/contact" element={<ContactPage />} />
                     <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
                     <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />

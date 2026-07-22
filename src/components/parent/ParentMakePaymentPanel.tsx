@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, Upload, CheckCircle2, Clock, XCircle, Loader2, Eye } from 'lucide-react';
+import { Copy, Upload, CheckCircle2, Clock, XCircle, Loader2, Eye, ChevronDown, Landmark } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import PaymentProofImageDialog from '@/components/payments/PaymentProofImageDialog';
 import {
   fetchMyPaymentSubmissions,
@@ -10,8 +12,11 @@ import {
   type PaymentSubmission,
   type SchoolPaymentDetails,
 } from '@/services/parentPaymentSubmissionApi';
+import { fetchParentOnlineConfig } from '@/services/onlinePaymentApi';
 import { formatDisplayDateTime } from '@/utils/dateFormat';
 import { BrandedLoading } from '@/components/common/BrandedLoading';
+import ParentOnlinePaymentPanel from './ParentOnlinePaymentPanel';
+import type { OnlinePaymentReceipt } from '@/services/onlinePaymentApi';
 
 interface LinkedStudent {
   id: number;
@@ -26,6 +31,9 @@ interface ParentMakePaymentPanelProps {
   defaultStudentId?: number;
   resolveMediaUrl: (url: string | null | undefined) => string | null;
   logoUrl?: string | null;
+  outstandingAmount?: number;
+  schoolName?: string;
+  onOnlinePaymentSuccess?: (payment: OnlinePaymentReceipt) => void | Promise<void>;
 }
 
 const NETWORKS = ['MTN MoMo', 'Vodafone Cash', 'AirtelTigo', 'Bank Transfer'] as const;
@@ -104,6 +112,9 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
   defaultStudentId,
   resolveMediaUrl,
   logoUrl,
+  outstandingAmount,
+  schoolName,
+  onOnlinePaymentSuccess,
 }) => {
   const [details, setDetails] = useState<SchoolPaymentDetails | null>(null);
   const [history, setHistory] = useState<PaymentSubmission[]>([]);
@@ -118,6 +129,8 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
   const [proofLoadingId, setProofLoadingId] = useState<number | null>(null);
+  const [onlinePaymentsEnabled, setOnlinePaymentsEnabled] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const openProofPreview = async (row: PaymentSubmission) => {
     if (!row.screenshotUrl || !token) return;
@@ -151,12 +164,14 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
     const silent = options?.silent ?? hasLoadedRef.current;
     if (!silent) setInitialLoading(true);
     try {
-      const [d, h] = await Promise.all([
+      const [d, h, onlineCfg] = await Promise.all([
         fetchParentPaymentDetails(token),
         fetchMyPaymentSubmissions(token),
+        fetchParentOnlineConfig(token).catch(() => ({ enabled: false })),
       ]);
       setDetails(d);
       setHistory(h);
+      setOnlinePaymentsEnabled(Boolean(onlineCfg?.enabled));
       hasLoadedRef.current = true;
     } catch (e: unknown) {
       const err = e as { message?: string };
@@ -243,8 +258,8 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
     );
   }
 
-  return (
-    <div className="space-y-5">
+  const manualPaymentContent = (
+    <>
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
         <h3 className="text-sm font-bold text-slate-900">School payment details</h3>
         <p className="text-xs text-slate-600">Pay using the details below, then submit your proof of payment.</p>
@@ -425,6 +440,49 @@ const ParentMakePaymentPanel: React.FC<ParentMakePaymentPanelProps> = ({
           </ul>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="space-y-5">
+      <ParentOnlinePaymentPanel
+        token={token}
+        linkedStudents={linkedStudents}
+        defaultStudentId={defaultStudentId}
+        outstandingAmount={outstandingAmount}
+        schoolName={schoolName}
+        logoUrl={logoUrl}
+        onPaymentSuccess={onOnlinePaymentSuccess}
+      />
+
+      {onlinePaymentsEnabled ? (
+        <Collapsible open={manualOpen} onOpenChange={setManualOpen} className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left hover:bg-slate-50/80 transition-colors"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <Landmark className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900">Manual payment</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                    Bank transfer or MoMo — view school details and submit proof for review
+                  </p>
+                </div>
+              </div>
+              <ChevronDown className={cn('h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200', manualOpen && 'rotate-180')} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-5 border-t border-slate-100 px-4 pb-4 pt-4">
+            {manualPaymentContent}
+          </CollapsibleContent>
+        </Collapsible>
+      ) : (
+        manualPaymentContent
+      )}
 
       <PaymentProofImageDialog
         open={!!imagePreview}

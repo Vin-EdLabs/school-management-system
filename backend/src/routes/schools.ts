@@ -19,6 +19,7 @@ import {
   clearTenantData,
   writeSafetyBackup,
 } from '../services/schoolDataService.js';
+import { importDemoDataForTenant, getPrimaryAdminProfile } from '../demo/demoImportService.js';
 import { syncSchoolSettingsFromTenant } from '../services/schoolBrandingService.js';
 import {
   getIdCardTemplate,
@@ -266,9 +267,25 @@ router.post('/:id/validate-backup', requireRole('super-admin'), backupUpload.sin
 });
 
 router.post('/:id/import-data', requireRole('super-admin'), backupUpload.single('backup'), async (req: AuthRequest, res) => {
+  const tenantId = parseInt(req.params.id, 10);
+  if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
+
+  if (req.body?.type === 'demo') {
+    try {
+      const tenant = await query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+      if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+      const schoolName = String(tenant.rows[0].name);
+      const summary = await importDemoDataForTenant(tenantId);
+      emitSystemDataChanged('tenant-data', 'updated', tenantId);
+      return res.json({ message: `${schoolName} demo data loaded successfully`, summary });
+    } catch (error) {
+      console.error('School demo import error:', error);
+      return res.status(500).json({ error: (error as Error).message || 'Failed to load demo data' });
+    }
+  }
+
   const client = await getClient();
   try {
-    const tenantId = parseInt(req.params.id, 10);
     const { confirm } = req.body || {};
     if (!tenantId) return res.status(400).json({ error: 'Invalid school id' });
     if (confirm !== 'IMPORT') return res.status(400).json({ error: 'Type IMPORT to confirm this action' });
@@ -329,22 +346,40 @@ router.post('/:id/reset-data', requireRole('super-admin'), async (req: AuthReque
     const tenant = await client.query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
     if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
 
+    const primaryAdmin = await getPrimaryAdminProfile(client, tenantId);
     const safetyPath = await writeSafetyBackup(tenantId, 'pre-reset');
 
     await client.query('BEGIN');
-    await clearTenantData(client, tenantId, { keepTenant: true });
+    await clearTenantData(client, tenantId, {
+      keepTenant: true,
+      preserveAccounts: false,
+      preserveUserId: primaryAdmin?.id,
+    });
     await client.query('COMMIT');
+
+    const preservedAfter = primaryAdmin
+      ? await getPrimaryAdminProfile(client, tenantId)
+      : null;
 
     await logSchoolDataAction(req, {
       action: 'FULL_RESET',
       targetTenantId: tenantId,
       schoolName: String(tenant.rows[0].name),
-      summary: `FULL RESET performed on ${tenant.rows[0].name} by ${req.user!.username} — all data permanently deleted`,
-      details: { safety_backup_path: safetyPath, timestamp: new Date().toISOString() },
+      summary: `FULL RESET performed on ${tenant.rows[0].name} by ${req.user!.username} — operational data deleted; primary admin preserved`,
+      details: {
+        safety_backup_path: safetyPath,
+        timestamp: new Date().toISOString(),
+        preserved_admin_id: preservedAfter?.id ?? null,
+      },
     });
 
     emitSystemDataChanged('tenant-data', 'deleted', tenantId);
-    res.json({ message: `${tenant.rows[0].name} data reset successfully` });
+    res.json({
+      message: `${tenant.rows[0].name} data reset successfully`,
+      preservedAdmin: preservedAfter
+        ? { name: preservedAfter.name, email: preservedAfter.email }
+        : null,
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     console.error('Super admin school reset error:', error);
@@ -510,7 +545,7 @@ router.get('/:id', async (req, res) => {
     
     const result = await query(
       `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
-              subscription_status, is_active, created_at, updated_at
+              subscription_status, is_active, is_demo, created_at, updated_at
        FROM tenants WHERE id = $1`,
       [id]
     );

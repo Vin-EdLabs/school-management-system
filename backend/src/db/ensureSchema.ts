@@ -518,6 +518,17 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'users_other_staff_id_fkey'
   );
 
+  // School logins are tenant-scoped — usernames only need to be unique per tenant (not globally).
+  await safe(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key`, 'users.username global unique drop');
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_tenant_username_key ON users (tenant_id, username)`,
+    'users.tenant_username unique'
+  );
+  await safe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_username_super_admin_key ON users (username) WHERE tenant_id IS NULL`,
+    'users.super_admin_username unique'
+  );
+
   // Migrate legacy payroll_other_staff rows if table still exists
   if (await tableExists('payroll_other_staff')) {
     await safe(

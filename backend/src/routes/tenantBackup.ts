@@ -11,6 +11,7 @@ import {
   clearTenantData,
   writeSafetyBackup,
 } from '../services/tenantBackupService.js';
+import { importDemoDataForTenant, getPrimaryAdminProfile } from '../demo/demoImportService.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
@@ -123,11 +124,40 @@ router.post('/:tenantId/validate-backup', backupUpload.single('backup'), async (
 
 // POST /api/super-admin/tenants/:tenantId/restore
 router.post('/:tenantId/restore', backupUpload.single('backup'), async (req: AuthRequest, res) => {
+  const tenantId = parseInt(req.params.tenantId, 10);
+  if (!tenantId) return res.status(400).json({ error: 'Invalid tenant id' });
+
+  if (req.body?.type === 'demo') {
+    try {
+      const tenant = await query('SELECT id, name, slug FROM tenants WHERE id = $1', [tenantId]);
+      if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+      const schoolName = String(tenant.rows[0].name);
+
+      const summary = await importDemoDataForTenant(tenantId);
+
+      await logBackupAction(req, {
+        action: 'DEMO_IMPORT',
+        tenantId,
+        schoolName,
+        summary: `Demo data loaded for ${schoolName} by ${req.user!.username}`,
+        details: { ...summary },
+      });
+
+      emitTenantChanged(tenantId, 'updated');
+      return res.json({
+        success: true,
+        type: 'demo',
+        message: `Demo data loaded for ${schoolName}`,
+        summary,
+      });
+    } catch (error) {
+      console.error('Demo import error:', error);
+      return res.status(500).json({ error: (error as Error).message || 'Failed to load demo data' });
+    }
+  }
+
   const client = await getClient();
   try {
-    const tenantId = parseInt(req.params.tenantId, 10);
-    if (!tenantId) return res.status(400).json({ error: 'Invalid tenant id' });
-
     const payload = parseBackupPayload(req);
     if (!payload) return res.status(400).json({ error: 'Upload a JSON backup file.' });
 
@@ -194,21 +224,31 @@ router.post('/:tenantId/reset', async (req: AuthRequest, res) => {
     if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
     const schoolName = String(tenant.rows[0].name);
 
+    const primaryAdmin = await getPrimaryAdminProfile(client, tenantId);
     const safetyPath = await writeSafetyBackup(tenantId, 'pre-reset');
 
     await client.query('BEGIN');
-    const clearResult = await clearTenantData(client, tenantId, { keepTenant: true });
+    const clearResult = await clearTenantData(client, tenantId, {
+      keepTenant: true,
+      preserveAccounts: false,
+      preserveUserId: primaryAdmin?.id,
+    });
     await client.query('COMMIT');
+
+    const preservedAfter = primaryAdmin
+      ? await getPrimaryAdminProfile(client, tenantId)
+      : null;
 
     await logBackupAction(req, {
       action: 'FULL_RESET',
       tenantId,
       schoolName,
-      summary: `FULL RESET performed on ${schoolName} by ${req.user!.username} — all data permanently deleted`,
+      summary: `FULL RESET performed on ${schoolName} by ${req.user!.username} — operational data deleted; primary admin preserved`,
       details: {
         safety_backup_path: safetyPath,
         timestamp: new Date().toISOString(),
         deleted_tables: clearResult.deletedTables,
+        preserved_admin_id: preservedAfter?.id ?? null,
       },
     });
 
@@ -218,6 +258,9 @@ router.post('/:tenantId/reset', async (req: AuthRequest, res) => {
       message: `${schoolName} data reset successfully`,
       safety_backup_path: safetyPath,
       deleted_tables: clearResult.deletedTables,
+      preservedAdmin: preservedAfter
+        ? { name: preservedAfter.name, email: preservedAfter.email }
+        : null,
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);

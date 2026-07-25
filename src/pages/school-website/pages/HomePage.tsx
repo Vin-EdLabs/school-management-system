@@ -6,6 +6,8 @@ import { formatDisplayDate } from '@/utils/dateFormat';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
 import { Reveal, SectionHeading } from '../SchoolWebsiteLayout';
 import { SwFramedImage } from '../SwFramedImage';
+import AnimatedStatValue from '../components/AnimatedStatValue';
+import GalleryPreviewSection from '../components/GalleryPreviewSection';
 
 const HIGHLIGHT_ICONS = [BookOpen, Users, Award, GraduationCap];
 
@@ -61,6 +63,8 @@ export default function HomePage() {
       .sort((a, b) => a.event_date.localeCompare(b.event_date))
       .slice(0, 3);
   }, [data?.events]);
+
+  const galleryPreview = useMemo(() => data?.gallery || [], [data?.gallery]);
 
   const statCards = [
     { icon: CalendarDays, value: formatStatValue(stats.founded_year), label: 'Founded' },
@@ -152,7 +156,7 @@ export default function HomePage() {
                       <Icon className="h-5 w-5" />
                     </span>
                     <span className="sw-serif text-[42px] leading-none" style={{ color: accent }}>
-                      {value}
+                      <AnimatedStatValue value={value} delay={i * 120} />
                     </span>
                     <span className="mt-2 text-[13px] font-medium" style={{ color: 'var(--sw-muted)' }}>
                       {label}
@@ -230,12 +234,13 @@ export default function HomePage() {
             <div className="sw-container grid items-center gap-14 lg:grid-cols-[340px,1fr]">
               {directorPhoto && (
                 <Reveal>
-                  <div className="relative mx-auto max-w-[340px]">
+                  <div className="relative mx-auto w-full max-w-[340px]">
                     <img
                       src={directorPhoto}
                       alt={(about.director_name as string) || 'Head of School'}
-                      loading="lazy"
-                      className="w-full rounded-xl object-cover shadow-lg"
+                      loading="eager"
+                      decoding="async"
+                      className="relative z-[1] w-full rounded-xl object-cover object-top shadow-lg"
                       style={{ aspectRatio: '4 / 5' }}
                     />
                     <div
@@ -283,6 +288,8 @@ export default function HomePage() {
           </section>
         );
       })()}
+
+      <GalleryPreviewSection images={galleryPreview} />
 
       {/* ============ WHY CHOOSE US ============ */}
       {highlights.length > 0 && (

@@ -1,0 +1,484 @@
+{
+  "version": "2.0",
+  "description": "ScholarNerve demo seed — tenant-agnostic. Importer injects tenant_id at runtime. All operational demo content is driven from this file.",
+  "payment_config": {
+    "window_days": 30,
+    "anchor": "import_date",
+    "methods": ["cash", "momo", "bank"]
+  },
+  "finance_config": {
+    "payment_accounts": [
+      {
+        "key": "cash",
+        "account_type": "cash",
+        "account_name": "Cash at Hand",
+        "nickname": "Main Cash Drawer",
+        "opening_balance": 2500,
+        "opening_balance_days_ago": 45,
+        "is_default": true
+      },
+      {
+        "key": "bank",
+        "account_type": "bank",
+        "account_name": "GCB Bank — School Account",
+        "nickname": "GCB Main",
+        "account_number": "1234567890123",
+        "branch": "Accra High Street",
+        "opening_balance": 18500,
+        "opening_balance_days_ago": 45,
+        "is_default": false
+      },
+      {
+        "key": "momo_mtn",
+        "account_type": "momo",
+        "account_name": "MTN Mobile Money",
+        "nickname": "MTN MoMo",
+        "network": "MTN",
+        "phone_number": "+233241000100",
+        "opening_balance": 4200,
+        "opening_balance_days_ago": 45,
+        "is_default": false
+      },
+      {
+        "key": "momo_telecel",
+        "account_type": "momo",
+        "account_name": "Telecel Cash",
+        "nickname": "Telecel MoMo",
+        "network": "Telecel",
+        "phone_number": "+233501000200",
+        "opening_balance": 2100,
+        "opening_balance_days_ago": 45,
+        "is_default": false
+      }
+    ],
+    "school_payment_settings": {
+      "mtn_momo_number": "0241000100",
+      "mtn_momo_name": "DEMO TESTING SCHOOL",
+      "vodafone_cash_number": "0501000200",
+      "vodafone_cash_name": "DEMO TESTING SCHOOL",
+      "airteltigo_number": "0271000300",
+      "airteltigo_name": "DEMO TESTING SCHOOL",
+      "bank_name": "GCB Bank",
+      "bank_account_number": "1234567890123",
+      "bank_account_name": "DEMO TESTING SCHOOL",
+      "payment_instructions": "Pay term fees via MoMo, bank transfer, or Paystack online. Use student admission number as reference."
+    },
+    "paystack": {
+      "enabled": true,
+      "super_admin_enabled": true,
+      "mode": "scholarnerve",
+      "fee_bearer": "parent",
+      "online_payment_count": 12
+    },
+    "income": [
+      { "source": "PTA Fundraising", "amount": 1800, "days_ago": 22, "category": "Donations", "account_key": "cash", "received_by": "Patricia Amoah" },
+      { "source": "Bookshop sales", "amount": 650, "days_ago": 15, "category": "Sales", "account_key": "cash", "received_by": "Joseph Kumi" },
+      { "source": "Uniform sales", "amount": 2400, "days_ago": 12, "category": "Sales", "account_key": "bank", "received_by": "Patricia Amoah" },
+      { "source": "Community donation", "amount": 1000, "days_ago": 8, "category": "Donations", "account_key": "momo_mtn", "received_by": "School Admin" },
+      { "source": "Canteen proceeds", "amount": 890, "days_ago": 5, "category": "Canteen", "account_key": "cash", "received_by": "Mary Ansah" }
+    ],
+    "expenses": [
+      { "title": "Stationery & printing", "amount": 780, "days_ago": 20, "category": "Supplies", "account_key": "cash", "payee_name": "Accra Book Centre", "vendor": "Accra Book Centre" },
+      { "title": "Electricity bill — January", "amount": 1450, "days_ago": 18, "category": "Utilities", "account_key": "bank", "payee_name": "ECG Ghana", "vendor": "ECG" },
+      { "title": "Internet & data", "amount": 420, "days_ago": 14, "category": "Utilities", "account_key": "momo_mtn", "payee_name": "MTN Ghana", "vendor": "MTN" },
+      { "title": "Cleaning supplies", "amount": 350, "days_ago": 11, "category": "Maintenance", "account_key": "cash", "payee_name": "Local Supplier", "vendor": "CleanPro" },
+      { "title": "Sports equipment", "amount": 960, "days_ago": 9, "category": "Sports", "account_key": "bank", "payee_name": "Sports Zone Accra", "vendor": "Sports Zone" },
+      { "title": "First aid kit restock", "amount": 280, "days_ago": 6, "category": "Health", "account_key": "cash", "payee_name": "Pharmacy Plus", "vendor": "Pharmacy Plus" },
+      { "title": "Water delivery", "amount": 180, "days_ago": 3, "category": "Utilities", "account_key": "cash", "payee_name": "AquaPure Ghana", "vendor": "AquaPure" }
+    ],
+    "fund_transfers": [
+      { "from_key": "bank", "to_key": "cash", "amount": 3000, "days_ago": 16, "note": "Petty cash float from main bank account" },
+      { "from_key": "momo_mtn", "to_key": "bank", "amount": 2500, "days_ago": 10, "note": "MTN MoMo collections deposited to GCB" },
+      { "from_key": "cash", "to_key": "momo_telecel", "amount": 500, "days_ago": 4, "note": "Float moved to Telecel MoMo for parent collections" }
+    ],
+    "academic_reports": {
+      "graduated_student_indices": [95, 96, 97, 98, 99, 100],
+      "leaver_student_indices": [88, 89, 90, 91, 92]
+    }
+  },
+  "attendance_config": {
+    "school_days_back": 14,
+    "present_rate_min": 0.84,
+    "present_rate_max": 0.96
+  },
+  "staff_clock_in_config": {
+    "days_back": 12,
+    "school_start": "07:30",
+    "school_end": "15:30",
+    "late_rate": 0.1,
+    "late_reasons": ["Traffic on Accra–Kasoa road", "Rain delayed transport", "Child care drop-off"]
+  },
+  "school_attendance_settings": {
+    "latitude": 5.6037,
+    "longitude": -0.187,
+    "radius_meters": 120,
+    "school_start_time": "07:30",
+    "school_end_time": "15:30",
+    "late_threshold_minutes": 15
+  },
+  "student_profile_defaults": {
+    "nationality": "Ghanaian",
+    "home_address_area": "Accra",
+    "previous_school": "Demo Community Basic School",
+    "date_of_admission": "2024-09-02",
+    "number_of_siblings_range": [0, 3],
+    "guardian_relationships": ["Mother", "Father", "Guardian", "Aunt"]
+  },
+  "teacher_profile_defaults": {
+    "employment_type": "Full-time",
+    "employment_status": "Active",
+    "department": "Academics",
+    "qualification": "B.Ed",
+    "bank_name": "GCB Bank",
+    "bank_branch": "Accra Main",
+    "employment_date": "2019-09-01"
+  },
+  "staff_profile_defaults": {
+    "gender_alternate": ["Male", "Female"],
+    "employment_type": "Full-time",
+    "employment_status": "active",
+    "bank_name": "Ecobank Ghana"
+  },
+  "academic_year": {
+    "key": "ay_2024_2025",
+    "name": "2024/2025",
+    "label": "2024/2025",
+    "start_date": "2024-09-01",
+    "end_date": "2025-08-31"
+  },
+  "academic_terms": [
+    { "key": "at_term1", "term_name": "Term 1", "year": "2024/2025", "start_date": "2025-01-13", "end_date": "2025-04-04", "is_active": true },
+    { "key": "at_term2", "term_name": "Term 2", "year": "2024/2025", "start_date": "2025-05-05", "end_date": "2025-08-01", "is_active": false },
+    { "key": "at_term3", "term_name": "Term 3", "year": "2024/2025", "start_date": "2025-09-08", "end_date": "2025-12-05", "is_active": false }
+  ],
+  "terms": [
+    { "key": "term1", "name": "Term 1", "academic_term_key": "at_term1", "start_date": "2025-01-13", "end_date": "2025-04-04", "is_current": true, "status": "open" },
+    { "key": "term2", "name": "Term 2", "academic_term_key": "at_term2", "start_date": "2025-05-05", "end_date": "2025-08-01", "is_current": false, "status": "open" },
+    { "key": "term3", "name": "Term 3", "academic_term_key": "at_term3", "start_date": "2025-09-08", "end_date": "2025-12-05", "is_current": false, "status": "open" }
+  ],
+  "classes": [
+    { "key": "class4", "class_name": "Class 4", "level": "Primary 4", "level_order": 4, "form_teacher_key": "tch004" },
+    { "key": "class6", "class_name": "Class 6", "level": "Primary 6", "level_order": 6, "form_teacher_key": "tch006" },
+    { "key": "jhs2", "class_name": "JHS 2", "level": "JHS 2", "level_order": 12, "form_teacher_key": "tch008" }
+  ],
+  "subjects": [
+    { "key": "eng", "name": "English Language", "code": "ENG" },
+    { "key": "math", "name": "Mathematics", "code": "MATH" },
+    { "key": "sci", "name": "Integrated Science", "code": "SCI" },
+    { "key": "soc", "name": "Social Studies", "code": "SOC" },
+    { "key": "rme", "name": "R.M.E", "code": "RME" },
+    { "key": "fre", "name": "French", "code": "FRE" },
+    { "key": "ict", "name": "ICT", "code": "ICT" },
+    { "key": "art", "name": "Creative Arts", "code": "ART" }
+  ],
+  "teachers": [
+    { "key": "tch001", "staff_id": "TCH001", "full_name": "Kwame Mensah", "email": "kwame.mensah@demo.school", "phone": "+233241001001", "gender": "Male", "monthly_salary": 2200, "primary_subject_key": "eng", "date_of_birth": "1988-03-12", "address": "12 Ring Road East, Accra", "qualification": "B.Ed English Language", "specialization": "English Language", "national_id": "GHA-001234567-1", "position": "Senior Teacher", "emergency_contact_name": "Ama Mensah", "emergency_contact_phone": "+233241001011", "emergency_contact_relationship": "Spouse" },
+    { "key": "tch002", "staff_id": "TCH002", "full_name": "Ama Osei", "email": "ama.osei@demo.school", "phone": "+233241001002", "gender": "Female", "monthly_salary": 2100, "primary_subject_key": "math", "date_of_birth": "1990-07-22", "address": "45 Osu Badu Street, Accra", "qualification": "B.Sc Mathematics", "specialization": "Mathematics", "national_id": "GHA-001234568-2", "position": "Teacher", "emergency_contact_name": "Kofi Osei", "emergency_contact_phone": "+233241001012", "emergency_contact_relationship": "Brother" },
+    { "key": "tch003", "staff_id": "TCH003", "full_name": "Kofi Asante", "email": "kofi.asante@demo.school", "phone": "+233241001003", "gender": "Male", "monthly_salary": 2000, "primary_subject_key": "sci", "date_of_birth": "1987-11-05", "address": "8 Spintex Road, Accra", "qualification": "B.Ed Integrated Science", "specialization": "Integrated Science", "national_id": "GHA-001234569-3", "position": "Teacher", "emergency_contact_name": "Abena Asante", "emergency_contact_phone": "+233241001013", "emergency_contact_relationship": "Spouse" },
+    { "key": "tch004", "staff_id": "TCH004", "full_name": "Abena Boateng", "email": "abena.boateng@demo.school", "phone": "+233241001004", "gender": "Female", "monthly_salary": 1950, "primary_subject_key": "soc", "date_of_birth": "1992-01-18", "address": "22 Adenta Housing Down, Accra", "qualification": "B.Ed Social Studies", "specialization": "Social Studies", "national_id": "GHA-001234570-4", "position": "Form Teacher", "emergency_contact_name": "Yaw Boateng", "emergency_contact_phone": "+233241001014", "emergency_contact_relationship": "Father" },
+    { "key": "tch005", "staff_id": "TCH005", "full_name": "Yaw Darko", "email": "yaw.darko@demo.school", "phone": "+233241001005", "gender": "Male", "monthly_salary": 1850, "primary_subject_key": "rme", "date_of_birth": "1989-09-30", "address": "5 Tema Community 4", "qualification": "Diploma in Education", "specialization": "R.M.E", "national_id": "GHA-001234571-5", "position": "Teacher", "emergency_contact_name": "Grace Darko", "emergency_contact_phone": "+233241001015", "emergency_contact_relationship": "Mother" },
+    { "key": "tch006", "staff_id": "TCH006", "full_name": "Efua Adjei", "email": "efua.adjei@demo.school", "phone": "+233241001006", "gender": "Female", "monthly_salary": 2300, "primary_subject_key": "fre", "date_of_birth": "1986-04-14", "address": "17 Cantonments, Accra", "qualification": "B.A French", "specialization": "French", "national_id": "GHA-001234572-6", "position": "Senior Teacher", "emergency_contact_name": "Samuel Adjei", "emergency_contact_phone": "+233241001016", "emergency_contact_relationship": "Spouse" },
+    { "key": "tch007", "staff_id": "TCH007", "full_name": "Samuel Owusu", "email": "samuel.owusu@demo.school", "phone": "+233241001007", "gender": "Male", "monthly_salary": 1750, "primary_subject_key": "ict", "date_of_birth": "1993-12-08", "address": "3 Lapaz New Market Road", "qualification": "B.Sc Information Technology", "specialization": "ICT", "national_id": "GHA-001234573-7", "position": "Teacher", "emergency_contact_name": "Mary Owusu", "emergency_contact_phone": "+233241001017", "emergency_contact_relationship": "Sister" },
+    { "key": "tch008", "staff_id": "TCH008", "full_name": "Grace Nyarko", "email": "grace.nyarko@demo.school", "phone": "+233241001008", "gender": "Female", "monthly_salary": 2500, "primary_subject_key": "art", "date_of_birth": "1985-06-25", "address": "9 East Legon, Accra", "qualification": "B.Ed Creative Arts", "specialization": "Creative Arts", "national_id": "GHA-001234574-8", "position": "Head of Creative Arts", "emergency_contact_name": "Daniel Nyarko", "emergency_contact_phone": "+233241001018", "emergency_contact_relationship": "Spouse" },
+    { "key": "tch009", "staff_id": "TCH009", "full_name": "Daniel Appiah", "email": "daniel.appiah@demo.school", "phone": "+233241001009", "gender": "Male", "monthly_salary": 1600, "primary_subject_key": "math", "date_of_birth": "1994-02-11", "address": "14 Kasoa Old Station Road", "qualification": "B.Ed Mathematics", "specialization": "Mathematics", "national_id": "GHA-001234575-9", "position": "Teacher", "emergency_contact_name": "Ruth Appiah", "emergency_contact_phone": "+233241001019", "emergency_contact_relationship": "Mother" },
+    { "key": "tch010", "staff_id": "TCH010", "full_name": "Ruth Agyeman", "email": "ruth.agyeman@demo.school", "phone": "+233241001010", "gender": "Female", "monthly_salary": 1200, "primary_subject_key": "eng", "date_of_birth": "1995-08-03", "address": "6 Madina Estate", "qualification": "Diploma in Education", "specialization": "English Language", "national_id": "GHA-001234576-0", "position": "Teacher", "emergency_contact_name": "Joseph Agyeman", "emergency_contact_phone": "+233241001020", "emergency_contact_relationship": "Father" }
+  ],
+  "other_staff": [
+    { "key": "stf001", "staff_id": "STF001", "full_name": "Patricia Amoah", "position": "Accountant", "phone": "+233241002001", "monthly_salary": 1800, "gender": "Female", "email": "patricia.amoah@demo.school", "date_of_birth": "1988-05-20", "home_address": "11 Roman Ridge, Accra", "national_id": "GHA-002234567-1" },
+    { "key": "stf002", "staff_id": "STF002", "full_name": "Joseph Kumi", "position": "Secretary", "phone": "+233241002002", "monthly_salary": 1500, "gender": "Male", "email": "joseph.kumi@demo.school", "date_of_birth": "1991-10-15", "home_address": "4 Achimota Mile 7", "national_id": "GHA-002234568-2" },
+    { "key": "stf003", "staff_id": "STF003", "full_name": "Mary Ansah", "position": "Janitor", "phone": "+233241002003", "monthly_salary": 900, "gender": "Female", "email": "mary.ansah@demo.school", "date_of_birth": "1978-03-08", "home_address": "2 Nungua Barrier", "national_id": "GHA-002234569-3" },
+    { "key": "stf004", "staff_id": "STF004", "full_name": "Peter Tetteh", "position": "Janitor", "phone": "+233241002004", "monthly_salary": 900, "gender": "Male", "email": "peter.tetteh@demo.school", "date_of_birth": "1980-12-01", "home_address": "19 Teshie Tsui Bleoo", "national_id": "GHA-002234570-4" },
+    { "key": "stf005", "staff_id": "STF005", "full_name": "Emmanuel Quaye", "position": "Security", "phone": "+233241002005", "monthly_salary": 1100, "gender": "Male", "email": "emmanuel.quaye@demo.school", "date_of_birth": "1983-07-19", "home_address": "7 Dansoman Last Stop", "national_id": "GHA-002234571-5" }
+  ],
+  "fee_structure": {
+    "term_key": "term1",
+    "total_per_student": 630,
+    "items": [
+      { "item_name": "School Fees", "amount": 450, "sort_order": 1, "ledger_field": "tuition_fee" },
+      { "item_name": "PTA Levy", "amount": 60, "sort_order": 2, "ledger_field": "pta_fee" },
+      { "item_name": "Sports & Culture", "amount": 40, "sort_order": 3, "ledger_field": "exam_fee_partial" },
+      { "item_name": "Examination Levy", "amount": 80, "sort_order": 4, "ledger_field": "exam_fee_partial" }
+    ]
+  },
+  "student_config": {
+    "count": 100,
+    "admission_prefix": "SN/2024/",
+    "class_distribution": [
+      { "class_key": "class4", "count": 34 },
+      { "class_key": "class6", "count": 33 },
+      { "class_key": "jhs2", "count": 33 }
+    ],
+    "payment_distribution": {
+      "full_paid": 60,
+      "partial": 25,
+      "unpaid": 12,
+      "overpaid": 3
+    },
+    "term_fee_total": 630,
+    "partial_payment_range": [200, 500],
+    "overpaid_amount": 700
+  },
+  "grade_config": {
+    "class_score_weight": 50,
+    "exam_weight": 50,
+    "components": [
+      { "name": "Individual Test", "weight_in_class_score": 25, "max_marks": 20, "display_order": 1 },
+      { "name": "Group Test", "weight_in_class_score": 25, "max_marks": 20, "display_order": 2 },
+      { "name": "Class Test", "weight_in_class_score": 25, "max_marks": 30, "display_order": 3 },
+      { "name": "Project", "weight_in_class_score": 25, "max_marks": 30, "display_order": 4 }
+    ],
+    "exam_max_marks": 100
+  },
+  "grades_config": {
+    "term_key": "term1",
+    "top_percent": 92,
+    "bottom_percent": 38,
+    "subject_variance": 7
+  },
+  "timetable_config": {
+    "term_key": "term1",
+    "subjects_per_day": 5,
+    "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    "periods": [
+      { "name": "Period 1", "start": "07:00", "end": "07:50", "is_break": false },
+      { "name": "Period 2", "start": "07:50", "end": "08:40", "is_break": false },
+      { "name": "Period 3", "start": "08:40", "end": "09:30", "is_break": false },
+      { "name": "Morning Break", "start": "09:30", "end": "10:00", "is_break": true },
+      { "name": "Period 4", "start": "10:00", "end": "10:50", "is_break": false },
+      { "name": "Period 5", "start": "10:50", "end": "11:40", "is_break": false },
+      { "name": "Lunch Break", "start": "11:40", "end": "12:30", "is_break": true }
+    ],
+    "exam_venue": "Main Examination Hall"
+  },
+  "photo_config": {
+    "students": true,
+    "teachers": true,
+    "staff": true
+  },
+  "payroll_config": {
+    "term_key": "term1",
+    "payment_month": 2,
+    "payment_year": 2025,
+    "transport_allowance": 150,
+    "housing_allowance": 200,
+    "ssnit_percent": 5.5,
+    "income_tax_percent": 10
+  },
+  "teacher_password_plain": "Demo@1234",
+  "male_first_names": [
+    "Kwame", "Kofi", "Yaw", "Kwaku", "Kojo", "Samuel", "Daniel", "Emmanuel", "Joseph", "Michael",
+    "Isaac", "Prince", "Ebenezer", "Francis", "George", "Richard", "Patrick", "Benjamin", "Stephen", "Eric",
+    "Nana", "Fiifi", "Kweku", "Papa", "Collins", "Bright", "Elvis", "Frank", "Henry", "Ivan"
+  ],
+  "female_first_names": [
+    "Ama", "Abena", "Akua", "Yaa", "Afia", "Efua", "Grace", "Mary", "Sarah", "Ruth",
+    "Patricia", "Elizabeth", "Comfort", "Gifty", "Linda", "Joyce", "Felicia", "Vida", "Naana", "Adwoa",
+    "Priscilla", "Rebecca", "Diana", "Esther", "Hannah", "Janet", "Lucy", "Mercy", "Naomi", "Victoria"
+  ],
+  "last_names": [
+    "Mensah", "Osei", "Asante", "Boateng", "Darko", "Adjei", "Owusu", "Nyarko", "Appiah", "Agyeman",
+    "Amoah", "Ansah", "Quaye", "Tetteh", "Kumi", "Acheampong", "Baah", "Bonsu", "Danso", "Frimpong",
+    "Gyamfi", "Kwarteng", "Manu", "Opoku", "Sarpong", "Tawiah", "Yeboah", "Adu", "Antwi",     "Baffour"
+  ],
+  "parent_portal_config": {
+    "create_for_first_n_students": 40,
+    "password_uses_admission_number": true
+  },
+  "chat_seed": {
+    "channels": [
+      {
+        "channel_type": "general",
+        "messages": [
+          { "sender_teacher_key": "tch001", "text": "Good morning team! Term 1 assessments are progressing well. Please submit class scores by Friday.", "days_ago": 4 },
+          { "sender_teacher_key": "tch008", "text": "Reminder: PTA meeting this Saturday at 9:00 AM in the main hall.", "days_ago": 3 },
+          { "sender_staff_key": "stf002", "text": "Staff meeting minutes have been shared. Kindly review before Monday.", "days_ago": 2 },
+          { "sender_teacher_key": "tch004", "text": "Class 4 picnic permission slips — please follow up with parents who haven't signed.", "days_ago": 1 }
+        ]
+      },
+      {
+        "channel_type": "teachers",
+        "messages": [
+          { "sender_teacher_key": "tch002", "text": "Math mock exam papers are ready for printing. Who can help collate for JHS 2?", "days_ago": 5 },
+          { "sender_teacher_key": "tch003", "text": "Science lab materials list uploaded. Finance approval pending.", "days_ago": 2 },
+          { "sender_teacher_key": "tch006", "text": "French oral exams scheduled for next week — timetables in shared folder.", "days_ago": 1 }
+        ]
+      },
+      {
+        "channel_type": "announcements",
+        "messages": [
+          { "sender_teacher_key": "tch001", "text": "📢 School fees for Term 1 are due. Parents may pay at the finance office or via MoMo.", "days_ago": 6 },
+          { "sender_teacher_key": "tch008", "text": "📢 Inter-house sports trials begin next Monday. Students should come in PE kits.", "days_ago": 0 }
+        ]
+      }
+    ]
+  },
+  "parent_messages_seed": [
+    { "student_index": 1, "type": "fee", "subject": "Term 1 fees receipt", "message": "Good morning. I paid GHS 630 last week via MoMo but haven't received a receipt on the parent portal. Kindly assist.", "days_ago": 5, "status": "in_review", "is_read_by_school": true },
+    { "student_index": 8, "type": "fee", "subject": "Partial payment plan", "message": "Please can we arrange to pay the remaining balance in two instalments this month?", "days_ago": 3, "status": "pending", "is_read_by_school": false },
+    { "student_index": 15, "type": "general", "subject": "Report card access", "message": "I can see Term 1 report card online — thank you. How do I print a copy for our records?", "days_ago": 2, "status": "resolved", "is_read_by_school": true },
+    { "student_index": 22, "type": "general", "subject": "Bus route change", "message": "We have moved to East Legon. Is there a shuttle option for Class 6 pupils?", "days_ago": 1, "status": "pending", "is_read_by_school": false },
+    { "student_index": 45, "type": "absence", "subject": "Attendance concern", "message": "My ward was marked absent on Tuesday but was in school. Please verify with the class teacher.", "days_ago": 0, "status": "pending", "is_read_by_school": false }
+  ],
+  "complaints_seed": [
+    { "complaint_type": "student", "filed_by_teacher_key": "tch004", "subject_student_index": 12, "title": "Repeated lateness to morning assembly", "description": "Student has arrived late 4 times this fortnight without a valid note from parent.", "severity": "low", "status": "under_review", "days_ago": 4 },
+    { "complaint_type": "student", "filed_by_teacher_key": "tch008", "subject_student_index": 28, "title": "Disruptive behaviour in class", "description": "Interrupts lessons and distracts peers during Mathematics. Counselling recommended.", "severity": "medium", "status": "pending", "days_ago": 2 },
+    { "complaint_type": "teacher", "filed_by_teacher_key": "tch002", "subject_teacher_key": "tch009", "title": "Missed scheduled duty", "description": "Assigned break duty on Wednesday was not covered. Request admin follow-up.", "severity": "medium", "status": "resolved", "is_anonymous": false, "days_ago": 6, "resolution_note": "Duty roster updated; teacher reminded of responsibilities." },
+    { "complaint_type": "teacher", "filed_by_teacher_key": "tch001", "subject_teacher_key": "tch005", "title": "Anonymous concern about punctuality", "description": "Staff member consistently arrives after morning briefing.", "severity": "low", "status": "under_review", "is_anonymous": true, "days_ago": 1 }
+  ],
+  "website_seed": {
+    "auto_enable": true,
+    "accent_color": "#0c2340",
+    "banner_image_key": "hero",
+    "welcome_image_key": "welcome_primary",
+    "welcome_image_secondary_key": "welcome_secondary",
+    "tagline": "Nurturing confident learners, grounded in character and ready for tomorrow.",
+    "welcome_text": "<p>We are a vibrant learning community in the heart of Accra — where every pupil is known by name, challenged to grow, and supported to excel academically and personally.</p>",
+    "stats": {
+      "founded_year": 2008,
+      "pass_rate": "96%"
+    },
+    "social_links": {
+      "facebook": "https://facebook.com",
+      "instagram": "https://instagram.com",
+      "email": "admissions@demo.school"
+    },
+    "home_content": {
+      "enrolment_label": "2025/2026 Admissions Open",
+      "welcome_heading": "A place where every child belongs",
+      "welcome_heading_accent": "belongs",
+      "welcome_link_text": "Discover our story",
+      "highlights_eyebrow": "Why families choose us",
+      "highlights_title": "Excellence in every classroom",
+      "cta_title": "Ready to join our school family?",
+      "cta_subtitle": "Applications for Class 4, Class 6, and JHS 2 are now open. Start your journey in minutes.",
+      "cta_button_text": "Apply for Admission"
+    },
+    "highlights": [
+      {
+        "icon": "📚",
+        "title": "Strong academics",
+        "description": "Rigorous curriculum across English, Mathematics, Science, and more — with term reports parents can access online."
+      },
+      {
+        "icon": "👩‍🏫",
+        "title": "Dedicated teachers",
+        "description": "Experienced educators who know each learner, track progress closely, and partner with families."
+      },
+      {
+        "icon": "🏆",
+        "title": "Holistic development",
+        "description": "Sports, creative arts, ICT, and leadership programmes that build confidence beyond the classroom."
+      },
+      {
+        "icon": "🤝",
+        "title": "Caring community",
+        "description": "A safe, welcoming campus where pupils feel valued, supported, and inspired to do their best."
+      }
+    ],
+    "about": {
+      "director_teacher_key": "tch008",
+      "director_image_key": "head_of_school_portrait",
+      "director_title": "Head of School",
+      "history_image_key": "history",
+      "overview_image_key": "overview",
+      "history": "<p>Founded in 2008, our school began as a small primary programme with a big vision: to offer affordable, high-quality education rooted in discipline, creativity, and service.</p><p>Over the years we have grown into a full basic school serving Primary and Junior High pupils, while keeping the close-knit community feel that families love.</p>",
+      "institution_overview": "<p>Today we serve over one hundred learners across three classes, supported by a team of qualified teachers and caring staff. Our campus blends modern classrooms with spaces for sports, arts, and collaborative learning.</p><p>We use ScholarNerve to keep parents connected — from fees and attendance to report cards and school announcements.</p>",
+      "vision": "To be a leading community school where every child discovers their potential and graduates prepared for senior high and life beyond.",
+      "mission": "To deliver excellent, values-based education through dedicated teaching, strong partnerships with parents, and a safe environment that celebrates effort and integrity.",
+      "core_values": ["Integrity", "Excellence", "Respect", "Teamwork", "Service"],
+      "director_message": "<p>Welcome to our school. It is my privilege to lead a community where children are not just taught — they are known, encouraged, and challenged to become their best selves.</p><p>We believe education is a partnership. Together with parents and staff, we create a culture of high expectations, warm support, and real joy in learning. I invite you to visit us, meet our teachers, and see what makes our school special.</p>"
+    },
+    "admission": {
+      "applications_open": true,
+      "requirements": "<h3>Admission requirements</h3><ul><li>Completed online application form</li><li>Certified copy of birth certificate or Ghana Card</li><li>Two recent passport photographs</li><li>Previous school report card (if transferring)</li><li>Immunisation record (for new entrants)</li></ul><h3>Assessment & placement</h3><p>Applicants may be invited for a short placement assessment in English and Mathematics. Final class placement is determined by age, prior records, and assessment results.</p><h3>Fees</h3><p>Term fees and payment options are shared upon acceptance. Need-based arrangements may be discussed with the finance office.</p>",
+      "programs": ["Class 4", "Class 6", "JHS 2"]
+    },
+    "contact": {
+      "primary_phone": "+233241001008",
+      "secondary_phone": "+233241002002",
+      "email": "admissions@demo.school",
+      "address": "12 Ring Road East, Accra, Ghana",
+      "working_hours": "Mon–Fri: 7:30 AM – 3:30 PM | Sat: 9:00 AM – 12:00 PM (Admissions)"
+    },
+    "gallery": [
+      { "image_key": "classroom", "category": "classrooms", "sort_order": 0 },
+      { "image_key": "reading", "category": "classrooms", "sort_order": 1 },
+      { "image_key": "science_lab", "category": "facilities", "sort_order": 2 },
+      { "image_key": "library", "category": "facilities", "sort_order": 3 },
+      { "image_key": "ict", "category": "facilities", "sort_order": 4 },
+      { "image_key": "arts", "category": "activities", "sort_order": 5 },
+      { "image_key": "sports", "category": "sports", "sort_order": 6 },
+      { "image_key": "assembly", "category": "activities", "sort_order": 7 },
+      { "image_key": "playground", "category": "activities", "sort_order": 8 },
+      { "image_key": "canteen", "category": "facilities", "sort_order": 9 },
+      { "image_key": "graduation", "category": "events", "sort_order": 10 },
+      { "image_key": "overview", "category": "facilities", "sort_order": 11 }
+    ],
+    "events": [
+      {
+        "title": "Open Day & Campus Tour",
+        "description": "Meet our teachers, tour classrooms, and learn about our programmes. All prospective families welcome.",
+        "days_from_now": 10,
+        "event_time": "09:00",
+        "location": "Main Campus Hall",
+        "cover_image_key": "event_open_day",
+        "sort_order": 0
+      },
+      {
+        "title": "Inter-House Sports Day",
+        "description": "Athletics, football, and relay races as our four houses compete for the championship trophy.",
+        "days_from_now": 21,
+        "event_time": "08:00",
+        "location": "School Sports Field",
+        "cover_image_key": "event_sports",
+        "sort_order": 1
+      },
+      {
+        "title": "PTA General Meeting",
+        "description": "Term update from leadership, finance briefing, and Q&A with class representatives.",
+        "days_from_now": 28,
+        "event_time": "09:30",
+        "location": "Main Hall",
+        "cover_image_key": "event_pta",
+        "sort_order": 2
+      },
+      {
+        "title": "Culture & Arts Showcase",
+        "description": "Music, dance, drama, and creative arts displays from pupils across all classes.",
+        "days_from_now": 45,
+        "event_time": "14:00",
+        "location": "School Auditorium",
+        "cover_image_key": "event_culture",
+        "sort_order": 3
+      }
+    ],
+    "leadership": [
+      {
+        "teacher_key": "tch008",
+        "position": "headmaster",
+        "bio": "With over fifteen years in education, I am committed to building a school where every child feels seen, supported, and inspired to excel.",
+        "sort_order": 0
+      },
+      {
+        "staff_key": "stf002",
+        "position": "administrator",
+        "bio": "Ensuring smooth day-to-day operations and a welcoming front office for pupils, parents, and visitors.",
+        "sort_order": 1
+      },
+      {
+        "staff_key": "stf001",
+        "position": "finance_officer",
+        "bio": "Transparent fee management and friendly support for families navigating payments and receipts.",
+        "sort_order": 2
+      }
+    ],
+    "teachers": [
+      { "teacher_key": "tch001", "position": "Senior Teacher", "subjects": ["English Language"], "bio": "Passionate about literacy and helping pupils find their voice through reading and writing.", "sort_order": 3 },
+      { "teacher_key": "tch002", "position": "Teacher", "subjects": ["Mathematics"], "bio": "Making numbers make sense — from foundational skills to exam readiness.", "sort_order": 4 },
+      { "teacher_key": "tch004", "position": "Form Teacher", "subjects": ["Social Studies"], "bio": "Class 4 form teacher guiding pupils with care, structure, and high expectations.", "sort_order": 5 },
+      { "teacher_key": "tch006", "position": "Senior Teacher", "subjects": ["French"], "bio": "Bringing language and culture alive through conversation, song, and project work.", "sort_order": 6 },
+      { "teacher_key": "tch003", "position": "Teacher", "subjects": ["Integrated Science"], "bio": "Hands-on experiments and inquiry that spark curiosity about the world.", "sort_order": 7 },
+      { "teacher_key": "tch007", "position": "Teacher", "subjects": ["ICT"], "bio": "Equipping learners with digital skills for school projects and the future.", "sort_order": 8 }
+    ]
+  }
+}

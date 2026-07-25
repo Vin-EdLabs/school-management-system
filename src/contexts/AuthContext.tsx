@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { apiService } from '../services/api';
 import { initInactivityTracker, isPWAInstalled, stopInactivityTracker } from '../utils/inactivityTracker';
 import { clearActiveTermWelcomeDismiss } from '../components/onboarding/ActiveTermWelcomeModal';
+import { clearDemoWelcomeDismiss } from '../components/onboarding/DemoWelcomeModal';
 import { startSessionPulse, stopSessionPulse, endSessionPulse } from '../utils/sessionPulse';
 import { saveStaffImpersonationToken, tokenHasImpersonator, isStaffImpersonationActive } from '../utils/impersonationHelpers';
 import { isSchoolTenantView, shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
@@ -273,9 +274,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const loginTenantId = Number(response.user.tenantId);
         if (Number.isFinite(loginTenantId)) {
           clearActiveTermWelcomeDismiss(loginTenantId);
+          clearDemoWelcomeDismiss(loginTenantId);
         } else if (response.user.role === 'super-admin' && tenantId != null && !isNaN(tenantId)) {
           apiService.setTenantContext(Number(tenantId));
           localStorage.setItem('currentSchoolId', String(tenantId));
+          clearDemoWelcomeDismiss(Number(tenantId));
         }
 
         try {

@@ -9,7 +9,7 @@ import { sendPushToStudentParents } from '../services/webPushService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
 import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateClassReportReadyForRelease, resolveArchiveSignatures, buildTermReportData } from '../services/reportCardArchiveService.js';
 import { assertMainClassTeacher, isMainClassTeacher } from '../services/classTeacherAccess.js';
-import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
+import { getSchoolActiveTermYear, assignmentTermWhereClause } from '../services/gradesTermContext.js';
 import {
   attachGradeAccessContext,
   assertTeacherOwnsAssessment,
@@ -50,7 +50,7 @@ router.get('/assignments', async (req: AuthRequest, res) => {
 
     await attachGradeAccessContext(req);
 
-    const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+    const { term, academicYear, fullTermLabel } = await getSchoolActiveTermYear(tenantId);
     if (!term || !academicYear) {
       return res.status(400).json({ error: 'No active academic term is set for this school' });
     }
@@ -60,8 +60,8 @@ router.get('/assignments', async (req: AuthRequest, res) => {
                       ga.created_at, ga.term, ga.academic_year, ga.created_by, gcc.name AS component_name
                FROM grade_assignments ga
                LEFT JOIN grade_config_components gcc ON gcc.id = ga.component_id
-               WHERE ga.tenant_id = $1 AND ga.class_id = $2 AND ga.term = $3 AND ga.academic_year = $4`;
-    const params: any[] = [tenantId, classId, term, academicYear];
+               WHERE ga.tenant_id = $1 AND ga.class_id = $2 ${assignmentTermWhereClause('ga', '$3', '$4', '$5')}`;
+    const params: any[] = [tenantId, classId, term, academicYear, fullTermLabel];
 
     if (subject) {
       params.push(subject);
@@ -69,8 +69,16 @@ router.get('/assignments', async (req: AuthRequest, res) => {
     }
 
     if (req.gradeAccessRole === 'teacher') {
-      params.push(req.user!.id);
-      sql += ` AND ga.created_by = $${params.length}`;
+      const classIdNum = parseInt(String(classId), 10);
+      const pairs = req.allowedSubjectClassPairs || [];
+      const allowedSubjectIds = pairs
+        .filter((p) => p.classId === classIdNum)
+        .map((p) => p.subjectId);
+      if (allowedSubjectIds.length === 0) {
+        return res.json([]);
+      }
+      params.push(allowedSubjectIds);
+      sql += ` AND ga.subject_id = ANY($${params.length})`;
     }
 
     sql += ' ORDER BY subject, assignment_type, name';
@@ -92,18 +100,26 @@ router.get('/subjects', async (req: AuthRequest, res) => {
 
     await attachGradeAccessContext(req);
 
-    const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+    const { term, academicYear, fullTermLabel } = await getSchoolActiveTermYear(tenantId);
     if (!term || !academicYear) {
       return res.json([]);
     }
 
     let sql = `SELECT DISTINCT subject FROM grade_assignments
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND academic_year = $4`;
-    const params: any[] = [tenantId, classId, term, academicYear];
+       WHERE tenant_id = $1 AND class_id = $2 ${assignmentTermWhereClause('grade_assignments', '$3', '$4', '$5')}`;
+    const params: any[] = [tenantId, classId, term, academicYear, fullTermLabel];
 
     if (req.gradeAccessRole === 'teacher') {
-      params.push(req.user!.id);
-      sql += ` AND created_by = $${params.length}`;
+      const classIdNum = parseInt(String(classId), 10);
+      const pairs = req.allowedSubjectClassPairs || [];
+      const allowedSubjectIds = pairs
+        .filter((p) => p.classId === classIdNum)
+        .map((p) => p.subjectId);
+      if (allowedSubjectIds.length === 0) {
+        return res.json([]);
+      }
+      params.push(allowedSubjectIds);
+      sql += ` AND subject_id = ANY($${params.length})`;
     }
 
     sql += ' ORDER BY subject';
@@ -285,7 +301,7 @@ router.get('/', async (req: AuthRequest, res) => {
         [tenantId, assignmentId]
       );
     } else if (classId) {
-      const { term, academicYear } = await getSchoolActiveTermYear(tenantId);
+      const { term, academicYear, fullTermLabel } = await getSchoolActiveTermYear(tenantId);
       if (!term || !academicYear) {
         return res.json([]);
       }
@@ -295,13 +311,21 @@ router.get('/', async (req: AuthRequest, res) => {
          JOIN students s ON g.student_id = s.id AND s.tenant_id = g.tenant_id
          JOIN grade_assignments a ON g.assignment_id = a.id
          LEFT JOIN users u ON g.graded_by = u.id
-         WHERE g.tenant_id = $1 AND a.class_id = $2 AND a.term = $3 AND a.academic_year = $4
+         WHERE g.tenant_id = $1 AND a.class_id = $2 ${assignmentTermWhereClause('a', '$3', '$4', '$5')}
            AND COALESCE(s.enrollment_status, 'active') = 'active'`;
-      const params: any[] = [tenantId, classId, term, academicYear];
+      const params: any[] = [tenantId, classId, term, academicYear, fullTermLabel];
 
       if (req.gradeAccessRole === 'teacher') {
-        params.push(req.user!.id);
-        sql += ` AND a.created_by = $${params.length}`;
+        const classIdNum = parseInt(String(classId), 10);
+        const pairs = req.allowedSubjectClassPairs || [];
+        const allowedSubjectIds = pairs
+          .filter((p) => p.classId === classIdNum)
+          .map((p) => p.subjectId);
+        if (allowedSubjectIds.length === 0) {
+          return res.json([]);
+        }
+        params.push(allowedSubjectIds);
+        sql += ` AND a.subject_id = ANY($${params.length})`;
       }
 
       sql += ' ORDER BY a.subject, a.name, s.first_name, s.last_name';
@@ -597,8 +621,8 @@ router.get('/term-report', async (req: AuthRequest, res) => {
       `SELECT is_released, released_at, u.username AS released_by_name
        FROM term_report_releases r
        LEFT JOIN users u ON r.released_by = u.id
-       WHERE r.tenant_id = $1 AND r.class_id = $2 AND r.term = $3`,
-      [tenantId, classId, built.currentTerm]
+       WHERE r.tenant_id = $1 AND r.class_id = $2 AND (r.term = $3 OR r.term = $4)`,
+      [tenantId, classId, built.currentTerm, `${built.currentTerm} ${built.currentYear}`.trim()]
     );
     const releaseInfo = releaseRes.rows[0] || null;
 

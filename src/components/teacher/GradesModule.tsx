@@ -488,7 +488,17 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       if (subjects.length && !selectedAssignmentId) {
         setSelectedAssignmentId(String(sorted[0].id));
       }
-    } catch { setAssignments([]); }
+    } catch (e: unknown) {
+      setAssignments([]);
+      const message = e instanceof Error ? e.message : 'Could not load assessments';
+      toast({
+        title: 'Could not load assessments',
+        description: message.includes('active academic term')
+          ? 'Set the current term and year in School Settings, or reload demo data from Super Admin.'
+          : message,
+        variant: 'destructive',
+      });
+    }
   }, [selectedClassId]);
 
   const loadGrades = useCallback(async () => {

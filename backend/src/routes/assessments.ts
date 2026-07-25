@@ -9,7 +9,7 @@ import {
   isAdminGradeRole,
   teacherCanAccessSubjectClass,
 } from '../middleware/requireGradeAccess.js';
-import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
+import { getSchoolActiveTermYear, assignmentTermWhereClause } from '../services/gradesTermContext.js';
 import { writeAuditLog } from '../services/auditService.js';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ attachWritableTermGuard(router);
 async function resolveTermContext(
   tenantId: number,
   termIdRaw?: unknown
-): Promise<{ term: string; academicYear: string; academicTermId: number | null }> {
+): Promise<{ term: string; academicYear: string; academicTermId: number | null; fullTermLabel: string }> {
   if (termIdRaw != null && String(termIdRaw).trim() !== '') {
     const termId = parseInt(String(termIdRaw), 10);
     const res = await query(
@@ -32,10 +32,13 @@ async function resolveTermContext(
     if (res.rows.length === 0) {
       throw Object.assign(new Error('Academic term not found'), { status: 404 });
     }
+    const term = String(res.rows[0].term_name);
+    const academicYear = String(res.rows[0].year);
     return {
-      term: String(res.rows[0].term_name),
-      academicYear: String(res.rows[0].year),
+      term,
+      academicYear,
       academicTermId: termId,
+      fullTermLabel: `${term} ${academicYear}`.trim(),
     };
   }
   const active = await getSchoolActiveTermYear(tenantId);
@@ -50,6 +53,7 @@ async function resolveTermContext(
     term: active.term,
     academicYear: active.academicYear,
     academicTermId: at.rows[0]?.id != null ? Number(at.rows[0].id) : null,
+    fullTermLabel: active.fullTermLabel,
   };
 }
 
@@ -106,8 +110,8 @@ router.get('/', async (req: AuthRequest, res) => {
       FROM grade_assignments ga
       LEFT JOIN grade_config_components gcc ON gcc.id = ga.component_id
       WHERE ga.tenant_id = $1 AND ga.class_id = $2
-        AND ga.term = $3 AND ga.academic_year = $4`;
-    const params: unknown[] = [tenantId, classId, termCtx.term, termCtx.academicYear];
+        ${assignmentTermWhereClause('ga', '$3', '$4', '$5')}`;
+    const params: unknown[] = [tenantId, classId, termCtx.term, termCtx.academicYear, termCtx.fullTermLabel];
 
     if (subjectId != null && !Number.isNaN(subjectId)) {
       params.push(subjectId);
@@ -122,8 +126,6 @@ router.get('/', async (req: AuthRequest, res) => {
       }
       params.push(allowedSubjectIds);
       sql += ` AND ga.subject_id = ANY($${params.length})`;
-      params.push(req.user!.id);
-      sql += ` AND ga.created_by = $${params.length}`;
     }
 
     sql += ' ORDER BY ga.is_exam, gcc.display_order NULLS LAST, ga.subject, ga.name';

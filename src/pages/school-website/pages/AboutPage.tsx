@@ -120,12 +120,13 @@ export default function AboutPage() {
           <div className="sw-container grid items-center gap-14 lg:grid-cols-[340px,1fr]">
             {directorPhoto && (
               <Reveal>
-                <div className="relative mx-auto max-w-[340px]">
+                <div className="relative mx-auto w-full max-w-[340px]">
                   <img
                     src={directorPhoto}
                     alt={(about.director_name as string) || 'Head of School'}
-                    loading="lazy"
-                    className="w-full rounded-xl object-cover shadow-lg"
+                    loading="eager"
+                    decoding="async"
+                    className="relative z-[1] w-full rounded-xl object-cover object-top shadow-lg"
                     style={{ aspectRatio: '4 / 5' }}
                   />
                   <div

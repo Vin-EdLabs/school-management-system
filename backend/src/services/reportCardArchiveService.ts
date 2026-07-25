@@ -1,6 +1,6 @@
 import { query } from '../db/connection.js';
 import { resolveSchoolDisplayName } from './schoolBrandingService.js';
-import { getSchoolActiveTermYear } from './gradesTermContext.js';
+import { getSchoolActiveTermYear, normalizeTermOnly, buildFullTermLabel } from './gradesTermContext.js';
 import { loadClassTermRemarks } from './termReportRemarksService.js';
 import { buildConfigurableTermReport } from './termReportCalculatorService.js';
 import { loadGradeConfigForTenant, serializeGradeConfigSnapshot } from './gradeConfigService.js';
@@ -141,8 +141,10 @@ export async function buildTermReportData(
      FROM school_settings WHERE tenant_id = $1`,
     [tenantId]
   );
-  const currentTerm = termOverride || settingsRes.rows[0]?.current_term || active.term || '';
+  const rawTerm = termOverride || settingsRes.rows[0]?.current_term || active.term || '';
   const currentYear = yearOverride || settingsRes.rows[0]?.current_year || active.academicYear || '';
+  const currentTerm = normalizeTermOnly(String(rawTerm), String(currentYear)) || String(rawTerm).trim();
+  const fullTermLabel = buildFullTermLabel(currentTerm, currentYear);
   const schoolName = await resolveSchoolDisplayName(tenantId);
   const schoolLogoUrl = settingsRes.rows[0]?.logo_url || null;
   const gradeScale = settingsRes.rows[0]?.grade_scale || [
@@ -176,8 +178,8 @@ export async function buildTermReportData(
 
   const releaseRes = await query(
     `SELECT released_at FROM term_report_releases
-     WHERE tenant_id = $1 AND class_id = $2 AND term = $3 AND is_released = true`,
-    [tenantId, classId, currentTerm]
+     WHERE tenant_id = $1 AND class_id = $2 AND (term = $3 OR term = $4) AND is_released = true`,
+    [tenantId, classId, currentTerm, fullTermLabel]
   );
 
   const classDaysRes = await query(

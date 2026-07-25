@@ -414,7 +414,10 @@ const SuperAdminDashboard = () => {
     };
   } | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showDemoDialog, setShowDemoDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const [restoreUnderstand, setRestoreUnderstand] = useState(false);
+  const [demoUnderstand, setDemoUnderstand] = useState(false);
   const [resetSchoolNameConfirm, setResetSchoolNameConfirm] = useState('');
   const [selectedSchoolDetail, setSelectedSchoolDetail] = useState<School | null>(null);
   const [schoolOverview, setSchoolOverview] = useState<{
@@ -1262,19 +1265,72 @@ const SuperAdminDashboard = () => {
     }
     setDataActionLoading(true);
     try {
-      await apiService.post(
+      const result = await apiService.post<{
+        success?: boolean;
+        message?: string;
+        preservedAdmin?: { name: string; email: string } | null;
+      }>(
         `/super-admin/tenants/${target.id}/reset`,
         { confirmation: `RESET_TENANT_${target.id}` },
         { skipTenant: true }
       );
       toast({
         title: 'School data reset',
-        description: `${target.name} operational data has been cleared. Refresh the school dashboard to see changes.`,
+        description: result.preservedAdmin
+          ? `${target.name} is clean. All demo data removed. Primary admin preserved: ${result.preservedAdmin.name}. Refresh the school dashboard.`
+          : `${target.name} operational data has been cleared. Refresh the school dashboard to see changes.`,
       });
       setResetSchoolNameConfirm('');
+      setShowResetDialog(false);
       await loadSchools();
     } catch (err: any) {
       toast({ title: 'Reset failed', description: err?.message || 'Could not reset school data', variant: 'destructive' });
+    } finally {
+      setDataActionLoading(false);
+    }
+  };
+
+  const handleLoadDemoData = async () => {
+    const target = selectedDataSchool;
+    if (!target) {
+      toast({ title: 'Select a school first', variant: 'destructive' });
+      return;
+    }
+    if (!demoUnderstand) {
+      toast({
+        title: 'Confirmation required',
+        description: 'Check the box to confirm you want to replace this school\'s data with demo content.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDataActionLoading(true);
+    try {
+      const result = await apiService.post<{
+        success: boolean;
+        message: string;
+        summary?: {
+          students: number;
+          teachers: number;
+          otherStaff: number;
+          payments: { full_paid: number; partial: number; unpaid: number; overpaid: number };
+        };
+      }>(
+        `/super-admin/tenants/${target.id}/restore`,
+        { type: 'demo', tenant_id: target.id },
+        { skipTenant: true }
+      );
+      const s = result.summary;
+      toast({
+        title: 'Demo data loaded',
+        description: s
+          ? `${target.name}: ${s.students} students, ${s.teachers} teachers, ${s.otherStaff} staff. Fees — ${s.payments.full_paid} paid, ${s.payments.partial} partial, ${s.payments.unpaid} unpaid.`
+          : result.message || `${target.name} demo data is ready.`,
+      });
+      setShowDemoDialog(false);
+      setDemoUnderstand(false);
+    } catch (err: any) {
+      toast({ title: 'Demo load failed', description: err?.message || 'Could not load demo data', variant: 'destructive' });
     } finally {
       setDataActionLoading(false);
     }
@@ -2650,7 +2706,7 @@ const SuperAdminDashboard = () => {
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
                   <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base font-black font-outfit">
@@ -2773,6 +2829,81 @@ const SuperAdminDashboard = () => {
                     </DialogContent>
                   </Dialog>
 
+                  <Card className="border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base font-black font-outfit text-blue-700 dark:text-blue-300">
+                        <Sparkles className="w-4 h-4" />
+                        Load Demo Data
+                      </CardTitle>
+                      <p className="text-xs text-blue-600/80 dark:text-blue-300/80">
+                        Loads demo into the server database for the selected school. Anyone who opens that school&apos;s login link (local or production) will see the same data — parents, teachers, and admins included.
+                      </p>
+                    </CardHeader>
+                    <CardContent>
+                      <Button
+                        onClick={() => setShowDemoDialog(true)}
+                        disabled={!selectedDataSchool || dataActionLoading}
+                        className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                        Load Demo Data
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Dialog open={showDemoDialog} onOpenChange={(open) => {
+                    setShowDemoDialog(open);
+                    if (!open) setDemoUnderstand(false);
+                  }}>
+                    <DialogContent className={formDialogContentClass}>
+                      <DialogHeader className={detailDialogHeaderClass}>
+                        <DialogTitle className={dialogTitleClass}>Load Demo Data</DialogTitle>
+                        <DialogDescription className="text-sm">
+                          This replaces all operational data for {selectedDataSchool?.name} with demo seed content. Data is stored in the database (not on your computer only). A safety backup is saved on the server first. The primary admin account is preserved.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogBody className={`${detailDialogBodyClass} space-y-3 text-xs`}>
+                        <div className="rounded-xl border border-blue-100/80 bg-blue-50/40 p-3 dark:border-blue-900/40 dark:bg-blue-950/20 text-slate-600 dark:text-slate-300">
+                          <p className="font-bold mb-1">Includes</p>
+                          <ul className="list-disc pl-4 space-y-1">
+                            <li>3 classes, 8 subjects, 100 students (2024/2025 Term 1 active)</li>
+                            <li>10 teachers + 5 staff with login password Demo@1234</li>
+                            <li>Fee structure GHS 630/student, payments in last 30 days</li>
+                            <li>Cash at Hand, GCB Bank, MTN MoMo & Telecel accounts with balances</li>
+                            <li>12 Paystack online payments + income & expenses for finance reports</li>
+                            <li>Finance & academic reports (admissions, leavers, graduations)</li>
+                            <li>Class ranks computed from grade configuration (50% class / 50% exam)</li>
+                            <li>Weekly timetables + exam schedule for every class</li>
+                            <li>Profile photos for students, teachers, and staff</li>
+                            <li>On production: share your school URL — visitors see this demo too</li>
+                          </ul>
+                        </div>
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={demoUnderstand}
+                            onCheckedChange={(v) => setDemoUnderstand(v === true)}
+                          />
+                          <span className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                            I understand this will replace all current operational data for this school with demo content.
+                          </span>
+                        </label>
+                      </DialogBody>
+                      <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                        <Button variant="outline" onClick={() => setShowDemoDialog(false)} className="rounded-xl">
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => void handleLoadDemoData()}
+                          disabled={dataActionLoading || !demoUnderstand}
+                          className="rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                          Load Demo Data
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
                   <Card className="border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 shadow-sm">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base font-black font-outfit text-red-700 dark:text-red-300">
@@ -2780,57 +2911,90 @@ const SuperAdminDashboard = () => {
                         Reset School Data
                       </CardTitle>
                       <p className="text-xs text-red-600/80 dark:text-red-300/80">
-                        Clears operational records for the selected school. Users and school identity remain.
+                        Wipes all demo/operational data for the selected school: students, staff, fees, grades, attendance, clock-ins, chat, complaints, messages, and demo user accounts. Only the primary admin login is kept.
                       </p>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <p className="text-xs text-red-600/90 dark:text-red-300/90">
-                        This will permanently delete ALL data for{' '}
+                        This will permanently delete ALL operational data for{' '}
                         <span className="font-semibold">{selectedDataSchool?.name || 'the selected school'}</span>.
-                        Type the school name below to confirm.
-                      </p>
-                      {selectedDataSchool && (
-                        <p className="rounded-lg border border-red-200/80 bg-white/80 px-3 py-2 text-xs text-slate-700 dark:border-red-900/50 dark:bg-slate-950/60 dark:text-slate-200">
-                          Type exactly:{' '}
-                          <span className="font-mono font-semibold text-red-700 dark:text-red-300">
-                            {schoolResetDisplayName(selectedDataSchool)}
-                          </span>
-                        </p>
-                      )}
-                      <Input
-                        value={resetSchoolNameConfirm}
-                        onChange={(e) => setResetSchoolNameConfirm(e.target.value)}
-                        placeholder={selectedDataSchool?.name || 'School name'}
-                        autoComplete="off"
-                        spellCheck={false}
-                        className="h-10 rounded-xl bg-white dark:bg-slate-950"
-                      />
-                      {resetSchoolNameConfirm.trim().length > 0 && (
-                        <p
-                          className={cn(
-                            'text-xs font-medium',
-                            resetSchoolNameMatches ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
-                          )}
-                        >
-                          {resetSchoolNameMatches
-                            ? 'School name matches — you can reset now.'
-                            : 'Name does not match yet. Check spelling and spacing.'}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground font-mono">
-                        Code: RESET_TENANT_{selectedDataSchool?.id}
+                        You must type the school name to confirm in the next step.
                       </p>
                       <Button
                         variant="destructive"
-                        onClick={() => void handleSuperAdminResetData()}
-                        disabled={!selectedDataSchool || dataActionLoading || !resetSchoolNameMatches}
+                        onClick={() => {
+                          setResetSchoolNameConfirm('');
+                          setShowResetDialog(true);
+                        }}
+                        disabled={!selectedDataSchool || dataActionLoading}
                         className="w-full h-10 rounded-xl font-bold text-xs uppercase tracking-widest"
                       >
-                        {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                        <Trash2 className="w-4 h-4 mr-2" />
                         Reset Selected School
                       </Button>
                     </CardContent>
                   </Card>
+
+                  <Dialog open={showResetDialog} onOpenChange={(open) => {
+                    setShowResetDialog(open);
+                    if (!open) setResetSchoolNameConfirm('');
+                  }}>
+                    <DialogContent className={formDialogContentClass}>
+                      <DialogHeader className={detailDialogHeaderClass}>
+                        <DialogTitle className="text-red-700 dark:text-red-300">Reset School Data</DialogTitle>
+                        <DialogDescription className="text-sm">
+                          This permanently deletes all operational data for {selectedDataSchool?.name}: students, teachers, staff users, fees, payments, grades, report cards, attendance, staff clock-in, parent portal, chat, and complaints. The primary admin account is preserved. A safety backup is saved on the server first.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogBody className={`${detailDialogBodyClass} space-y-3 text-xs`}>
+                        {selectedDataSchool && (
+                          <p className="rounded-lg border border-red-200/80 bg-white/80 px-3 py-2 text-slate-700 dark:border-red-900/50 dark:bg-slate-950/60 dark:text-slate-200">
+                            Type exactly:{' '}
+                            <span className="font-mono font-semibold text-red-700 dark:text-red-300">
+                              {schoolResetDisplayName(selectedDataSchool)}
+                            </span>
+                          </p>
+                        )}
+                        <Input
+                          value={resetSchoolNameConfirm}
+                          onChange={(e) => setResetSchoolNameConfirm(e.target.value)}
+                          placeholder={selectedDataSchool?.name || 'School name'}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="h-10 rounded-xl bg-white dark:bg-slate-950"
+                        />
+                        {resetSchoolNameConfirm.trim().length > 0 && (
+                          <p
+                            className={cn(
+                              'text-xs font-medium',
+                              resetSchoolNameMatches ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                            )}
+                          >
+                            {resetSchoolNameMatches
+                              ? 'School name matches — you can reset now.'
+                              : 'Name does not match yet. Check spelling and spacing.'}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          Code: RESET_TENANT_{selectedDataSchool?.id}
+                        </p>
+                      </DialogBody>
+                      <DialogFooter className={`${detailDialogFooterClass} gap-2`}>
+                        <Button variant="outline" onClick={() => setShowResetDialog(false)} className="rounded-xl">
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => void handleSuperAdminResetData()}
+                          disabled={!selectedDataSchool || dataActionLoading || !resetSchoolNameMatches}
+                          className="rounded-xl font-bold"
+                        >
+                          {dataActionLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                          Confirm Reset
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
             )}

@@ -226,6 +226,9 @@ export async function getPublicWebsiteBundle(tenantId: number) {
     return { enabled: false as const, tenant: { name: tenant.name, slug: tenant.slug }, comingSoon: true as const };
   }
 
+  const { ensureDemoWebsiteGalleryIfEmpty } = await import('../demo/demoWebsiteSeed.js');
+  await ensureDemoWebsiteGalleryIfEmpty(tenantId).catch(() => undefined);
+
   const [aboutRes, admissionRes, careersRes, contactRes, settingsRes, galleryRes, eventsRes, classesRes, teamRes, alumniRes] = await Promise.all([
     query(`SELECT * FROM school_website_about WHERE tenant_id = $1`, [tenantId]),
     query(`SELECT * FROM school_website_admission_config WHERE tenant_id = $1`, [tenantId]),

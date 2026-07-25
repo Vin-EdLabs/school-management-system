@@ -53,6 +53,20 @@ const SPECIAL_TABLE_QUERIES: Record<
       WHERE participant_a IN (SELECT id FROM users WHERE tenant_id = $1)
          OR participant_b IN (SELECT id FROM users WHERE tenant_id = $1)`,
   },
+  complaint_status_history: {
+    select: `SELECT h.* FROM complaint_status_history h
+      INNER JOIN complaints c ON c.id = h.complaint_id
+      WHERE c.tenant_id = $1 ORDER BY h.id ASC`,
+    delete: `DELETE FROM complaint_status_history
+      WHERE complaint_id IN (SELECT id FROM complaints WHERE tenant_id = $1)`,
+  },
+  chat_channel_members: {
+    select: `SELECT m.* FROM chat_channel_members m
+      INNER JOIN chat_channels c ON c.id = m.channel_id
+      WHERE c.tenant_id = $1 ORDER BY m.id ASC`,
+    delete: `DELETE FROM chat_channel_members
+      WHERE channel_id IN (SELECT id FROM chat_channels WHERE tenant_id = $1)`,
+  },
 };
 
 /** Delete children before parents (FK-safe). */
@@ -71,13 +85,30 @@ export const TENANT_CLEAR_ORDER = [
   'staff_user_push_subscriptions',
   'parent_messages',
   'receipt_corrections',
+  'complaint_status_history',
+  'complaints',
+  'class_timetable',
+  'exam_timetable',
+  'periods',
+  'staff_attendance',
+  'student_check_ins',
+  'school_attendance_settings',
+  'chat_messages',
+  'chat_channel_members',
+  'dm_conversations',
+  'chat_channels',
+  'generated_id_cards',
+  'term_closing_balances',
+  'term_fee_structure_archives',
   'grade_audit_log',
+  'report_card_archive',
   'grade_assignments',
   'student_grades',
   'term_report_comments',
   'term_report_releases',
   'student_ledger',
   'student_credits',
+  'student_charges',
   'student_arrears',
   'student_arrears_balance',
   'term_arrears',
@@ -98,6 +129,7 @@ export const TENANT_CLEAR_ORDER = [
   'salary_payments',
   'teacher_appointment_letters',
   'class_teachers',
+  'teacher_subject_classes',
   'parent_portal_accounts',
   'parent_portal_family_groups',
   'support_messages',
@@ -108,6 +140,7 @@ export const TENANT_CLEAR_ORDER = [
   'audit_logs',
   'system_errors',
   'term_snapshots',
+  'fee_structure_items',
   'ledger_fee_structures',
   'fee_structures',
   'payment_accounts',
@@ -136,6 +169,8 @@ export type ClearTenantDataOptions = {
   keepTenant?: boolean;
   /** When false (restore), users and school_settings are wiped before re-import. Default true for reset. */
   preserveAccounts?: boolean;
+  /** When set, delete all tenant users except this id (primary admin preservation on reset). */
+  preserveUserId?: number;
 };
 
 /** Columns that reference users(id); nulled on restore when the user id is missing from backup. */
@@ -511,9 +546,21 @@ export async function verifyTenantOperationalDataCleared(
   const checks = [
     ['students', 'SELECT COUNT(*)::int AS n FROM students WHERE tenant_id = $1'],
     ['teachers', 'SELECT COUNT(*)::int AS n FROM teachers WHERE tenant_id = $1'],
+    ['other_staff', 'SELECT COUNT(*)::int AS n FROM other_staff WHERE tenant_id = $1'],
     ['payments', 'SELECT COUNT(*)::int AS n FROM payments WHERE tenant_id = $1'],
     ['classes', 'SELECT COUNT(*)::int AS n FROM classes WHERE tenant_id = $1'],
     ['student_ledger', 'SELECT COUNT(*)::int AS n FROM student_ledger WHERE tenant_id = $1'],
+    ['attendance', 'SELECT COUNT(*)::int AS n FROM attendance WHERE tenant_id = $1'],
+    ['staff_attendance', 'SELECT COUNT(*)::int AS n FROM staff_attendance WHERE tenant_id = $1'],
+    ['complaints', 'SELECT COUNT(*)::int AS n FROM complaints WHERE tenant_id = $1'],
+    ['chat_messages', 'SELECT COUNT(*)::int AS n FROM chat_messages WHERE tenant_id = $1'],
+    ['parent_messages', 'SELECT COUNT(*)::int AS n FROM parent_messages WHERE tenant_id = $1'],
+    ['parent_portal_accounts', 'SELECT COUNT(*)::int AS n FROM parent_portal_accounts WHERE tenant_id = $1'],
+    ['class_timetable', 'SELECT COUNT(*)::int AS n FROM class_timetable WHERE tenant_id = $1'],
+    ['exam_timetable', 'SELECT COUNT(*)::int AS n FROM exam_timetable WHERE tenant_id = $1'],
+    ['periods', 'SELECT COUNT(*)::int AS n FROM periods WHERE tenant_id = $1'],
+    ['grade_assignments', 'SELECT COUNT(*)::int AS n FROM grade_assignments WHERE tenant_id = $1'],
+    ['salary_payments', 'SELECT COUNT(*)::int AS n FROM salary_payments WHERE tenant_id = $1'],
   ] as const;
 
   const remaining: Record<string, number> = {};
@@ -540,14 +587,20 @@ export async function clearTenantData(
 
   for (const table of ordered) {
     if (table === 'tenants') continue;
-    if (keepTenant && preserveAccounts && PRESERVE_WHEN_KEEP_TENANT.has(table)) continue;
+    if (keepTenant && preserveAccounts && !opts?.preserveUserId && PRESERVE_WHEN_KEEP_TENANT.has(table)) continue;
 
     const exists = await tableExists(client, table);
     if (!exists) continue;
 
     await client.query('SAVEPOINT tenant_clear_step');
     try {
-      await deleteFromTable(client, tenantId, table);
+      if (table === 'users' && keepTenant && opts?.preserveUserId) {
+        await client.query(`DELETE FROM users WHERE tenant_id = $1 AND id <> $2`, [tenantId, opts.preserveUserId]);
+      } else if (table === 'school_settings' && keepTenant && preserveAccounts && !opts?.preserveUserId) {
+        /* preserved — reset defaults below */
+      } else {
+        await deleteFromTable(client, tenantId, table);
+      }
       await client.query('RELEASE SAVEPOINT tenant_clear_step');
       deletedTables++;
     } catch (err: unknown) {
@@ -558,8 +611,24 @@ export async function clearTenantData(
     }
   }
 
-  if (keepTenant && preserveAccounts) {
+  if (keepTenant && (preserveAccounts || opts?.preserveUserId)) {
     await resetSchoolSettingsDefaults(client, tenantId);
+  }
+
+  if (keepTenant) {
+    await client.query(`UPDATE tenants SET is_demo = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [
+      tenantId,
+    ]);
+  }
+
+  if (keepTenant && opts?.preserveUserId) {
+    const check = await client.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2`, [
+      opts.preserveUserId,
+      tenantId,
+    ]);
+    if (check.rows.length === 0) {
+      throw new Error(`Primary admin user #${opts.preserveUserId} was not preserved after reset`);
+    }
   }
 
   if (failures.length > 0) {
@@ -814,7 +883,7 @@ export function getSafetyBackupDir(): string {
 
 export async function writeSafetyBackup(
   tenantId: number,
-  label: 'pre-restore' | 'pre-reset'
+  label: 'pre-restore' | 'pre-reset' | 'pre-demo-import'
 ): Promise<string> {
   const backup = await exportFullTenantBackup(tenantId, 'system-safety-backup');
   const dir = getSafetyBackupDir();

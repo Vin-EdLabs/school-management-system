@@ -10,6 +10,7 @@ interface School {
   logo_url?: string;
   primary_color?: string;
   secondary_color?: string;
+  is_demo?: boolean;
 }
 
 interface SchoolContextType {

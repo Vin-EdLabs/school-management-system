@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { resolveWebsiteImageUrl } from '@/services/schoolWebsiteService';
+import React from 'react';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
 import { PageHero, Reveal, SectionHeading } from '../SchoolWebsiteLayout';
+import { TeamMemberPhoto, resolveTeamPhotoUrl } from '../components/TeamMemberPhoto';
 
 type TeamMember = {
   id: number;
@@ -36,7 +36,7 @@ function TeamMemberBlock({
   schoolName: string;
   reverse?: boolean;
 }) {
-  const photo = resolveWebsiteImageUrl(member.photo_url);
+  const photo = resolveTeamPhotoUrl(member.photo_url);
   const role = formatRole(member.position, member.member_type);
 
   return (
@@ -46,22 +46,9 @@ function TeamMemberBlock({
       }`}
     >
       {photo ? (
-        <Reveal className={reverse ? 'lg:[direction:ltr]' : undefined}>
-          <div className="relative mx-auto w-full max-w-[340px]">
-            <img
-              src={photo}
-              alt={member.full_name}
-              loading="lazy"
-              className="relative z-[1] w-full rounded-xl object-cover shadow-lg"
-              style={{ aspectRatio: '4 / 5' }}
-            />
-            <div
-              className="absolute -bottom-3 -right-3 -z-10 h-full w-full rounded-xl"
-              style={{ border: '3px solid var(--sw-gold)' }}
-              aria-hidden
-            />
-          </div>
-        </Reveal>
+        <div className={reverse ? 'lg:[direction:ltr]' : undefined}>
+          <TeamMemberPhoto src={photo} alt={member.full_name} />
+        </div>
       ) : null}
 
       <Reveal delay={120} className={reverse ? 'lg:[direction:ltr]' : undefined}>

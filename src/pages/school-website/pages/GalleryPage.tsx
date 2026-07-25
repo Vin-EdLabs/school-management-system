@@ -5,6 +5,7 @@ import { resolveWebsiteImageUrl } from '@/services/schoolWebsiteService';
 import { useSchoolWebsite } from '../SchoolWebsiteContext';
 import { PageHero, Reveal } from '../SchoolWebsiteLayout';
 import { SwFramedImage } from '../SwFramedImage';
+import { galleryImageSrc, useLoadableGalleryImages } from '../hooks/useLoadableGalleryImages';
 
 const CATEGORY_LABELS: Record<string, string> = {
   classrooms: 'Classrooms',
@@ -17,28 +18,29 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function GalleryPage() {
   const { data } = useSchoolWebsite();
   const images = useMemo(() => data?.gallery || [], [data?.gallery]);
+  const loadableImages = useLoadableGalleryImages(images);
   const [category, setCategory] = useState<string>('All');
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
-    images.forEach((img) => {
+    loadableImages.forEach((img) => {
       const cat = img.category || 'other';
       counts.set(cat, (counts.get(cat) || 0) + 1);
     });
     return [
-      { key: 'All', label: 'All', count: images.length },
+      { key: 'All', label: 'All', count: loadableImages.length },
       ...Array.from(counts.entries()).map(([key, count]) => ({
         key,
         label: CATEGORY_LABELS[key] || key,
         count,
       })),
     ];
-  }, [images]);
+  }, [loadableImages]);
 
   const filtered = useMemo(
-    () => (category === 'All' ? images : images.filter((img) => img.category === category)),
-    [images, category]
+    () => (category === 'All' ? loadableImages : loadableImages.filter((img) => img.category === category)),
+    [loadableImages, category]
   );
 
   useEffect(() => {
@@ -102,8 +104,8 @@ export default function GalleryPage() {
           ) : (
             <div className="sw-gallery-framed-grid">
               {filtered.map((img, i) => {
-                const src = resolveWebsiteImageUrl(img.url);
-                const label = CATEGORY_LABELS[img.category] || img.category || 'Photo';
+                const src = galleryImageSrc(img);
+                const label = CATEGORY_LABELS[img.category || ''] || img.category || 'Photo';
                 if (!src) return null;
                 return (
                   <Reveal key={img.id ?? i} delay={(i % 3) * 70}>

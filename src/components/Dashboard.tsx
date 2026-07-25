@@ -77,6 +77,7 @@ import AllStaffView from './staff/AllStaffView';
 import GlobalAnnouncementPopup from './announcements/GlobalAnnouncementPopup';
 import SetupProgressGate from './onboarding/SetupProgressGate';
 import ActiveTermWelcomeGate from './onboarding/ActiveTermWelcomeGate';
+import DemoWelcomeGate from './onboarding/DemoWelcomeGate';
 import TermReadOnlyShell from './common/TermReadOnlyShell';
 import ClosedTermViewBar from './common/ClosedTermViewBar';
 import ActiveTermRequiredShell from './common/ActiveTermRequiredShell';
@@ -426,6 +427,7 @@ const DashboardContent = () => {
           setActiveModule={setActiveModule}
         >
           <GlobalAnnouncementPopup />
+          <DemoWelcomeGate />
           <ActiveTermWelcomeGate activeModule={activeModule} setActiveModule={setActiveModule} />
           <SetupProgressGate activeModule={activeModule} setActiveModule={setActiveModule} />
           <ActiveTermRequiredShell

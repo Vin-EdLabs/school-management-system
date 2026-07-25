@@ -10,7 +10,7 @@ import {
   loadGradeConfigSnapshot,
   loadGradeConfigForTenant,
 } from './gradeConfigService.js';
-import { getSchoolActiveTermYear } from './gradesTermContext.js';
+import { getSchoolActiveTermYear, assignmentTermWhereClause } from './gradesTermContext.js';
 import { ACTIVE_STUDENT_WHERE } from '../utils/studentEnrollment.js';
 
 export type SubjectResult = {
@@ -93,7 +93,11 @@ export async function buildConfigurableTermReport(
 ): Promise<BuiltConfigurableTermReport | null> {
   const active =
     termOverride && yearOverride
-      ? { term: termOverride, academicYear: yearOverride }
+      ? {
+          term: termOverride,
+          academicYear: yearOverride,
+          fullTermLabel: `${termOverride} ${yearOverride}`.trim(),
+        }
       : await getSchoolActiveTermYear(tenantId);
 
   const config = await resolveGradeConfig(tenantId, active.term, active.academicYear);
@@ -104,9 +108,9 @@ export async function buildConfigurableTermReport(
             ga.is_exam, ga.component_id, gcc.name AS component_name
      FROM grade_assignments ga
      LEFT JOIN grade_config_components gcc ON gcc.id = ga.component_id
-     WHERE ga.tenant_id = $1 AND ga.class_id = $2 AND ga.term = $3 AND ga.academic_year = $4
+     WHERE ga.tenant_id = $1 AND ga.class_id = $2 ${assignmentTermWhereClause('ga', '$3', '$4', '$5')}
      ORDER BY ga.subject, ga.is_exam, gcc.display_order NULLS LAST, ga.name`,
-    [tenantId, classId, active.term, active.academicYear]
+    [tenantId, classId, active.term, active.academicYear, active.fullTermLabel]
   );
   const assignments: any[] = assignmentsRes.rows;
   if (assignments.length === 0) return null;

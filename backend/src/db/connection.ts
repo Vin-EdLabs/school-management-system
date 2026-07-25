@@ -147,6 +147,12 @@ const runMigrations = async () => {
     await client.query(`
       ALTER TABLE tenants ADD COLUMN IF NOT EXISTS archived_by INTEGER REFERENCES users(id) ON DELETE SET NULL
     `).catch(() => { });
+    await client.query(`
+      ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT false
+    `).catch(() => { });
+    await client.query(`
+      UPDATE tenants SET is_demo = false WHERE is_demo IS NULL
+    `).catch(() => { });
 
     // Create users table
     await client.query(`

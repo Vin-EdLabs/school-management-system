@@ -10,8 +10,9 @@ import {
   restoreTenantData,
   clearTenantData,
   writeSafetyBackup,
+  getPrimaryAdminProfile,
 } from '../services/tenantBackupService.js';
-import { importDemoDataForTenant, getPrimaryAdminProfile } from '../demo/demoImportService.js';
+import { importDemoDataForTenant } from '../demo/demoImportService.js';
 import { getIO } from '../socket.js';
 
 const router = express.Router();
@@ -248,7 +249,8 @@ router.post('/:tenantId/reset', async (req: AuthRequest, res) => {
         safety_backup_path: safetyPath,
         timestamp: new Date().toISOString(),
         deleted_tables: clearResult.deletedTables,
-        preserved_admin_id: preservedAfter?.id ?? null,
+        deleted_rows: clearResult.deletedRows,
+        preserved_admin_id: preservedAfter?.id ?? clearResult.preservedAdmin?.id ?? null,
       },
     });
 
@@ -258,9 +260,7 @@ router.post('/:tenantId/reset', async (req: AuthRequest, res) => {
       message: `${schoolName} data reset successfully`,
       safety_backup_path: safetyPath,
       deleted_tables: clearResult.deletedTables,
-      preservedAdmin: preservedAfter
-        ? { name: preservedAfter.name, email: preservedAfter.email }
-        : null,
+      preservedAdmin: preservedAfter ?? clearResult.preservedAdmin ?? null,
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);

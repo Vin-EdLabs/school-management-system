@@ -67,9 +67,23 @@ const SPECIAL_TABLE_QUERIES: Record<
     delete: `DELETE FROM chat_channel_members
       WHERE channel_id IN (SELECT id FROM chat_channels WHERE tenant_id = $1)`,
   },
+  stops: {
+    select: `SELECT s.* FROM stops s
+      INNER JOIN routes r ON r.id = s.route_id
+      WHERE r.tenant_id = $1 ORDER BY s.order_index ASC, s.id ASC`,
+    delete: `DELETE FROM stops
+      WHERE route_id IN (SELECT id FROM routes WHERE tenant_id = $1)`,
+  },
+  driver_profiles: {
+    select: `SELECT dp.* FROM driver_profiles dp
+      INNER JOIN users u ON u.id = dp.user_id
+      WHERE u.tenant_id = $1 ORDER BY dp.user_id ASC`,
+    delete: `DELETE FROM driver_profiles
+      WHERE user_id IN (SELECT id FROM users WHERE tenant_id = $1)`,
+  },
 };
 
-/** Delete children before parents (FK-safe). */
+/** Preferred delete priority when FK topo sort has ties (children before parents). */
 export const TENANT_CLEAR_ORDER = [
   'message_replies',
   'learning_teacher_quiz_attempts',
@@ -83,10 +97,23 @@ export const TENANT_CLEAR_ORDER = [
   'parent_fcm_tokens',
   'parent_push_subscriptions',
   'staff_user_push_subscriptions',
+  'staff_user_notifications',
   'parent_messages',
   'receipt_corrections',
   'complaint_status_history',
   'complaints',
+  'tenant_admin_notifications',
+  'lost_card_reports',
+  'student_admission_letters',
+  'payment_transactions',
+  'payment_submissions',
+  'invoices',
+  'daily_fee_collection_records',
+  'daily_fee_payments',
+  'daily_fee_structures',
+  'school_closure_days',
+  'student_transport',
+  'stops',
   'class_timetable',
   'exam_timetable',
   'periods',
@@ -98,6 +125,7 @@ export const TENANT_CLEAR_ORDER = [
   'dm_conversations',
   'chat_channels',
   'generated_id_cards',
+  'promotion_history',
   'term_closing_balances',
   'term_fee_structure_archives',
   'grade_audit_log',
@@ -146,6 +174,35 @@ export const TENANT_CLEAR_ORDER = [
   'payment_accounts',
   'receipt_number_seq',
   'payroll_settings',
+  'tenant_paystack_config',
+  'school_payment_settings',
+  'grade_config_components',
+  'grade_boundaries',
+  'grade_configs',
+  'school_website_applications',
+  'school_website_gallery',
+  'school_website_contact_messages',
+  'school_website_employment_applications',
+  'school_website_enable_requests',
+  'school_website_events',
+  'school_website_transcript_requests',
+  'school_website_testimonial_submissions',
+  'school_website_team_members',
+  'school_website_alumni_profiles',
+  'school_website_about',
+  'school_website_admission_config',
+  'school_website_careers_config',
+  'school_website_contact',
+  'school_websites',
+  'personal_todos',
+  'active_socket_sessions',
+  'id_card_templates',
+  'driver_profiles',
+  'routes',
+  'transport_drivers',
+  'vehicles',
+  'birthday_wishes_sent',
+  'staff_field_suggestions',
   'other_staff',
   'students',
   'classes',
@@ -161,6 +218,137 @@ export const TENANT_CLEAR_ORDER = [
   'school_settings',
   'school_setup_progress',
 ] as const;
+
+/** Tables whose primary key is not a serial `id` column — used for backup SELECT ordering. */
+const TABLE_SELECT_ORDER: Record<string, string> = {
+  school_websites: 'tenant_id',
+  school_website_about: 'tenant_id',
+  school_website_admission_config: 'tenant_id',
+  school_website_careers_config: 'tenant_id',
+  school_website_contact: 'tenant_id',
+  payroll_settings: 'tenant_id',
+  receipt_number_seq: 'tenant_id',
+  lost_card_reports: 'reported_at',
+  vehicles: 'created_at',
+  routes: 'created_at',
+  stops: 'order_index',
+  student_transport: 'enrolled_at',
+  driver_profiles: 'user_id',
+};
+
+type FkEdge = { child: string; parent: string };
+
+let cachedForeignKeys: FkEdge[] | null = null;
+
+async function loadPublicForeignKeys(client: pg.PoolClient): Promise<FkEdge[]> {
+  if (cachedForeignKeys) return cachedForeignKeys;
+  const res = await client.query(
+    `SELECT
+       tc.table_name AS child_table,
+       ccu.table_name AS parent_table
+     FROM information_schema.table_constraints tc
+     JOIN information_schema.referential_constraints rc
+       ON rc.constraint_name = tc.constraint_name
+      AND rc.constraint_schema = tc.table_schema
+     JOIN information_schema.constraint_column_usage ccu
+       ON ccu.constraint_name = rc.unique_constraint_name
+      AND ccu.constraint_schema = rc.unique_constraint_schema
+     WHERE tc.constraint_type = 'FOREIGN KEY'
+       AND tc.table_schema = 'public'`
+  );
+  cachedForeignKeys = res.rows.map((r: { child_table: string; parent_table: string }) => ({
+    child: r.child_table,
+    parent: r.parent_table,
+  }));
+  return cachedForeignKeys;
+}
+
+function sortTablesForDeletion(tables: string[], fks: FkEdge[]): string[] {
+  const tableSet = new Set(tables);
+  const inDegree = new Map<string, number>();
+  const dependents = new Map<string, Set<string>>();
+  const priority = new Map<string, number>();
+  TENANT_CLEAR_ORDER.forEach((t, i) => priority.set(t, i));
+
+  for (const t of tables) {
+    inDegree.set(t, 0);
+    dependents.set(t, new Set());
+  }
+
+  for (const { child, parent } of fks) {
+    if (!tableSet.has(child) || !tableSet.has(parent) || child === parent) continue;
+    inDegree.set(parent, (inDegree.get(parent) || 0) + 1);
+    dependents.get(child)!.add(parent);
+  }
+
+  const queue = tables
+    .filter((t) => (inDegree.get(t) || 0) === 0)
+    .sort((a, b) => (priority.get(a) ?? 9999) - (priority.get(b) ?? 9999));
+
+  const sorted: string[] = [];
+  while (queue.length > 0) {
+    const table = queue.shift()!;
+    sorted.push(table);
+    for (const parent of dependents.get(table) || []) {
+      const next = (inDegree.get(parent) || 1) - 1;
+      inDegree.set(parent, next);
+      if (next === 0) {
+        queue.push(parent);
+        queue.sort((a, b) => (priority.get(a) ?? 9999) - (priority.get(b) ?? 9999));
+      }
+    }
+  }
+
+  if (sorted.length < tables.length) {
+    for (const t of TENANT_CLEAR_ORDER) {
+      if (tableSet.has(t) && !sorted.includes(t)) sorted.push(t);
+    }
+    for (const t of tables) {
+      if (!sorted.includes(t)) sorted.push(t);
+    }
+  }
+
+  return sorted;
+}
+
+export async function resolvePrimaryAdminUserId(
+  client: pg.PoolClient,
+  tenantId: number
+): Promise<number | null> {
+  const res = await client.query(
+    `SELECT id FROM users
+     WHERE tenant_id = $1 AND is_primary_admin = true AND is_active = true
+     ORDER BY created_at ASC NULLS LAST, id ASC
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (res.rows[0]?.id) return Number(res.rows[0].id);
+
+  const fallback = await client.query(
+    `SELECT id FROM users
+     WHERE tenant_id = $1 AND role IN ('administrator', 'admin')
+     ORDER BY created_at ASC NULLS LAST, id ASC
+     LIMIT 1`,
+    [tenantId]
+  );
+  return fallback.rows[0]?.id ? Number(fallback.rows[0].id) : null;
+}
+
+export async function getPrimaryAdminProfile(
+  client: pg.PoolClient,
+  tenantId: number
+): Promise<{ id: number; name: string; email: string } | null> {
+  const id = await resolvePrimaryAdminUserId(client, tenantId);
+  if (!id) return null;
+  const res = await client.query(`SELECT id, full_name, email, username FROM users WHERE id = $1`, [id]);
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    name: String(row.full_name || row.username || 'Admin'),
+    email: String(row.email || row.username || ''),
+  };
+}
 
 /** Preserved on reset when keepTenant is true (school shell + login accounts). */
 const PRESERVE_WHEN_KEEP_TENANT = new Set(['tenants', 'users', 'school_settings']);
@@ -333,8 +521,12 @@ async function fetchTableRows(tenantId: number, table: string): Promise<Record<s
     const res = await query(special.select, [tenantId]);
     return res.rows;
   }
+  const orderCol = TABLE_SELECT_ORDER[table] || 'id';
   try {
-    const res = await query(`SELECT * FROM ${table} WHERE tenant_id = $1 ORDER BY id ASC`, [tenantId]);
+    const res = await query(
+      `SELECT * FROM ${table} WHERE tenant_id = $1 ORDER BY ${orderCol} ASC`,
+      [tenantId]
+    );
     return res.rows;
   } catch (err: unknown) {
     console.warn(`[backup] Skipped ${table}:`, (err as Error)?.message || err);
@@ -536,8 +728,31 @@ async function resetSchoolSettingsDefaults(client: pg.PoolClient, tenantId: numb
 
 export type TenantClearResult = {
   deletedTables: number;
-  failures: Array<{ table: string; error: string }>;
+  deletedRows: Record<string, number>;
+  preservedAdmin?: { id: number; name: string; email: string } | null;
 };
+
+async function runPreClearTenantFixups(client: pg.PoolClient, tenantId: number): Promise<void> {
+  await client.query(
+    `UPDATE students
+     SET admission_academic_term_id = NULL,
+         inactivated_academic_term_id = NULL
+     WHERE tenant_id = $1`,
+    [tenantId]
+  ).catch(() => undefined);
+
+  await client.query(
+    `UPDATE school_website_applications SET student_id = NULL
+     WHERE tenant_id = $1 AND student_id IS NOT NULL`,
+    [tenantId]
+  ).catch(() => undefined);
+
+  await client.query(
+    `UPDATE complaints SET subject_student_id = NULL
+     WHERE tenant_id = $1 AND subject_student_id IS NOT NULL`,
+    [tenantId]
+  ).catch(() => undefined);
+}
 
 export async function verifyTenantOperationalDataCleared(
   client: pg.PoolClient,
@@ -556,6 +771,7 @@ export async function verifyTenantOperationalDataCleared(
     ['chat_messages', 'SELECT COUNT(*)::int AS n FROM chat_messages WHERE tenant_id = $1'],
     ['parent_messages', 'SELECT COUNT(*)::int AS n FROM parent_messages WHERE tenant_id = $1'],
     ['parent_portal_accounts', 'SELECT COUNT(*)::int AS n FROM parent_portal_accounts WHERE tenant_id = $1'],
+    ['student_admission_letters', 'SELECT COUNT(*)::int AS n FROM student_admission_letters WHERE tenant_id = $1'],
     ['class_timetable', 'SELECT COUNT(*)::int AS n FROM class_timetable WHERE tenant_id = $1'],
     ['exam_timetable', 'SELECT COUNT(*)::int AS n FROM exam_timetable WHERE tenant_id = $1'],
     ['periods', 'SELECT COUNT(*)::int AS n FROM periods WHERE tenant_id = $1'],
@@ -579,39 +795,60 @@ export async function clearTenantData(
 ): Promise<TenantClearResult> {
   const keepTenant = opts?.keepTenant !== false;
   const preserveAccounts = opts?.preserveAccounts !== false;
-  const discovered = await discoverTenantTables();
-  const ordered = [...new Set<string>([...TENANT_CLEAR_ORDER, ...discovered, ...Object.keys(SPECIAL_TABLE_QUERIES)])];
+  let preserveUserId = opts?.preserveUserId;
 
-  const failures: Array<{ table: string; error: string }> = [];
+  if (keepTenant && !preserveUserId && !preserveAccounts) {
+    preserveUserId = (await resolvePrimaryAdminUserId(client, tenantId)) ?? undefined;
+  }
+
+  const discovered = await discoverTenantTables();
+  const candidateTables = [
+    ...new Set<string>([...TENANT_CLEAR_ORDER, ...discovered, ...Object.keys(SPECIAL_TABLE_QUERIES)]),
+  ].filter((t) => t !== 'tenants');
+
+  const fks = await loadPublicForeignKeys(client);
+  const ordered = sortTablesForDeletion(candidateTables, fks);
+
+  const deletedRows: Record<string, number> = {};
   let deletedTables = 0;
 
+  await runPreClearTenantFixups(client, tenantId);
+
   for (const table of ordered) {
-    if (table === 'tenants') continue;
-    if (keepTenant && preserveAccounts && !opts?.preserveUserId && PRESERVE_WHEN_KEEP_TENANT.has(table)) continue;
+    if (keepTenant && preserveAccounts && !preserveUserId && PRESERVE_WHEN_KEEP_TENANT.has(table)) {
+      continue;
+    }
 
     const exists = await tableExists(client, table);
     if (!exists) continue;
 
-    await client.query('SAVEPOINT tenant_clear_step');
     try {
-      if (table === 'users' && keepTenant && opts?.preserveUserId) {
-        await client.query(`DELETE FROM users WHERE tenant_id = $1 AND id <> $2`, [tenantId, opts.preserveUserId]);
-      } else if (table === 'school_settings' && keepTenant && preserveAccounts && !opts?.preserveUserId) {
+      let rowCount = 0;
+      if (table === 'users' && keepTenant && preserveUserId) {
+        const res = await client.query(`DELETE FROM users WHERE tenant_id = $1 AND id <> $2`, [
+          tenantId,
+          preserveUserId,
+        ]);
+        rowCount = res.rowCount ?? 0;
+      } else if (table === 'school_settings' && keepTenant && preserveAccounts && !preserveUserId) {
         /* preserved — reset defaults below */
       } else {
-        await deleteFromTable(client, tenantId, table);
+        rowCount = await deleteFromTable(client, tenantId, table);
       }
-      await client.query('RELEASE SAVEPOINT tenant_clear_step');
+      deletedRows[table] = rowCount;
       deletedTables++;
+      console.log(`✅ Cleared ${table} (${rowCount} rows)`);
     } catch (err: unknown) {
-      await client.query('ROLLBACK TO SAVEPOINT tenant_clear_step');
-      const pgErr = err as { code?: string; message?: string };
-      failures.push({ table, error: pgErr.message || String(err) });
-      console.warn(`[tenant clear] ${table}:`, pgErr.message || err);
+      const pgErr = err as { code?: string; message?: string; constraint?: string };
+      const reason = pgErr.constraint
+        ? `${pgErr.message || String(err)} [${pgErr.constraint}]`
+        : pgErr.message || String(err);
+      console.error(`❌ Failed at ${table}: ${reason}`);
+      throw new Error(`Tenant clear failed at ${table}: ${reason}`);
     }
   }
 
-  if (keepTenant && (preserveAccounts || opts?.preserveUserId)) {
+  if (keepTenant && (preserveAccounts || preserveUserId)) {
     await resetSchoolSettingsDefaults(client, tenantId);
   }
 
@@ -621,23 +858,16 @@ export async function clearTenantData(
     ]);
   }
 
-  if (keepTenant && opts?.preserveUserId) {
+  let preservedAdmin: { id: number; name: string; email: string } | null = null;
+  if (keepTenant && preserveUserId) {
     const check = await client.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2`, [
-      opts.preserveUserId,
+      preserveUserId,
       tenantId,
     ]);
     if (check.rows.length === 0) {
-      throw new Error(`Primary admin user #${opts.preserveUserId} was not preserved after reset`);
+      throw new Error(`Primary admin user #${preserveUserId} was not preserved after reset`);
     }
-  }
-
-  if (failures.length > 0) {
-    throw new Error(
-      `Failed to clear ${failures.length} table(s): ${failures
-        .slice(0, 4)
-        .map((f) => f.table)
-        .join(', ')}`
-    );
+    preservedAdmin = await getPrimaryAdminProfile(client, tenantId);
   }
 
   const verification = await verifyTenantOperationalDataCleared(client, tenantId);
@@ -648,7 +878,7 @@ export async function clearTenantData(
     throw new Error(`Reset incomplete — data still remains (${summary})`);
   }
 
-  return { deletedTables, failures };
+  return { deletedTables, deletedRows, preservedAdmin };
 }
 
 function serializeCell(value: unknown): unknown {

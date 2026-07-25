@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type pg from 'pg';
 import { getClient, query } from '../db/connection.js';
-import { clearTenantData, writeSafetyBackup } from '../services/tenantBackupService.js';
+import { clearTenantData, writeSafetyBackup, resolvePrimaryAdminUserId, getPrimaryAdminProfile } from '../services/tenantBackupService.js';
 import { bootstrapTenantChat } from '../services/chatService.js';
 import { calculateGrade, calculatePositions, type AssessmentScore, type GradeConfig } from '../utils/gradeCalculator.js';
 import { fetchDemoPortraitUrl, fetchDemoStudentPortraitUrl } from './demoAvatarUtils.js';
@@ -333,40 +333,10 @@ function logStep(ok: boolean, message: string, detail?: string) {
 export { DEMO_SEED_JSON_PATH, loadDemoSeedData } from './demoSeedLoader.js';
 
 export async function resolvePrimaryAdminId(client: pg.PoolClient, tenantId: number): Promise<number | null> {
-  const res = await client.query(
-    `SELECT id FROM users
-     WHERE tenant_id = $1 AND is_primary_admin = true AND is_active = true
-     ORDER BY created_at ASC NULLS LAST, id ASC
-     LIMIT 1`,
-    [tenantId]
-  );
-  if (res.rows[0]?.id) return Number(res.rows[0].id);
-
-  const fallback = await client.query(
-    `SELECT id FROM users
-     WHERE tenant_id = $1 AND role IN ('administrator', 'admin')
-     ORDER BY created_at ASC NULLS LAST, id ASC
-     LIMIT 1`,
-    [tenantId]
-  );
-  return fallback.rows[0]?.id ? Number(fallback.rows[0].id) : null;
+  return resolvePrimaryAdminUserId(client, tenantId);
 }
 
-export async function getPrimaryAdminProfile(
-  client: pg.PoolClient,
-  tenantId: number
-): Promise<{ id: number; name: string; email: string } | null> {
-  const id = await resolvePrimaryAdminId(client, tenantId);
-  if (!id) return null;
-  const res = await client.query(`SELECT id, full_name, email, username FROM users WHERE id = $1`, [id]);
-  const row = res.rows[0];
-  if (!row) return null;
-  return {
-    id: Number(row.id),
-    name: String(row.full_name || row.username || 'Admin'),
-    email: String(row.email || row.username || ''),
-  };
-}
+export { getPrimaryAdminProfile };
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -1098,6 +1068,21 @@ export async function importDemoDataForTenant(
     throw new Error(`Tenant ${tenantId} not found`);
   }
   const slug = String(tenantRes.rows[0].slug || tenantId);
+  const schoolName = String(tenantRes.rows[0].name || slug);
+
+  const preflightClient = await getClient();
+  let primaryAdminId: number | null;
+  try {
+    primaryAdminId = await resolvePrimaryAdminUserId(preflightClient, tenantId);
+  } finally {
+    preflightClient.release();
+  }
+  if (!primaryAdminId) {
+    throw new Error(
+      `Tenant ${tenantId} (${schoolName}) has no primary admin user. Create an administrator account before loading demo data.`
+    );
+  }
+  logStep(true, 'Pre-flight: primary admin found', `id=${primaryAdminId}`);
 
   if (!options?.skipSafetyBackup) {
     await writeSafetyBackup(tenantId, 'pre-demo-import');
@@ -1109,14 +1094,22 @@ export async function importDemoDataForTenant(
   try {
     await client.query('BEGIN');
 
-    const primaryAdminId = await resolvePrimaryAdminId(client, tenantId);
-    logStep(true, 'Resolved primary admin', primaryAdminId ? `id=${primaryAdminId}` : 'none — all users cleared');
+    logStep(true, 'Resolved primary admin', `id=${primaryAdminId}`);
 
-    await clearTenantData(client, tenantId, {
+    const clearResult = await clearTenantData(client, tenantId, {
       keepTenant: true,
       preserveAccounts: false,
-      preserveUserId: primaryAdminId ?? undefined,
+      preserveUserId: primaryAdminId,
     });
+
+    if (!clearResult.preservedAdmin?.id) {
+      throw new Error(`Primary admin #${primaryAdminId} was not preserved after tenant clear`);
+    }
+    logStep(
+      true,
+      'Tenant cleared for demo import',
+      `${clearResult.deletedTables} tables · admin ${clearResult.preservedAdmin.email || clearResult.preservedAdmin.name}`
+    );
 
     // Academic year
     const ay = seed.academic_year;

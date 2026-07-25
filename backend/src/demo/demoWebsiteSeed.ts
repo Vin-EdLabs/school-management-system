@@ -1,23 +1,16 @@
 import type pg from 'pg';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { query } from '../db/connection.js';
 import { getDemoCampusImage, resolveDemoTeamPhoto } from './demoCampusImages.js';
+import { loadDemoSeedData } from './demoSeedLoader.js';
 import type { DemoSeedData } from './demoImportService.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEMO_SEED_JSON = path.join(__dirname, 'demoSeedData.json');
-
-type IdMap = Map<string, number>;
-
-export type DemoWebsiteSeedConfig = NonNullable<DemoSeedData['website_seed']>;
 
 export type DemoWebsiteSeedResult = {
   gallery: number;
   events: number;
   teamMembers: number;
 };
+
+type IdMap = Map<string, number>;
 
 function addDays(base: Date, days: number): string {
   const d = new Date(base);
@@ -299,8 +292,7 @@ export async function seedDemoWebsiteContent(
 
 function loadWebsiteSeedGallery(): Array<{ image_key: string; category?: string; sort_order?: number }> {
   try {
-    const seed = JSON.parse(fs.readFileSync(DEMO_SEED_JSON, 'utf8')) as DemoSeedData;
-    return seed.website_seed?.gallery || [];
+    return loadDemoSeedData().website_seed?.gallery || [];
   } catch {
     return [];
   }

@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import type pg from 'pg';
 import { getClient, query } from '../db/connection.js';
@@ -8,11 +5,9 @@ import { clearTenantData, writeSafetyBackup } from '../services/tenantBackupServ
 import { bootstrapTenantChat } from '../services/chatService.js';
 import { calculateGrade, calculatePositions, type AssessmentScore, type GradeConfig } from '../utils/gradeCalculator.js';
 import { fetchDemoPortraitUrl, fetchDemoStudentPortraitUrl } from './demoAvatarUtils.js';
+import { DEMO_SEED_JSON_PATH, loadDemoSeedData } from './demoSeedLoader.js';
 import { seedDemoWebsiteContent } from './demoWebsiteSeed.js';
 import { TERM_REPORT_REMARK_SUBJECT } from '../services/termReportRemarksService.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const DEMO_SEED_JSON_PATH = path.join(__dirname, 'demoSeedData.json');
 
 export type DemoSeedData = {
   version: string;
@@ -335,10 +330,7 @@ function logStep(ok: boolean, message: string, detail?: string) {
   console.log(`${icon} ${message}${detail ? ` — ${detail}` : ''}`);
 }
 
-export function loadDemoSeedData(jsonPath = DEMO_SEED_JSON_PATH): DemoSeedData {
-  const raw = fs.readFileSync(jsonPath, 'utf8');
-  return JSON.parse(raw) as DemoSeedData;
-}
+export { DEMO_SEED_JSON_PATH, loadDemoSeedData } from './demoSeedLoader.js';
 
 export async function resolvePrimaryAdminId(client: pg.PoolClient, tenantId: number): Promise<number | null> {
   const res = await client.query(

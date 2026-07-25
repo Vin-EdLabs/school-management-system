@@ -25,6 +25,29 @@ function addDays(base: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+type WebsiteAboutSeed = {
+  director_teacher_key?: string;
+  director_image_key?: string;
+  director_title?: string;
+  director_name?: string;
+  director_message?: string;
+  history?: string;
+  vision?: string;
+  mission?: string;
+  core_values?: string[];
+  institution_overview?: string;
+  history_image_key?: string;
+  overview_image_key?: string;
+};
+
+type WebsiteAdmissionSeed = {
+  requirements?: string;
+  programs?: string[];
+  applications_open?: boolean;
+  open_date?: string;
+  close_date?: string;
+};
+
 function resolveImage(key: string | undefined, fallback = 'hero'): string {
   return getDemoCampusImage(key || fallback);
 }
@@ -94,9 +117,11 @@ export async function seedDemoWebsiteContent(
     ]
   );
 
-  const about = ws.about || {};
-  const headTeacher = teacherByKey(seed, about.director_teacher_key || ws.leadership?.[0]?.teacher_key || 'tch008');
-  const directorImageKey = (about.director_image_key as string | undefined) || 'head_of_school_portrait';
+  const about: WebsiteAboutSeed = ws.about ?? {};
+  const directorTeacherKey =
+    about.director_teacher_key || ws.leadership?.[0]?.teacher_key || 'tch008';
+  const headTeacher = teacherByKey(seed, directorTeacherKey);
+  const directorImageKey = about.director_image_key || 'head_of_school_portrait';
   const directorPhoto = resolveImage(directorImageKey, 'head_of_school_portrait');
 
   await client.query(
@@ -133,7 +158,7 @@ export async function seedDemoWebsiteContent(
     ]
   );
 
-  const admission = ws.admission || {};
+  const admission: WebsiteAdmissionSeed = ws.admission ?? {};
   const openDate = admission.open_date || addDays(new Date(), -7);
   const closeDate = admission.close_date || addDays(new Date(), 90);
   const programs =

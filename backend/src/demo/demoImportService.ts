@@ -250,8 +250,27 @@ export type DemoSeedData = {
     social_links?: Record<string, string>;
     home_content?: Record<string, string | null>;
     highlights?: Array<{ icon?: string; title: string; description?: string }>;
-    about?: Record<string, unknown>;
-    admission?: Record<string, unknown>;
+    about?: {
+      director_teacher_key?: string;
+      director_image_key?: string;
+      director_title?: string;
+      director_name?: string;
+      director_message?: string;
+      history?: string;
+      vision?: string;
+      mission?: string;
+      core_values?: string[];
+      institution_overview?: string;
+      history_image_key?: string;
+      overview_image_key?: string;
+    };
+    admission?: {
+      requirements?: string;
+      programs?: string[];
+      applications_open?: boolean;
+      open_date?: string;
+      close_date?: string;
+    };
     contact?: Record<string, string>;
     gallery?: Array<{ image_key: string; category?: string; sort_order?: number }>;
     events?: Array<{

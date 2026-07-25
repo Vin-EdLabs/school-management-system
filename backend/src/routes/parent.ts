@@ -1495,19 +1495,21 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
     const classId = studentRow.rows[0].class_assigned_id;
     const className = studentRow.rows[0].class_name;
 
-    // Check if report has been released for this class+term
-    const currentTermRow = await query(
-      'SELECT current_term, current_year, school_name FROM school_settings WHERE tenant_id = $1',
+    const { term, academicYear, fullTermLabel } = await getSchoolActiveTermYear(tenantId);
+    const settingsRow = await query(
+      'SELECT school_name FROM school_settings WHERE tenant_id = $1',
       [tenantId]
     );
-    const currentTerm = currentTermRow.rows[0]?.current_term || '';
-    const currentYear = currentTermRow.rows[0]?.current_year || '';
-    const schoolName = currentTermRow.rows[0]?.school_name || '';
+    const schoolName = settingsRow.rows[0]?.school_name || '';
 
     const releaseRow = await query(
       `SELECT is_released, released_at FROM term_report_releases
-       WHERE tenant_id = $1 AND class_id = $2 AND term = $3`,
-      [tenantId, classId, currentTerm]
+       WHERE tenant_id = $1 AND class_id = $2
+         AND (term = $3 OR term = $4)
+         AND is_released = true
+       ORDER BY released_at DESC NULLS LAST
+       LIMIT 1`,
+      [tenantId, classId, term, fullTermLabel]
     );
     const isReleased = releaseRow.rows[0]?.is_released ?? false;
     if (!isReleased) {
@@ -1520,8 +1522,8 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
     const archivedRow = await getArchivedReportForStudentTerm(
       tenantId,
       studentId,
-      currentTerm,
-      currentYear
+      term,
+      academicYear
     );
     if (archivedRow) {
       return res.json({
@@ -1533,17 +1535,16 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
       tenantId,
       classId,
       studentId,
-      currentTerm,
-      currentYear
+      term,
+      academicYear
     );
 
-    // Get all assignments for this class (current term only)
     const assignmentsRes = await query(
       `SELECT id, subject, name, assignment_type, max_score
        FROM grade_assignments WHERE tenant_id = $1 AND class_id = $2
-         AND term = $3 AND academic_year = $4
+         AND academic_year = $3 AND (term = $4 OR term = $5)
        ORDER BY subject, name`,
-      [tenantId, classId, currentTerm, currentYear]
+      [tenantId, classId, academicYear, term, fullTermLabel]
     );
     const assignments = assignmentsRes.rows;
     if (assignments.length === 0) {
@@ -1662,8 +1663,8 @@ router.get('/term-report', authenticateParent, async (req: ParentRequest, res) =
         students,
         totalStudents: students.length,
         myStudentId: studentId,
-        currentTerm,
-        currentYear,
+        currentTerm: term,
+        currentYear: academicYear,
         schoolName,
         releasedAt: releaseRow.rows[0]?.released_at || null,
         teacherRemark,

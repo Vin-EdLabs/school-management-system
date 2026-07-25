@@ -597,23 +597,28 @@ export async function getArchivedReportForStudentTerm(
   term: string,
   academicYear: string
 ) {
-  const termKey = String(term || '').trim();
+  const termOnly = normalizeTermOnly(term, academicYear) || String(term || '').trim();
+  const fullTermLabel = buildFullTermLabel(termOnly, academicYear);
   const yearKey = String(academicYear || '').trim();
 
   let result = await query(
     `SELECT * FROM report_card_archive
      WHERE tenant_id = $1 AND student_id = $2
-       AND TRIM(term) = $3 AND TRIM(academic_year) = $4`,
-    [tenantId, studentId, termKey, yearKey]
+       AND TRIM(academic_year) = $3
+       AND (TRIM(term) = $4 OR TRIM(term) = $5)
+     ORDER BY released_at DESC NULLS LAST, generated_at DESC NULLS LAST
+     LIMIT 1`,
+    [tenantId, studentId, yearKey, termOnly, fullTermLabel]
   );
   if (result.rows[0]) return result.rows[0];
 
   result = await query(
     `SELECT * FROM report_card_archive
-     WHERE tenant_id = $1 AND student_id = $2 AND TRIM(term) = $3
+     WHERE tenant_id = $1 AND student_id = $2
+       AND (TRIM(term) = $3 OR TRIM(term) = $4)
      ORDER BY released_at DESC NULLS LAST, generated_at DESC NULLS LAST
      LIMIT 1`,
-    [tenantId, studentId, termKey]
+    [tenantId, studentId, termOnly, fullTermLabel]
   );
   return result.rows[0] || null;
 }

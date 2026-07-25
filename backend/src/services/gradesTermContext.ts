@@ -46,6 +46,11 @@ export function assignmentTermWhereClause(alias: string, termParam: string, year
   return `AND ${alias}.academic_year = ${yearParam} AND (${alias}.term = ${termParam} OR ${alias}.term = ${fullTermParam})`;
 }
 
+/** Match term_report_releases / report_card_archive rows stored with either label format. */
+export function releaseTermWhereClause(alias: string, termParam: string, fullTermParam: string): string {
+  return `AND (${alias}.term = ${termParam} OR ${alias}.term = ${fullTermParam})`;
+}
+
 /** @deprecated Use assignmentTermWhereClause for flexible term matching */
 export function assignmentTermFilter(alias: string, termParam: string, yearParam: string): string {
   return `AND ${alias}.term = ${termParam} AND ${alias}.academic_year = ${yearParam}`;

@@ -674,8 +674,11 @@ router.post('/release-report', async (req: AuthRequest, res) => {
       'SELECT current_term FROM school_settings WHERE tenant_id = $1',
       [tenantId]
     );
-    const currentTerm = settingsRes.rows[0]?.current_term;
-    if (!currentTerm) return res.status(400).json({ error: 'No active term set' });
+    const rawTerm = String(settingsRes.rows[0]?.current_term || '').trim();
+    if (!rawTerm) return res.status(400).json({ error: 'No active term set' });
+
+    const { term, academicYear, fullTermLabel } = await getSchoolActiveTermYear(tenantId);
+    const releaseTermKeys = [...new Set([term, fullTermLabel, rawTerm].filter(Boolean))];
 
     const releasing = release !== false;
     const isSchoolAdmin = role === 'administrator' || role === 'super-admin';
@@ -718,15 +721,17 @@ router.post('/release-report', async (req: AuthRequest, res) => {
       }
     }
 
-    await query(
-      `INSERT INTO term_report_releases (tenant_id, class_id, term, released_by, is_released, released_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       ON CONFLICT (tenant_id, class_id, term)
-       DO UPDATE SET is_released = EXCLUDED.is_released,
-                     released_by = EXCLUDED.released_by,
-                     released_at = NOW()`,
-      [tenantId, classId, currentTerm, userId, release !== false]
-    );
+    for (const termKey of releaseTermKeys) {
+      await query(
+        `INSERT INTO term_report_releases (tenant_id, class_id, term, released_by, is_released, released_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (tenant_id, class_id, term)
+         DO UPDATE SET is_released = EXCLUDED.is_released,
+                       released_by = EXCLUDED.released_by,
+                       released_at = NOW()`,
+        [tenantId, classId, termKey, userId, release !== false]
+      );
+    }
 
     emitTenantDataChanged(tenantId, 'term-report-release', 'updated');
 
@@ -749,7 +754,7 @@ router.post('/release-report', async (req: AuthRequest, res) => {
       for (const row of studentsRes.rows) {
         await sendPushToStudentParents(tenantId, row.id, {
           title: 'Results Released',
-          body: `Your ward's ${currentTerm} results are now available.`,
+          body: `Your ward's ${fullTermLabel || term} results are now available.`,
           url: `/parent/${tenantId}`,
         }).catch(() => {});
       }
@@ -766,7 +771,7 @@ router.post('/release-report', async (req: AuthRequest, res) => {
       summary: release !== false
         ? `Report cards released for class #${classId}`
         : `Report cards hidden for class #${classId}`,
-      details: { classId: Number(classId), term: currentTerm, archive: archiveResult },
+      details: { classId: Number(classId), term, fullTermLabel, archive: archiveResult },
     });
 
     res.json({

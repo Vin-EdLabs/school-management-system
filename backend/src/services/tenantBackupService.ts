@@ -81,6 +81,15 @@ const SPECIAL_TABLE_QUERIES: Record<
     delete: `DELETE FROM driver_profiles
       WHERE user_id IN (SELECT id FROM users WHERE tenant_id = $1)`,
   },
+  student_transport: {
+    select: `SELECT st.* FROM student_transport st
+      WHERE st.route_id IN (SELECT id FROM routes WHERE tenant_id = $1)
+         OR st.student_id IN (SELECT id FROM students WHERE tenant_id = $1)
+      ORDER BY st.enrolled_at ASC, st.id ASC`,
+    delete: `DELETE FROM student_transport
+      WHERE route_id IN (SELECT id FROM routes WHERE tenant_id = $1)
+         OR student_id IN (SELECT id FROM students WHERE tenant_id = $1)`,
+  },
 };
 
 /** Preferred delete priority when FK topo sort has ties (children before parents). */
@@ -228,6 +237,7 @@ const TABLE_SELECT_ORDER: Record<string, string> = {
   school_website_contact: 'tenant_id',
   payroll_settings: 'tenant_id',
   receipt_number_seq: 'tenant_id',
+  active_socket_sessions: 'socket_id',
   lost_card_reports: 'reported_at',
   vehicles: 'created_at',
   routes: 'created_at',
@@ -235,6 +245,48 @@ const TABLE_SELECT_ORDER: Record<string, string> = {
   student_transport: 'enrolled_at',
   driver_profiles: 'user_id',
 };
+
+const tableOrderColumnCache = new Map<string, string | null>();
+
+function isSafeSqlIdentifier(name: string): boolean {
+  return /^[a-z_][a-z0-9_]*$/i.test(name);
+}
+
+async function resolveTableOrderColumn(table: string): Promise<string | null> {
+  if (TABLE_SELECT_ORDER[table]) return TABLE_SELECT_ORDER[table];
+  const cached = tableOrderColumnCache.get(table);
+  if (cached !== undefined) return cached;
+
+  const idRes = await query(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'id'
+    ) AS exists`,
+    [table]
+  );
+  if (idRes.rows[0]?.exists) {
+    tableOrderColumnCache.set(table, 'id');
+    return 'id';
+  }
+
+  const pkRes = await query(
+    `SELECT a.attname AS column_name
+     FROM pg_index i
+     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+     JOIN pg_class c ON c.oid = i.indrelid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE i.indisprimary
+       AND n.nspname = 'public'
+       AND c.relname = $1
+     ORDER BY array_position(i.indkey, a.attnum)
+     LIMIT 1`,
+    [table]
+  );
+  const pk = String(pkRes.rows[0]?.column_name || '');
+  const resolved = pk && isSafeSqlIdentifier(pk) ? pk : null;
+  tableOrderColumnCache.set(table, resolved);
+  return resolved;
+}
 
 type FkEdge = { child: string; parent: string };
 
@@ -481,6 +533,22 @@ export type FullTenantBackupFile = {
 };
 
 let cachedTenantTables: string[] | null = null;
+const tenantIdColumnCache = new Map<string, boolean>();
+
+async function tableHasTenantIdColumn(client: pg.PoolClient, table: string): Promise<boolean> {
+  const cached = tenantIdColumnCache.get(table);
+  if (cached !== undefined) return cached;
+  const res = await client.query(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'tenant_id'
+    ) AS exists`,
+    [table]
+  );
+  const exists = !!res.rows[0]?.exists;
+  tenantIdColumnCache.set(table, exists);
+  return exists;
+}
 
 export async function discoverTenantTables(): Promise<string[]> {
   if (cachedTenantTables) return cachedTenantTables;
@@ -521,12 +589,10 @@ async function fetchTableRows(tenantId: number, table: string): Promise<Record<s
     const res = await query(special.select, [tenantId]);
     return res.rows;
   }
-  const orderCol = TABLE_SELECT_ORDER[table] || 'id';
+  const orderCol = await resolveTableOrderColumn(table);
+  const orderClause = orderCol ? ` ORDER BY ${orderCol} ASC` : '';
   try {
-    const res = await query(
-      `SELECT * FROM ${table} WHERE tenant_id = $1 ORDER BY ${orderCol} ASC`,
-      [tenantId]
-    );
+    const res = await query(`SELECT * FROM ${table} WHERE tenant_id = $1${orderClause}`, [tenantId]);
     return res.rows;
   } catch (err: unknown) {
     console.warn(`[backup] Skipped ${table}:`, (err as Error)?.message || err);
@@ -688,6 +754,11 @@ async function deleteFromTable(client: pg.PoolClient, tenantId: number, table: s
     const res = await client.query(special.delete, [tenantId]);
     return res.rowCount ?? 0;
   }
+  if (!(await tableHasTenantIdColumn(client, table))) {
+    throw new Error(
+      `Table "${table}" has no tenant_id column — add a tenant-scoped delete in SPECIAL_TABLE_QUERIES`
+    );
+  }
   const res = await client.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
   return res.rowCount ?? 0;
 }
@@ -772,6 +843,12 @@ export async function verifyTenantOperationalDataCleared(
     ['parent_messages', 'SELECT COUNT(*)::int AS n FROM parent_messages WHERE tenant_id = $1'],
     ['parent_portal_accounts', 'SELECT COUNT(*)::int AS n FROM parent_portal_accounts WHERE tenant_id = $1'],
     ['student_admission_letters', 'SELECT COUNT(*)::int AS n FROM student_admission_letters WHERE tenant_id = $1'],
+    [
+      'student_transport',
+      `SELECT COUNT(*)::int AS n FROM student_transport st
+       WHERE st.route_id IN (SELECT id FROM routes WHERE tenant_id = $1)
+          OR st.student_id IN (SELECT id FROM students WHERE tenant_id = $1)`,
+    ],
     ['class_timetable', 'SELECT COUNT(*)::int AS n FROM class_timetable WHERE tenant_id = $1'],
     ['exam_timetable', 'SELECT COUNT(*)::int AS n FROM exam_timetable WHERE tenant_id = $1'],
     ['periods', 'SELECT COUNT(*)::int AS n FROM periods WHERE tenant_id = $1'],
@@ -803,7 +880,11 @@ export async function clearTenantData(
 
   const discovered = await discoverTenantTables();
   const candidateTables = [
-    ...new Set<string>([...TENANT_CLEAR_ORDER, ...discovered, ...Object.keys(SPECIAL_TABLE_QUERIES)]),
+    ...new Set<string>([
+      ...Object.keys(SPECIAL_TABLE_QUERIES),
+      ...TENANT_CLEAR_ORDER,
+      ...discovered,
+    ]),
   ].filter((t) => t !== 'tenants');
 
   const fks = await loadPublicForeignKeys(client);

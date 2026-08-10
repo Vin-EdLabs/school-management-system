@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Menu, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getScholarNerveMainUrl, getPartnersPortalLoginUrl, isPartnersHost } from '@/utils/partnersHost';
 import { REGISTER_SCHOOL_PATH, handleLandingSectionNavClick, handleRegisterNavClick } from '@/utils/landingScroll';
@@ -17,6 +17,18 @@ const HOME_NAV: HomeNavItem[] = [
   { label: 'Pricing', path: '/pricing', hash: 'pricing' },
   { label: 'About', path: '/about', hash: 'about' },
   { label: 'Contact', path: '/contact', hash: 'contact' },
+  { label: 'School Website', path: '/#school-website', hash: 'school-website' },
+];
+
+const HOME_NAV_PRIMARY: HomeNavItem[] = [
+  { label: 'Features', path: '/features', hash: 'features' },
+  { label: 'Pricing', path: '/pricing', hash: 'pricing' },
+  { label: 'About', path: '/about', hash: 'about' },
+  { label: 'Contact', path: '/contact', hash: 'contact' },
+];
+
+const HOME_NAV_MORE: HomeNavItem[] = [
+  { label: 'Mobile App', path: '/#parent-app', hash: 'parent-app' },
   { label: 'School Website', path: '/#school-website', hash: 'school-website' },
 ];
 
@@ -38,7 +50,9 @@ type LandingHeaderProps = {
 
 export default function LandingHeader({ brandMark, variant = 'home', brandLockup, brandHref = '/' }: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const isPartners = variant === 'partners';
   const navLinks = isPartners ? PARTNERS_NAV : HOME_NAV;
@@ -81,6 +95,30 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
       document.removeEventListener('touchstart', onPointerDown);
     };
   }, [menuOpen, closeMenu]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreOpen(false);
+    };
+
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [moreOpen]);
 
   const scrollToApply = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -136,8 +174,8 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
 
   return (
     <header className="scholar-landing-header fixed left-0 right-0 top-0 z-[100]">
-      <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-2 px-4 sm:h-16 sm:gap-3 sm:px-5">
-        <Link to={brandHref} className="flex min-w-0 items-center gap-2 sm:gap-2.5" aria-label={isPartners ? 'ScholarNerve Partners home' : 'ScholarNerve home'}>
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6 lg:gap-4">
+        <Link to={brandHref} className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5" aria-label={isPartners ? 'ScholarNerve Partners home' : 'ScholarNerve home'}>
           {brandLockup ? (
             brandLockup
           ) : (
@@ -152,7 +190,7 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
           )}
         </Link>
 
-        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Main">
+        <nav className="scholar-desktop-nav hidden min-w-0 flex-1 items-center justify-center lg:flex" aria-label="Main">
           {isPartners && (
             onPartnerSubdomain ? (
               <a href={mainSiteUrl} className="scholar-nav-link inline-flex items-center gap-1 font-semibold text-[var(--brand-dark)]">
@@ -166,38 +204,89 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               </Link>
             )
           )}
-          {isPartners && (
-            <a href={partnerLoginUrl} className="snp-partner-login-nav-btn hidden md:inline-flex">
-              Partner Login
-            </a>
-          )}
-          {!isPartners && (
-            <a href={partnerLoginUrl} className="scholar-nav-link hidden font-semibold text-[var(--brand-dark)] md:inline-flex">
-              Partner Login
-            </a>
-          )}
           {isPartners
             ? navLinks.map((link) => (
                 <a key={link.href} href={link.href} className="scholar-nav-link">
                   {link.label}
                 </a>
               ))
-            : HOME_NAV.map((item) => renderHomeNavLink(item, 'scholar-nav-link'))}
-          {!isPartners && (
-            <Link
-              to="/partners"
-              className={cn(
-                'scholar-nav-link font-semibold text-[var(--brand-dark)]',
-                location.pathname === '/partners' && 'underline underline-offset-4',
-              )}
-              onClick={closeMenu}
-            >
-              Partners
-            </Link>
-          )}
+            : (
+              <>
+                {HOME_NAV_PRIMARY.map((item) => renderHomeNavLink(item, 'scholar-nav-link'))}
+                <div ref={moreRef} className="relative">
+                  <button
+                    type="button"
+                    className={cn(
+                      'scholar-nav-link inline-flex items-center gap-1',
+                      moreOpen && 'bg-[var(--brand-light)] text-[var(--brand-dark)]',
+                    )}
+                    aria-expanded={moreOpen}
+                    aria-haspopup="true"
+                    onClick={() => setMoreOpen((open) => !open)}
+                  >
+                    More
+                    <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', moreOpen && 'rotate-180')} />
+                  </button>
+                  {moreOpen ? (
+                    <div className="scholar-nav-more-menu" role="menu">
+                      {HOME_NAV_MORE.map((item) => (
+                        <div key={item.label} role="none">
+                          {item.path.startsWith('/#') ? (
+                            <Link
+                              to={item.path}
+                              role="menuitem"
+                              className="scholar-nav-more-item"
+                              onClick={(e) => {
+                                handleLandingSectionNavClick(e, location.pathname, item.hash!, closeMenu);
+                                setMoreOpen(false);
+                              }}
+                            >
+                              {item.label}
+                            </Link>
+                          ) : (
+                            <Link
+                              to={item.path}
+                              role="menuitem"
+                              className="scholar-nav-more-item"
+                              onClick={() => setMoreOpen(false)}
+                            >
+                              {item.label}
+                            </Link>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <Link
+                  to="/partners"
+                  className={cn(
+                    'scholar-nav-link font-semibold text-[var(--brand-dark)]',
+                    location.pathname === '/partners' && 'underline underline-offset-4',
+                  )}
+                  onClick={closeMenu}
+                >
+                  Partners
+                </Link>
+              </>
+            )}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-2.5">
+          {!isPartners && (
+            <a
+              href={partnerLoginUrl}
+              className="scholar-nav-link-secondary scholar-header-desktop-only"
+            >
+              Partner Login
+            </a>
+          )}
+          {isPartners && (
+            <a href={partnerLoginUrl} className="snp-partner-login-nav-btn scholar-header-desktop-only">
+              Partner Login
+            </a>
+          )}
+
           {!isPartners && (
             <Link
               to="/partners"

@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, GraduationCap, LogOut } from 'lucide-react';
+import { Bell, GraduationCap, LogOut, Moon, Sun } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/contexts/ThemeContext';
 import '../partners/partners.css';
 import './parentPortal.css';
 
@@ -167,6 +168,9 @@ export function ParentPortalHeader({
   onLogout: () => void;
   bellRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
+  const { theme, toggleTheme } = useTheme();
+  const darkMode = theme === 'dark';
+
   return (
     <header className="snp-app-header snp-parent-app-header">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-[4.25rem] sm:px-6">
@@ -190,6 +194,14 @@ export function ParentPortalHeader({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            className="snp-header-btn"
+            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={toggleTheme}
+          >
+            {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
           <button
             ref={bellRef}
             type="button"
@@ -233,7 +245,7 @@ export function ParentPortalDesktopNav({
               'inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition sm:text-sm',
               activeTab === t.key
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/20'
-                : 'bg-white/70 text-slate-600 hover:bg-white dark:bg-slate-900/40 dark:text-slate-300'
+                : 'bg-white/70 text-slate-600 hover:bg-white dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-800 dark:border dark:border-slate-700/50'
             )}
           >
             {t.icon}

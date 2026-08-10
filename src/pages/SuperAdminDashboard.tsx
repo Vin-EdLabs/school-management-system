@@ -1889,7 +1889,7 @@ const SuperAdminDashboard = () => {
                                     <Building2 className="w-10 h-10 text-slate-300 dark:text-slate-600" />
                                   )}
                                 </div>
-                                <div className="absolute -bottom-2 -right-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg border-2 border-white dark:border-slate-900 shadow-lg">
+                                <div className="absolute -bottom-2 -right-2 bg-slate-900 dark:bg-white text-white dark:!text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg border-2 border-white dark:border-slate-900 shadow-lg">
                                   #{school.id}
                                 </div>
                               </div>
@@ -1913,22 +1913,22 @@ const SuperAdminDashboard = () => {
                                     {school.archived_at ? 'Archived' : school.is_active ? 'Active' : 'Suspended'}
                                   </Badge>
                                 </div>
-                                <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-slate-500">
-                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-slate-600 dark:text-slate-300">
+                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                                     <Globe className="w-3 h-3 text-indigo-500" />
                                     {school.slug || 'no-slug'}
                                   </div>
-                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                                     <ShieldCheck className="w-3 h-3 text-emerald-500" />
                                     {school.subscription_status || 'active'}
                                   </div>
                                   {school.created_at && (
-                                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider">
+                                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                                       Since {new Date(school.created_at).toLocaleDateString()}
                                     </div>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-indigo-500 font-semibold uppercase tracking-wider">Click card for full details</p>
+                                <p className="text-[10px] text-indigo-600 dark:text-indigo-300 font-semibold uppercase tracking-wider">Click card for full details</p>
                               </div>
 
                               {/* Action Group */}
@@ -1938,7 +1938,7 @@ const SuperAdminDashboard = () => {
                                   size="sm"
                                   onClick={() => void openEditSchool(school)}
                                   disabled={editFormLoading}
-                                  className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800"
+                                  className="h-10 rounded-xl border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-widest text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                                 >
                                   <Pencil className="w-3.5 h-3.5 mr-2" />
                                   Edit
@@ -1985,7 +1985,7 @@ const SuperAdminDashboard = () => {
                                   </>
                                 )}
                                 
-                                <Button size="sm" onClick={() => openSchool(school)} disabled={!!school.archived_at} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 shadow-lg shadow-slate-900/10 transition-all disabled:opacity-40">
+                                <Button size="sm" onClick={() => openSchool(school)} disabled={!!school.archived_at} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:!text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 dark:hover:bg-slate-100 shadow-lg shadow-slate-900/10 dark:shadow-white/10 transition-all disabled:opacity-40">
                                   <ArrowRight className="w-3.5 h-3.5 mr-2" />
                                   Launch
                                 </Button>
@@ -3162,7 +3162,7 @@ const SuperAdminDashboard = () => {
                               {r.status === 'pending' && (
                                 <div className="hidden lg:flex flex-col gap-2 mt-auto w-full">
                                   <Button onClick={() => updateRegistrationStatus(r.id, 'contacted')} className="w-full h-10 rounded-xl border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase tracking-widest bg-indigo-500/5 hover:bg-indigo-500/10">Mark Contacted</Button>
-                                  <Button onClick={() => updateRegistrationStatus(r.id, 'approved')} className="w-full h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-[10px] uppercase tracking-widest">Approve & Create</Button>
+                                  <Button onClick={() => updateRegistrationStatus(r.id, 'approved')} className="w-full h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:!text-slate-900 font-black text-[10px] uppercase tracking-widest">Approve & Create</Button>
                                   <Button onClick={() => updateRegistrationStatus(r.id, 'rejected')} className="w-full h-10 rounded-xl text-red-500 hover:bg-red-500/10 font-bold text-[10px] uppercase tracking-widest border border-red-500/10">Reject</Button>
                                 </div>
                               )}

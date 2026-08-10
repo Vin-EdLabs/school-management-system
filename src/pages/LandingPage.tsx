@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Mail, Phone } from 'lucide-react';
 import ParentAppShowcase from '../components/landing/ParentAppShowcase';
 import SchoolWebsiteShowcase from '../components/landing/SchoolWebsiteShowcase';
 import PricingSection from '../components/landing/PricingSection';
@@ -567,15 +568,15 @@ const LandingPage = () => {
             <p>© {new Date().getFullYear()} ScholarNerve. All rights reserved.</p>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
               <a href="mailto:scholarnerve@gmail.com" className="flex items-center gap-2 hover:text-white">
-                <IconMail className="h-4 w-4" />
+                <Mail className="h-4 w-4" />
                 scholarnerve@gmail.com
               </a>
               <a href="https://wa.me/233531932399" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-white">
-                <IconCall className="h-4 w-4" />
+                <Phone className="h-4 w-4" />
                 WhatsApp: 053 193 2399
               </a>
               <a href="tel:+233506741322/tel:+233557609106" className="flex items-center gap-2 hover:text-white">
-                <IconCall className="h-4 w-4" />
+                <Phone className="h-4 w-4" />
                 Call: 050 674 1322/055 760 9106
               </a>
             </div>

@@ -31,6 +31,7 @@ export const HEADMASTER_MODULES = [
   'staff-attendance',
   'my-staff-attendance',
   'complaints',
+  'boarding-complaints',
   'messages',
 ] as const;
 

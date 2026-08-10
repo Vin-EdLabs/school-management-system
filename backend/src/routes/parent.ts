@@ -32,6 +32,10 @@ import {
 import { getSchoolActiveTermYear } from '../services/gradesTermContext.js';
 import { loadStudentTermRemarks } from '../services/termReportRemarksService.js';
 import { resolveParentFromToken, validateParentPortalHost } from '../middleware/authenticateParent.js';
+import { isBoardingEnabledForTenant } from '../services/boardingModuleService.js';
+import { getBoardingFeeBreakdownForStudent } from '../services/boardingFeeService.js';
+import { getWeeklyMenu } from '../services/boardingMenuService.js';
+import { getStudentBalanceFromLedger } from '../services/ledgerBalanceService.js';
 
 const router = express.Router();
 
@@ -1727,6 +1731,22 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       student
     );
 
+    const boardingBreakdown =
+      balance.boardingFeeBreakdown ??
+      (balance.boardingFees && balance.boardingFees > 0
+        ? { lodging: balance.boardingFees, feeding: 0 }
+        : null);
+    const boardingLines: Array<{ label: string; amount: number }> = [];
+    if (boardingBreakdown) {
+      if (boardingBreakdown.lodging > 0) {
+        boardingLines.push({ label: 'Boarding — Lodging', amount: boardingBreakdown.lodging });
+      }
+      if (boardingBreakdown.feeding > 0) {
+        boardingLines.push({ label: 'Boarding — Feeding', amount: boardingBreakdown.feeding });
+      }
+    }
+    const allTermFeeLines = [...termFeeLines.lines, ...boardingLines];
+
     const portalStatus = mapParentPortalStatus(balance);
 
     const paymentsRow = await query(
@@ -1803,9 +1823,12 @@ router.get('/finance', authenticateParent, async (req: ParentRequest, res) => {
       status: portalStatus,
       feeBreakdown: {
         termLabel: currentTermLabel,
-        termFeeLines: termFeeLines.lines,
+        termFeeLines: allTermFeeLines,
+        boardingLines,
+        boardingFeeBreakdown: boardingBreakdown,
+        boardingFees: balance.boardingFees ?? 0,
         arrearLines: balance.arrearLines,
-        subtotal: termFeeLines.subtotal,
+        subtotal: roundMoney(termFeeLines.subtotal + (balance.boardingFees ?? 0)),
         discountAmount: termFeeLines.discountAmount,
         termFee: balance.currentTermFee,
         totalArrears: balance.totalArrears,
@@ -1965,6 +1988,166 @@ router.get('/attendance', authenticateParent, async (req: ParentRequest, res) =>
   } catch (error) {
     console.error('Parent attendance error:', error);
     res.status(500).json({ error: 'Failed to fetch attendance' });
+  }
+});
+
+// ── GET /api/parent/boarding ──────────────────────────────────────────────────
+
+router.get('/boarding', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const boardingEnabled = await isBoardingEnabledForTenant(tenantId);
+    if (!boardingEnabled) {
+      return res.json({ available: false, reason: 'Boarding module is not enabled' });
+    }
+
+    const termRes = await query(
+      `SELECT t.id, t.name AS term_name, ay.name AS year_name
+       FROM terms t
+       JOIN academic_years ay ON t.academic_year_id = ay.id
+       WHERE t.tenant_id = $1 AND t.is_current = true
+       LIMIT 1`,
+      [tenantId]
+    );
+    const termId = termRes.rows[0]?.id ?? null;
+
+    const enrollmentRes = await query(
+      `SELECT be.status, bd.name AS dorm_name
+       FROM boarding_enrollments be
+       LEFT JOIN boarding_dorms bd ON be.dorm_id = bd.id
+       WHERE be.tenant_id = $1 AND be.student_id = $2
+         AND ($3::int IS NULL OR be.term_id = $3)
+       ORDER BY be.created_at DESC LIMIT 1`,
+      [tenantId, studentId, termId]
+    );
+    const enrollment = enrollmentRes.rows[0];
+    if (!enrollment || enrollment.status !== 'boarder') {
+      return res.json({ available: false, reason: 'Student is not a boarder this term' });
+    }
+
+    let boardingFee = { amount: 0, paid: 0, outstanding: 0, status: 'not_set' as string };
+    if (termId) {
+      const fb = await getBoardingFeeBreakdownForStudent(tenantId, studentId, termId);
+      const bal = await getStudentBalanceFromLedger(null, tenantId, studentId, termId);
+      const paid = Math.min(
+        fb.total,
+        Math.max(0, bal.paymentsMade - Math.max(0, bal.totalDue - fb.total))
+      );
+      const outstanding = Math.max(0, fb.total - paid);
+      boardingFee = {
+        amount: fb.total,
+        paid,
+        outstanding,
+        status: fb.total <= 0 ? 'not_set' : outstanding <= 0.001 ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+      };
+    }
+
+    const exeatsRes = await query(
+      `SELECT id, type, status, departure_date, return_date, actual_return_date, guardian_name, destination, created_at
+       FROM boarding_exeats WHERE tenant_id = $1 AND student_id = $2 ORDER BY created_at DESC LIMIT 20`,
+      [tenantId, studentId]
+    );
+
+    const complaintsRes = await query(
+      `SELECT id, title, severity, status, parent_summary, created_at
+       FROM boarding_complaints WHERE tenant_id = $1 AND student_id = $2 ORDER BY created_at DESC LIMIT 20`,
+      [tenantId, studentId]
+    );
+
+    const rollCallRes = await query(
+      `SELECT rc.roll_call_date, e.status,
+         EXISTS (
+           SELECT 1 FROM boarding_exeats ex
+           WHERE ex.tenant_id = rc.tenant_id AND ex.student_id = e.student_id
+             AND ex.status IN ('approved', 'signed_out', 'returned', 'overdue')
+             AND ex.departure_date <= rc.roll_call_date
+             AND COALESCE(ex.actual_return_date, ex.return_date) >= rc.roll_call_date
+         ) AS on_exeat
+       FROM boarding_roll_call_entries e
+       JOIN boarding_roll_calls rc ON e.roll_call_id = rc.id
+       WHERE rc.tenant_id = $1 AND e.student_id = $2
+         AND rc.roll_call_date >= CURRENT_DATE - INTERVAL '7 days'
+       ORDER BY rc.roll_call_date DESC`,
+      [tenantId, studentId]
+    );
+
+    const weeklyMenu = await getWeeklyMenu(tenantId);
+
+    res.json({
+      available: true,
+      status: enrollment.status,
+      dorm_name: enrollment.dorm_name,
+      term_name: termRes.rows[0]?.term_name ?? null,
+      year_name: termRes.rows[0]?.year_name ?? null,
+      boarding_fee: boardingFee,
+      exeats: exeatsRes.rows,
+      complaints: complaintsRes.rows,
+      weekly_menu: weeklyMenu,
+      roll_call: rollCallRes.rows.map((r) => ({
+        date: r.roll_call_date,
+        status: r.on_exeat ? 'on_exeat' : r.status,
+      })),
+    });
+  } catch (error) {
+    console.error('Parent boarding error:', error);
+    res.status(500).json({ error: 'Failed to fetch boarding information' });
+  }
+});
+
+router.post('/boarding/exeats', authenticateParent, async (req: ParentRequest, res) => {
+  try {
+    const { studentId, tenantId } = req.parent!;
+    const boardingEnabled = await isBoardingEnabledForTenant(tenantId);
+    if (!boardingEnabled) {
+      return res.status(403).json({ error: 'Boarding is not available' });
+    }
+
+    const termRes = await query(
+      `SELECT id FROM terms WHERE tenant_id = $1 AND is_current = true LIMIT 1`,
+      [tenantId]
+    );
+    const termId = termRes.rows[0]?.id;
+    const enrollmentRes = await query(
+      `SELECT status FROM boarding_enrollments
+       WHERE tenant_id = $1 AND student_id = $2 AND ($3::int IS NULL OR term_id = $3)
+       ORDER BY created_at DESC LIMIT 1`,
+      [tenantId, studentId, termId ?? null]
+    );
+    if (enrollmentRes.rows[0]?.status !== 'boarder') {
+      return res.status(403).json({ error: 'Only boarders can request exeats' });
+    }
+
+    const { guardian_name, guardian_phone, destination, departure_date, return_date, type } = req.body ?? {};
+    if (!departure_date || !return_date) {
+      return res.status(400).json({ error: 'Departure and return dates are required' });
+    }
+
+    const studentRes = await query(
+      `SELECT guardian_name, guardian_contact FROM students WHERE id = $1 AND tenant_id = $2`,
+      [studentId, tenantId]
+    );
+
+    const result = await query(
+      `INSERT INTO boarding_exeats
+         (tenant_id, student_id, guardian_name, guardian_phone, destination, departure_date, return_date, type, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+       RETURNING *`,
+      [
+        tenantId,
+        studentId,
+        guardian_name || studentRes.rows[0]?.guardian_name || null,
+        guardian_phone || studentRes.rows[0]?.guardian_contact || null,
+        destination || null,
+        departure_date,
+        return_date,
+        type === 'weekend' ? 'weekend' : 'exeat',
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Parent create exeat error:', error);
+    res.status(500).json({ error: 'Failed to submit exeat request' });
   }
 });
 

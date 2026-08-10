@@ -106,7 +106,8 @@ router.get('/', async (req: AuthRequest, res) => {
     const healed = await query(
       `SELECT ss.*,
               COALESCE(NULLIF(TRIM(t.name), ''), NULLIF(TRIM(ss.school_name), ''), 'School') AS school_name,
-              COALESCE(NULLIF(TRIM(ss.logo_url), ''), NULLIF(TRIM(t.logo_url), '')) AS logo_url
+              COALESCE(NULLIF(TRIM(ss.logo_url), ''), NULLIF(TRIM(t.logo_url), '')) AS logo_url,
+              COALESCE(t.boarding_enabled, false) AS boarding_enabled
        FROM school_settings ss
        JOIN tenants t ON t.id = ss.tenant_id
        WHERE ss.tenant_id = $1`,
@@ -702,15 +703,15 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
     if (!username || !password || !role) {
       return res.status(400).json({ error: 'Username, password, and role are required' });
     }
-    if (!['administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager'].includes(role)) {
-      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, driver, headmaster, or website-manager' });
+    if (!['administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager', 'matron', 'house-master'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be administrator, finance, teacher, staff, driver, headmaster, website-manager, matron, or house-master' });
     }
-    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' || role === 'headmaster' || role === 'website-manager' ? 5 : 6;
+    const minLength = role === 'teacher' || role === 'staff' || role === 'driver' || role === 'headmaster' || role === 'website-manager' || role === 'matron' || role === 'house-master' ? 5 : 6;
     if (password.length < minLength) {
       return res.status(400).json({ error: `Password must be at least ${minLength} characters` });
     }
-    if ((role === 'administrator' || role === 'finance' || role === 'headmaster' || role === 'website-manager') && !String(fullName || '').trim()) {
-      return res.status(400).json({ error: 'Full name is required for Administrator, Finance, Headmaster, and Website Manager users' });
+    if ((role === 'administrator' || role === 'finance' || role === 'headmaster' || role === 'website-manager' || role === 'matron' || role === 'house-master') && !String(fullName || '').trim()) {
+      return res.status(400).json({ error: 'Full name is required for Administrator, Finance, Headmaster, Website Manager, Matron, and House Master users' });
     }
     if (role === 'headmaster' && !teacherId) {
       return res.status(400).json({ error: 'Headmaster accounts must be linked to a teacher profile (teacherId)' });
@@ -743,6 +744,9 @@ router.post('/users', requirePrimaryAdminOrSuperAdmin, async (req: AuthRequest, 
   } catch (error: any) {
     console.error('Create school user error:', error);
     if (error.code === '23505') return res.status(409).json({ error: 'Username already exists' });
+    if (error.code === '23514') {
+      return res.status(400).json({ error: 'This role is not enabled in the database yet. Please run migrations and try again.' });
+    }
     res.status(500).json({ error: 'Failed to create user' });
   }
 });

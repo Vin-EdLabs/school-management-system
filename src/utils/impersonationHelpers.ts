@@ -291,6 +291,9 @@ export function defaultModuleForRole(role?: string | null): string {
       return 'headmaster-dashboard';
     case 'driver':
       return 'transport-overview';
+    case 'matron':
+    case 'house-master':
+      return 'boarding-overview';
     default:
       return 'dashboard';
   }

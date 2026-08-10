@@ -16,6 +16,7 @@ import {
   getArrearsBreakdownFromLedger,
 } from '../services/ledgerBalanceService.js';
 import { enrichBalanceShapeWithExpectedFees, assertStudentInTenant, resolveLedgerFeeStructureForStudent } from '../services/effectiveStudentBalanceService.js';
+import { applyBoardingDisabledToBalanceShape } from '../services/boardingDisabledBalanceService.js';
 import { recalculateTermOutstandingBalances } from '../services/ledgerFinanceService.js';
 
 const router = express.Router();
@@ -95,6 +96,7 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
         status:
           row.termFee <= 0 &&
           (row.individualCharges ?? 0) <= 0 &&
+          (row.boardingFees ?? 0) <= 0 &&
           row.amountPaidThisTerm <= 0 &&
           row.arrears <= 0 &&
           row.creditBroughtForward <= 0
@@ -107,6 +109,11 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
         paymentsMade: row.amountPaidThisTerm,
         totalCharged: row.totalDue,
         individualCharges: row.individualCharges ?? 0,
+        boardingFees: row.boardingFees ?? 0,
+        boardingFeeBreakdown: row.boardingFeeBreakdown ?? {
+          lodging: row.boardingFees ?? 0,
+          feeding: 0,
+        },
         individualChargeLines: [],
         termRows: [
           {
@@ -122,16 +129,27 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
       };
 
       try {
-        balances[String(row.id)] = await enrichBalanceShapeWithExpectedFees(
+        const enriched = await enrichBalanceShapeWithExpectedFees(
           null,
           tenantId,
           row.id,
           ledgerTermId,
           rawShape
         );
+        balances[String(row.id)] = await applyBoardingDisabledToBalanceShape(
+          tenantId,
+          row.id,
+          ledgerTermId,
+          enriched
+        );
       } catch (enrichErr) {
         console.error(`[students/balances] enrich failed for student ${row.id}:`, enrichErr);
-        balances[String(row.id)] = rawShape;
+        balances[String(row.id)] = await applyBoardingDisabledToBalanceShape(
+          tenantId,
+          row.id,
+          ledgerTermId,
+          rawShape
+        );
       }
     }
 
@@ -280,10 +298,6 @@ router.get('/students/:studentId/balance', async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    if (ledgerTermId) {
-      shape = await enrichBalanceShapeWithExpectedFees(null, tenantId, studentId, ledgerTermId, shape);
-    }
-
     const arrearsBreakdown = ledgerTermId
       ? await getArrearsBreakdownFromLedger(null, tenantId, studentId, ledgerTermId)
       : [];
@@ -412,6 +426,7 @@ router.get('/students/balances-by-term', async (req: AuthRequest, res) => {
           status:
             row.termFee <= 0 &&
             (row.individualCharges ?? 0) <= 0 &&
+            (row.boardingFees ?? 0) <= 0 &&
             row.amountPaidThisTerm <= 0 &&
             row.arrears <= 0 &&
             row.creditBroughtForward <= 0
@@ -508,6 +523,7 @@ router.get('/class-report', async (req: AuthRequest, res) => {
           status:
             row.termFee <= 0 &&
             (row.individualCharges ?? 0) <= 0 &&
+            (row.boardingFees ?? 0) <= 0 &&
             row.amountPaidThisTerm <= 0 &&
             row.arrears <= 0 &&
             row.creditBroughtForward <= 0

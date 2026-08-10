@@ -1236,10 +1236,10 @@ export async function importDemoDataForTenant(
     for (const c of seed.classes) {
       const formTeacherId = ids.get(c.form_teacher_key);
       const r = await client.query(
-        `INSERT INTO classes (tenant_id, class_name, name, level, level_order, assigned_teacher_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO classes (tenant_id, class_name, level, level_order, assigned_teacher_id)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [tenantId, c.class_name, c.class_name, c.level, c.level_order, formTeacherId ?? null]
+        [tenantId, c.class_name, c.level, c.level_order, formTeacherId ?? null]
       );
       ids.set(c.key, Number(r.rows[0].id));
       if (formTeacherId) {

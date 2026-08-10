@@ -1,5 +1,9 @@
 import React, { useState, startTransition } from 'react';
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import BoardingFeeBreakdownDisplay, {
+  boardingFeeBreakdownTotal,
+  type BoardingFeeBreakdown,
+} from './BoardingFeeBreakdownDisplay';
 import {
   fetchFeeStructureItemsSummary,
   formatFeeItemLabel,
@@ -25,6 +29,9 @@ type TermBillBreakdownProps = {
   }>;
   /** Numeric total of individual charges when charge lines are not preloaded */
   individualChargeAmount?: number;
+  /** @deprecated Prefer boardingFeeBreakdown */
+  boardingFeeAmount?: number;
+  boardingFeeBreakdown?: BoardingFeeBreakdown;
   credit?: number;
   studentId?: number | string;
   termId?: number | null;
@@ -61,6 +68,8 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   breakdownItems,
   individualCharges,
   individualChargeAmount,
+  boardingFeeAmount,
+  boardingFeeBreakdown,
   credit,
   studentId,
   termId,
@@ -130,11 +139,18 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   const propChargeTotal = (individualCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
   const loadedChargeTotal = (loadedCharges ?? []).reduce((sum, c) => sum + Number(c.amount), 0);
   const numericChargeTotal = Number(individualChargeAmount ?? 0);
+  const boardingBreakdown: BoardingFeeBreakdown = boardingFeeBreakdown ?? {
+    lodging: Number(boardingFeeAmount ?? 0),
+    feeding: 0,
+  };
+  const boardingFeeTotal = boardingFeeBreakdown
+    ? boardingFeeBreakdownTotal(boardingFeeBreakdown)
+    : Number(boardingFeeAmount ?? 0);
   const chargeTotal = propChargeTotal > 0 ? propChargeTotal : loadedChargeTotal > 0 ? loadedChargeTotal : numericChargeTotal;
   const discountAmount = roundMoney(Number(discountAmountProp ?? 0));
 
-  const displayTotal = (summaryProp?.total ?? summary?.total ?? total) + chargeTotal;
-  const displayGrossTermBill = roundMoney((summaryProp?.total ?? summary?.total ?? total) + chargeTotal + discountAmount);
+  const displayTotal = (summaryProp?.total ?? summary?.total ?? total) + chargeTotal + boardingFeeTotal;
+  const displayGrossTermBill = roundMoney((summaryProp?.total ?? summary?.total ?? total) + chargeTotal + boardingFeeTotal + discountAmount);
   const shouldShowDiscount = discountAmount > 0;
 
   const handleToggle = async () => {
@@ -187,7 +203,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
   const extraChargeSummary = charges.length === 0 ? numericChargeTotal : 0;
 
   const canExpand = Boolean(
-    feeStructureId || breakdownItems?.length || propCharges.length > 0 || creditAmount > 0 || extraChargeSummary > 0 || (studentId != null && termId != null)
+    feeStructureId || breakdownItems?.length || propCharges.length > 0 || creditAmount > 0 || extraChargeSummary > 0 || boardingFeeTotal > 0 || (studentId != null && termId != null)
   );
 
   if (panelOnly) {
@@ -198,7 +214,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading breakdown…
           </div>
-        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) ? (
+        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount || boardingFeeTotal > 0) ? (
           <div className="space-y-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm">
             {activeItems.map((item) => (
               <div key={item.item_name} className="flex justify-between gap-4">
@@ -210,6 +226,11 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
               <div className="flex justify-between gap-4 text-amber-700">
                 <span>{discountLabel ?? 'Beneficiary Discount'}</span>
                 <span className="font-mono tabular-nums">-GHS {formatMoney(discountAmount)}</span>
+              </div>
+            ) : null}
+            {boardingFeeTotal > 0 ? (
+              <div className="pt-2">
+                <BoardingFeeBreakdownDisplay breakdown={boardingBreakdown} total={boardingFeeTotal} compact />
               </div>
             ) : null}
             {charges.length > 0 ? (
@@ -303,7 +324,7 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
               Loading breakdown…
             </div>
           </div>
-        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount) ? (
+        ) : (activeItems.length > 0 || charges.length > 0 || creditAmount > 0 || shouldShowDiscount || boardingFeeTotal > 0) ? (
         <div className={`mt-2 space-y-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs ${compact ? 'text-right' : ''}`}>
           {activeItems.map(item => (
             <div key={item.item_name} className="flex justify-between gap-4">
@@ -316,6 +337,12 @@ export const TermBillBreakdown: React.FC<TermBillBreakdownProps> = ({
             <div className="flex justify-between gap-4 text-amber-700">
               <span>{discountLabel ?? 'Beneficiary Discount'}</span>
               <span className="font-mono tabular-nums">-GHS {formatMoney(discountAmount)}</span>
+            </div>
+          ) : null}
+
+          {boardingFeeTotal > 0 ? (
+            <div className="pt-2">
+              <BoardingFeeBreakdownDisplay breakdown={boardingBreakdown} total={boardingFeeTotal} compact />
             </div>
           ) : null}
 

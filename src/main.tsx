@@ -1,6 +1,7 @@
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App.tsx'
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { HelmetProvider } from 'react-helmet-async';
+import App from './App.tsx';
 import './index.css'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -283,7 +284,11 @@ async function registerServiceWorker() {
 }
 
 function mountAppAndHideSplash() {
-  root.render(<App />);
+  root.render(
+    <HelmetProvider>
+      <App />
+    </HelmetProvider>
+  );
   if (isMainMarketingLanding()) {
     hideSplash();
     return;

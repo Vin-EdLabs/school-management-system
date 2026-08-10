@@ -16,7 +16,7 @@ const inputClass = 'scholar-register-field w-full';
 
 type InquiryType = 'contact' | 'demo' | 'pricing';
 
-export default function ContactSection() {
+export default function ContactSection({ standalone = false }: { standalone?: boolean }) {
   const location = useLocation();
   const [form, setForm] = useState({
     name: '',
@@ -69,8 +69,9 @@ export default function ContactSection() {
   };
 
   return (
-    <section id="contact" className="scroll-mt-16 bg-[var(--surface-2)] px-4 py-16 sm:scroll-mt-20 sm:px-5 sm:py-20">
+    <section id={standalone ? undefined : 'contact'} className="scroll-mt-16 bg-[var(--surface-2)] px-4 py-16 sm:scroll-mt-20 sm:px-5 sm:py-20">
       <div className="mx-auto max-w-[1100px]">
+        {!standalone ? (
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--brand)]">Contact ScholarNerve</p>
           <h2 className="scholar-display mt-2 text-3xl font-black text-[var(--ink)] sm:text-4xl">We&apos;re Here to Help</h2>
@@ -78,6 +79,13 @@ export default function ContactSection() {
             Questions about pricing, demos, or onboarding? Send us a message — our team receives it directly.
           </p>
         </div>
+        ) : (
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="mt-3 text-base text-[var(--ink-muted)]">
+            Questions about pricing, demos, or onboarding? Send us a message — our team receives it directly.
+          </p>
+        </div>
+        )}
 
         <div className="mx-auto mt-10 grid max-w-[1100px] gap-8 lg:grid-cols-[1fr_340px]">
           <div className="rounded-2xl border border-[var(--sn-border)] bg-white p-6 shadow-[var(--shadow-premium)] sm:p-8">
@@ -92,9 +100,9 @@ export default function ContactSection() {
                   <Link to={REGISTER_SCHOOL_PATH} className="scholar-btn-primary">
                     Start free trial
                   </Link>
-                  <a href="/#pricing" className="scholar-btn-secondary">
+                  <Link to="/pricing" className="scholar-btn-secondary">
                     View pricing
-                  </a>
+                  </Link>
                 </div>
               </div>
             ) : (

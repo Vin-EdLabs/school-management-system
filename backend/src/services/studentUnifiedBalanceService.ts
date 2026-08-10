@@ -23,7 +23,14 @@ export const ARREARS_EXCLUDED_DEBIT_TYPES = [
 ] as const;
 
 /** Debits that receive carry_forward_credit when closing a term. */
-export const BILLABLE_DEBIT_TYPES = ['term_fee', 'payment_correction', 'manual_adjustment', 'student_charge'] as const;
+export const BILLABLE_DEBIT_TYPES = [
+  'term_fee',
+  'payment_correction',
+  'manual_adjustment',
+  'student_charge',
+  'boarding_fee',
+  'boarding_feeding',
+] as const;
 
 const cfList = CARRY_FORWARD_ENTRY_TYPES.map((t) => `'${t}'`).join(', ');
 const arrearsExcludedList = ARREARS_EXCLUDED_DEBIT_TYPES.map((t) => `'${t}'`).join(', ');
@@ -535,7 +542,7 @@ export async function getStudentFullBalance(
   }));
 
   let status: BalanceStatus = 'Cleared';
-  if (balance.termFee <= 0 && balance.paymentsMade <= 0 && balance.arrears <= 0 && balance.creditFromCarryForward <= 0) {
+  if (balance.termFee <= 0 && balance.paymentsMade <= 0 && balance.arrears <= 0 && balance.creditFromCarryForward <= 0 && balance.individualCharges <= 0 && balance.boardingFees <= 0) {
     status = 'NotSet';
   } else if (balance.netBalance < -0.001) {
     status = 'Credit';
@@ -606,7 +613,9 @@ export async function getCurrentTermPaymentContext(
     const resolved = await resolveLedgerFeeStructureForStudent(client, tenantId, studentId, ledgerTermId);
     if (resolved) {
       termFee = resolved.netTotal;
-      totalDue = roundMoney(termFee + balance.arrears + (balance.individualCharges ?? 0));
+      totalDue = roundMoney(
+        termFee + balance.arrears + (balance.individualCharges ?? 0) + (balance.boardingFees ?? 0)
+      );
       outstandingBefore = roundMoney(
         Math.max(0, totalDue - balance.paymentsMade - balance.creditFromCarryForward)
       );

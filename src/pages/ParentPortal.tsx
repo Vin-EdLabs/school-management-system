@@ -3,7 +3,7 @@ import {
   GraduationCap, LogOut, BookOpen, Trophy, CreditCard,
   CalendarCheck, Eye, EyeOff, Lock, ChevronRight, Medal,
   TrendingUp, CheckCircle2, XCircle, Clock, AlertTriangle,
-  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText, Trash2,
+  Home, RefreshCw, Activity, Bell, X, MessageSquare, Send, Phone, Mail, Plus, Paperclip, Cake, FileText, Trash2, BedDouble,
 } from 'lucide-react';
 import ReceiptPrinter from '@/components/common/ReceiptPrinter';
 import { parseReceiptSnapshot, termsMatch } from '@/utils/feeCalculations';
@@ -32,6 +32,7 @@ import ParentMakePaymentPanel from '@/components/parent/ParentMakePaymentPanel';
 import type { OnlinePaymentReceipt } from '@/services/onlinePaymentApi';
 import StudentLearningMode from '@/components/parent/StudentLearningMode';
 import ParentCheckinPanel from '@/components/checkins/ParentCheckinPanel';
+import ParentBoardingPanel from '@/components/parent/ParentBoardingPanel';
 import { buildInvoiceFilename, downloadInvoicePdf } from '@/components/invoices/buildInvoicePdf';
 import { createRoot } from 'react-dom/client';
 import ParentReportCardMobileViewport from '@/components/parent/ParentReportCardMobileViewport';
@@ -43,6 +44,15 @@ import ParentImpersonationBanner, {
 import { exitParentImpersonation, restoreAdminSession, prepareReturnToAdminDashboard, applyPostExitTenantContext, resolvePostImpersonationPath, readAdminBackup, beginImpersonationTransition, clearImpersonationTransition, runWithTransitionMinimum, readImpersonationTransition, isParentImpersonationTransitionReady, PARENT_IMPERSONATION_TRANSITION_MS, IMPERSONATION_TRANSITION_MS } from '@/utils/impersonationHelpers';
 import ImpersonationTransitionOverlay from '@/components/impersonation/ImpersonationTransitionOverlay';
 import { useNavigate } from 'react-router-dom';
+import {
+  ParentNotificationsPanel,
+  ParentPortalBackground,
+  ParentPortalDesktopNav,
+  ParentPortalHeader,
+  ParentPortalMobileNav,
+  ParentPortalTopChrome,
+} from '@/pages/parent/ParentPortalChrome';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
@@ -316,7 +326,7 @@ interface LinkedAccount {
   student: StudentInfo;
 }
 
-type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk';
+type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk' | 'boarding';
 type FinanceSubTab = 'balance' | 'make-payment';
 type ParentAppNotification = {
   id: string;
@@ -368,8 +378,8 @@ interface ParentPortalProps {
 const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoolLogoUrl, primaryColor, secondaryColor }) => {
   const navigate = useNavigate();
   const { applySession } = useAuth();
-  const brandPrimary = primaryColor || '#7c3aed';
-  const brandSecondary = secondaryColor || '#db2777';
+  const brandPrimary = primaryColor || '#0d9e75';
+  const brandSecondary = secondaryColor || '#085041';
   const [token, setToken] = useState<string | null>(() => readParentToken(tenantId));
   const [student, setStudent] = useState<StudentInfo | null>(() => {
     const t = readParentToken(tenantId);
@@ -425,6 +435,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const [parentInvoices, setParentInvoices] = useState<Invoice[]>([]);
   const [invoicePdfLoading, setInvoicePdfLoading] = useState<number | null>(null);
   const [attendance, setAttendance] = useState<any>(null);
+  const [boardingTabAvailable, setBoardingTabAvailable] = useState(false);
   const [birthdayInfo, setBirthdayInfo] = useState<{ birthdays: Array<{ id: number; fullName: string; age: number }> } | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
@@ -526,9 +537,19 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     }
   }, [selectedDeskMessage, deskConversation]);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    html.classList.add('snp-parent-portal-active');
+    if (parentImpersonationActive(tenantId)) {
+      html.classList.add('snp-parent-impersonation-active');
+    }
+    return () => {
+      html.classList.remove('snp-parent-portal-active', 'snp-parent-impersonation-active');
+    };
+  }, [tenantId]);
+
   const [appNotifications, setAppNotifications] = useState<ParentAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const notifPanelRef = useRef<HTMLDivElement>(null);
   const notifBellRef = useRef<HTMLButtonElement>(null);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
@@ -734,6 +755,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       setToken(data.token);
       setMustChangePassword(data.mustChangePassword);
       setStudent(studentInfo);
+      void loadBoardingTabAvailability(data.token);
       localStorage.setItem(`parent_token_${tenantId}`, data.token);
       localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(studentInfo));
 
@@ -831,6 +853,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     clearParentTenantSession(tenantId);
     setToken(null);
     setStudent(null);
+    setBoardingTabAvailable(false);
     setLinkedAccounts([]);
     setIsSwitchingStudent(false);
     setDataLoading(false);
@@ -875,6 +898,15 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       }))
       : [];
     setAppNotifications(mapped);
+  }, []);
+
+  const loadBoardingTabAvailability = useCallback(async (authToken: string) => {
+    try {
+      const d = (await parentFetch('/parent/boarding', {}, authToken)) as { available?: boolean };
+      setBoardingTabAvailable(Boolean(d?.available));
+    } catch {
+      setBoardingTabAvailable(false);
+    }
   }, []);
 
   const finalizeStudentSessionTransition = useCallback(async (
@@ -957,6 +989,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       }
 
       setStudent(studentInfo);
+      void loadBoardingTabAvailability(authToken);
       if (financeData) setFinance(financeData);
       setBirthdayInfo(
         birthdays?.birthdays?.length ? { birthdays: birthdays.birthdays } : null
@@ -1050,28 +1083,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   const unreadFinanceStatementCount = appNotifications.filter((n) => !n.read && isFinanceStatementNotification(n)).length;
 
-  /** Close notifications panel when clicking outside (not on bell or panel), or on Escape. */
-  useEffect(() => {
-    if (!showNotifPanel) return;
-    const close = (e: MouseEvent | TouchEvent) => {
-      const t = e.target as Node;
-      if (notifPanelRef.current?.contains(t)) return;
-      if (notifBellRef.current?.contains(t)) return;
-      setShowNotifPanel(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowNotifPanel(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('touchstart', close, { passive: true });
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('touchstart', close);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [showNotifPanel]);
-
+  /** Notifications panel uses portal backdrop + Escape in ParentNotificationsPanel. */
   /** Rehydrate parent impersonation session from storage (no full page reload). */
   const rehydrateParentImpersonation = useCallback(() => {
     if (!parentImpersonationActive(tenantId)) return;
@@ -1190,6 +1202,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         setToken(storedToken);
         setStudent(info);
         setMustChangePassword(forcePwChange);
+        void loadBoardingTabAvailability(storedToken);
         localStorage.setItem(`parent_student_${tenantId}`, JSON.stringify(info));
       } catch {
         if (cancelled) return;
@@ -1727,8 +1740,31 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }, [student]);
 
   const handleTabChange = (tab: Tab) => {
+    if (tab === 'boarding' && !boardingTabAvailable) return;
     setActiveTab(tab);
   };
+
+  const portalTabs = useMemo((): { key: Tab; icon: React.ReactNode; label: string }[] => {
+    const items: { key: Tab; icon: React.ReactNode; label: string }[] = [
+      { key: 'overview', icon: <Home className="w-4 h-4" />, label: 'Overview' },
+      { key: 'grades', icon: <BookOpen className="w-4 h-4" />, label: 'Grades' },
+      { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
+      { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
+      { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
+    ];
+    if (boardingTabAvailable) {
+      items.push({ key: 'boarding', icon: <BedDouble className="w-4 h-4" />, label: 'Boarding' });
+    }
+    items.push({ key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' });
+    return items;
+  }, [boardingTabAvailable]);
+
+  const mobilePortalTabs = useMemo(() => {
+    const keys: Tab[] = boardingTabAvailable
+      ? ['overview', 'grades', 'finance', 'boarding', 'desk']
+      : ['overview', 'grades', 'finance', 'position', 'desk'];
+    return portalTabs.filter((t) => keys.includes(t.key));
+  }, [portalTabs, boardingTabAvailable]);
 
   const refreshTab = async () => {
     if (!token) return;
@@ -1894,7 +1930,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   const resolvedLogo = resolveMediaUrl(student?.school_logo_url || schoolLogoUrl);
   const unreadNotifCount = appNotifications.filter(n => !n.read).length;
   const totalPwaBadgeCount = unreadNotifCount + parentDeskUnread;
-  const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandPrimary} 72%, ${brandSecondary} 100%)`;
+  const premiumLoginGradient = `linear-gradient(140deg, #050816 0%, #111a2f 38%, ${brandSecondary} 72%, ${brandPrimary} 100%)`;
 
   // Resolved student photo
   const studentPhotoUrl = resolveMediaUrl(student?.passport_photo_url);
@@ -1992,7 +2028,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           <div className="text-center mb-8">
             {schoolLogoUrl ? (
               <div className="flex flex-col items-center gap-3">
-                <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white/10 border border-white/20 flex items-center justify-center shadow-xl shadow-purple-900/40">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden bg-white/10 border border-white/20 flex items-center justify-center shadow-xl shadow-emerald-900/40">
                   <img
                     src={resolveMediaUrl(schoolLogoUrl) || ''}
                     alt={schoolName}
@@ -2006,16 +2042,16 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-white">{schoolName || 'School'}</h1>
-                  <p className="text-purple-300 text-sm font-medium mt-0.5">Parent Portal</p>
+                  <p className="text-emerald-200/90 text-sm font-medium mt-0.5">Parent Portal</p>
                 </div>
               </div>
             ) : (
               <>
-                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-purple-500/30">
+                <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-teal-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-emerald-900/30">
                   <GraduationCap className="w-9 h-9 text-white" />
                 </div>
                 <h1 className="text-2xl font-bold text-white">{schoolName || 'School'}</h1>
-                <p className="text-purple-300 text-sm font-medium mt-1">Parent Portal</p>
+                <p className="text-emerald-200/90 text-sm font-medium mt-1">Parent Portal</p>
               </>
             )}
             <p className="text-slate-400 text-sm mt-3">
@@ -2033,7 +2069,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   value={loginAdmission}
                   onChange={e => setLoginAdmission(e.target.value)}
                   placeholder="e.g. 12345678"
-                  className="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                  className="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                   required
                   autoComplete="username"
                 />
@@ -2047,7 +2083,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     value={loginPassword}
                     onChange={e => setLoginPassword(e.target.value)}
                     placeholder="Enter password"
-                    className="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-lg px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                    className="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-lg px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent"
                     required
                     autoComplete="current-password"
                   />
@@ -2164,15 +2200,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   // ── Main Dashboard ────────────────────────────────────────────────────────────
 
-  const tabs: { key: Tab; icon: React.ReactNode; label: string }[] = [
-    { key: 'overview', icon: <Home className="w-4 h-4" />, label: 'Overview' },
-    { key: 'grades', icon: <BookOpen className="w-4 h-4" />, label: 'Grades' },
-    { key: 'position', icon: <Trophy className="w-4 h-4" />, label: 'Position' },
-    { key: 'finance', icon: <CreditCard className="w-4 h-4" />, label: 'Finance' },
-    { key: 'attendance', icon: <CalendarCheck className="w-4 h-4" />, label: 'Attendance' },
-    { key: 'desk', icon: <MessageSquare className="w-4 h-4" />, label: 'Parent Desk' },
-  ];
-  const mobileTabs = tabs.filter((t) => t.key !== 'attendance');
   const greeting = (() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning 👋';
@@ -2195,14 +2222,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         label: 'Grades',
         description: 'View academic performance',
         icon: <BookOpen className="w-6 h-6" />,
-        tone: 'from-violet-500/20 to-purple-500/10 text-violet-600',
+        tone: 'from-emerald-500/20 to-teal-500/10 text-emerald-600',
       },
       {
         key: 'position',
         label: 'Position',
         description: 'Check class & general position',
         icon: <Trophy className="w-6 h-6" />,
-        tone: 'from-fuchsia-500/20 to-violet-500/10 text-purple-600',
+        tone: 'from-teal-500/20 to-emerald-500/10 text-teal-600',
       },
       {
         key: 'finance',
@@ -2231,7 +2258,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
   if (studentModeEntering) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-violet-800 to-fuchsia-700 flex items-center justify-center">
+      <div className="min-h-screen sn-partner-portal flex items-center justify-center" style={{ background: 'linear-gradient(145deg, #064e3b 0%, #085041 45%, #0d9e75 100%)' }}>
         <div className="text-center text-white space-y-4 animate-in zoom-in-95 duration-500">
           <div className="w-20 h-20 rounded-full border-4 border-white/20 border-t-white animate-spin mx-auto" />
           <p className="text-xl font-bold">Opening Student Learning Mode…</p>
@@ -2254,7 +2281,13 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
   }
 
   return (
-    <div className={`overflow-x-hidden bg-[#F8F7FF] bg-[radial-gradient(circle_at_top_left,rgba(192,132,252,0.34),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.20),transparent_28%),linear-gradient(180deg,#FFFFFF_0%,#F8F7FF_45%,#F4EEFF_100%)] text-slate-950 ${parentImpersonationBannerOffsetClass(tenantId)}`}>
+    <div className={cn(
+      'sn-partner-portal snp-portal-shell snp-mobile-active overflow-x-hidden text-slate-950',
+      parentImpersonationBannerOffsetClass(tenantId),
+      parentImpersonationActive(tenantId) && 'snp-parent-impersonation-active',
+    )}>
+      <ParentPortalBackground logoUrl={resolvedLogo} />
+      <div className="snp-portal-content snp-parent-main">
       <ParentImpersonationBanner tenantId={tenantId} />
       {showSwitchOverlay ? (
         <div
@@ -2262,8 +2295,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           aria-live="polite"
           aria-busy="true"
         >
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-violet-100 bg-white px-6 py-5 shadow-lg">
-            <RefreshCw className="h-6 w-6 animate-spin text-violet-600" />
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-100 bg-white px-6 py-5 shadow-lg snp-glass-card">
+            <RefreshCw className="h-6 w-6 animate-spin text-emerald-600" />
             <p className="text-sm font-semibold text-slate-800">
               {switchTargetName ? `Loading ${switchTargetName}…` : 'Switching student…'}
             </p>
@@ -2271,9 +2304,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         </div>
       ) : null}
       {newQuizPopup && (
-        <div className="fixed inset-0 z-[90] bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[90] snp-parent-modal-layer bg-slate-900/45 backdrop-blur-[1px] flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border shadow-2xl p-5">
-            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">New Teacher Quiz</p>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">New Teacher Quiz</p>
             <p className="text-lg font-bold text-slate-900 mt-1">{newQuizPopup.title}</p>
             <p className="text-sm text-slate-600 mt-1">
               {newQuizPopup.teacherName ? `From ${newQuizPopup.teacherName}` : 'From your teacher'}
@@ -2289,7 +2322,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               </button>
               <button
                 type="button"
-                className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
+                className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold"
                 onClick={() => {
                   setNewQuizPopup(null);
                   openStudentMode();
@@ -2301,153 +2334,63 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           </div>
         </div>
       )}
-      {/* ── Native mobile-inspired top bar ── */}
-      <header className="fixed inset-x-0 top-0 z-[100] border-b border-white/40 bg-white/85 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/75">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 sm:px-6">
-          <button
-            onClick={() => {
-              if (linkedAccounts.length > 1) setShowSwitcher(true);
-            }}
-            className={`flex min-w-0 items-center gap-3 rounded-3xl text-left transition-transform active:scale-[0.98] ${linkedAccounts.length > 1 ? '' : 'cursor-default'}`}
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white/70 shadow-[0_12px_35px_rgba(139,92,246,0.18)] backdrop-blur-xl">
-              {resolvedLogo
-                ? <img src={resolvedLogo} alt="" className="h-full w-full object-contain p-1" />
-                : <GraduationCap className="h-5 w-5 text-violet-600" />}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-lg font-black tracking-tight text-slate-950">{greeting}</p>
-              {linkedAccounts.length > 1 ? (
-                <p className="truncate text-xs font-semibold text-slate-500">
-                  Tap to switch between {linkedAccounts.length} children
-                </p>
-              ) : null}
-            </div>
-          </button>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <button
-              ref={notifBellRef}
-              type="button"
-              onClick={() => setShowNotifPanel((v) => !v)}
-              className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white/65 text-slate-800 shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:bg-white/90 active:scale-95"
-              title="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              {unreadNotifCount > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
-                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/70 bg-white/65 text-slate-800 shadow-[0_14px_32px_rgba(15,23,42,0.10)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:bg-white/90 hover:text-rose-600 active:scale-95"
-              title="Log out"
-              aria-label="Log out"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Desktop tab bar */}
-        <div className="hidden max-w-6xl gap-2 overflow-x-auto px-6 pb-3 sm:mx-auto sm:flex scrollbar-none">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold whitespace-nowrap transition-all ${activeTab === t.key
-                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/25'
-                  : 'bg-white/55 text-slate-500 hover:bg-white/80 hover:text-violet-700'
-                }`}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                {t.icon}
-                {t.label}
-                {t.key === 'desk' && parentDeskUnread > 0 && (
-                  <span className="min-h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center">
-                    {parentDeskUnread > 9 ? '9+' : parentDeskUnread}
-                  </span>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
-      </header>
-
-      {showNotifPanel && (
-        <div
-          ref={notifPanelRef}
-          className="fixed z-[115] left-3 right-3 top-[5.25rem] sm:left-auto sm:right-5 sm:top-[5.5rem] sm:w-[min(100vw-2rem,22rem)] max-w-[22rem] sm:ml-auto sm:mr-0 max-h-[min(70dvh,28rem)] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 origin-top"
-          role="dialog"
-          aria-label="Notifications"
-        >
-          <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100">
-            <p className="text-sm font-semibold text-slate-800">Notifications</p>
-            {appNotifications.length > 0 && (
-              <button
-                type="button"
-                onClick={async () => {
-                  if (token) {
-                    await parentFetch('/parent/notifications/read-all', { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
-                  }
-                  setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-                }}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
-            {appNotifications.length === 0 ? (
-              <p className="text-sm text-slate-500 px-2 py-6 text-center">No notifications yet.</p>
-            ) : (
-              <ul className="space-y-1">
-                {appNotifications.map((n) => (
-                  <li key={n.id}>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (token && n.serverId && !n.read) {
-                          await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
-                        }
-                        setAppNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
-                        if (isFinanceStatementNotification(n)) {
-                          await openFinanceStatementFromNotification({ ...n, read: true });
-                          return;
-                        }
-                        if (isPaymentSubmissionNotification(n)) {
-                          await openMakePaymentFromNotification({ ...n, read: true });
-                          return;
-                        }
-                        setSelectedNotification({ ...n, read: true });
-                        setShowNotifPanel(false);
-                      }}
-                      className={`w-full text-left rounded-xl border px-3 py-2.5 transition-all active:scale-[0.99] ${n.read
-                          ? 'border-slate-100 bg-white hover:bg-slate-50'
-                          : 'border-indigo-200 bg-indigo-50 shadow-sm ring-1 ring-indigo-100'
-                        }`}
-                    >
-                      <p className={`text-sm leading-snug ${n.read ? 'font-medium text-slate-700' : 'font-bold text-slate-900'}`}>{n.title}</p>
-                      <p className={`text-xs mt-0.5 line-clamp-2 ${n.read ? 'text-slate-500' : 'text-slate-700 font-medium'}`}>{n.message}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">{new Date(n.at).toLocaleString()}</p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+      <ParentPortalTopChrome>
+      <ParentPortalHeader
+        greeting={greeting}
+        subtitle={linkedAccounts.length > 1 ? `Tap to switch between ${linkedAccounts.length} children` : schoolName || undefined}
+        logoUrl={resolvedLogo}
+        canSwitch={linkedAccounts.length > 1}
+        onSwitcher={() => {
+          if (linkedAccounts.length > 1) setShowSwitcher(true);
+        }}
+        notifOpen={showNotifPanel}
+        onNotifToggle={() => setShowNotifPanel((v) => !v)}
+        unreadCount={unreadNotifCount}
+        onLogout={handleLogout}
+        bellRef={notifBellRef}
+      />
+      <ParentPortalDesktopNav
+        tabs={portalTabs}
+        activeTab={activeTab}
+        onTabChange={(key) => handleTabChange(key as Tab)}
+        deskUnread={parentDeskUnread}
+      />
+      </ParentPortalTopChrome>
+      <ParentNotificationsPanel
+        open={showNotifPanel}
+        onClose={() => setShowNotifPanel(false)}
+        notifications={appNotifications}
+        unreadCount={unreadNotifCount}
+        onMarkAllRead={async () => {
+          if (token) {
+            await parentFetch('/parent/notifications/read-all', { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+          }
+          setAppNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        }}
+        onSelect={async (n) => {
+          if (token && n.serverId && !n.read) {
+            await parentFetch(`/parent/notifications/${n.serverId}/read`, { method: 'POST', body: JSON.stringify({}) }, token).catch(() => undefined);
+          }
+          setAppNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
+          if (isFinanceStatementNotification(n)) {
+            await openFinanceStatementFromNotification({ ...n, read: true });
+            return;
+          }
+          if (isPaymentSubmissionNotification(n)) {
+            await openMakePaymentFromNotification({ ...n, read: true });
+            return;
+          }
+          setSelectedNotification({ ...n, read: true });
+          setShowNotifPanel(false);
+        }}
+      />
 
       {/* ── Content ── */}
       <main
-        className={`relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pb-28 sm:pb-8${
-          parentImpersonationActive(tenantId) ? ' pt-[7.5rem] sm:pt-[9.5rem]' : ' pt-24 sm:pt-32'
-        }${showSwitchOverlay ? ' overflow-hidden' : ''}`}
+        className={cn(
+          'relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 snp-page snp-parent-main-pad',
+          showSwitchOverlay && 'overflow-hidden',
+        )}
         aria-hidden={showSwitchOverlay ? true : undefined}
       >
         {/* Change password banner */}
@@ -2470,19 +2413,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Student profile card */}
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-white/45 p-[1px] shadow-[0_24px_80px_rgba(139,92,246,0.22)] backdrop-blur-2xl">
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-400/50 via-white/10 to-pink-400/45 opacity-80" />
-              <div className="relative rounded-[calc(2rem-1px)] border border-white/60 bg-white/58 p-4 backdrop-blur-2xl sm:p-5">
-                <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-300/30 blur-3xl" />
-                <div className="absolute -bottom-14 -left-10 h-32 w-32 rounded-full bg-violet-300/35 blur-3xl" />
-                <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-4">
+            <section className="snp-glass-card snp-parent-glass-panel relative overflow-hidden p-4 sm:p-5">
+              <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-300/20 blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-14 -left-10 h-32 w-32 rounded-full bg-teal-300/20 blur-3xl pointer-events-none" />
+              <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-4">
                   <button
                     onClick={() => studentPhotoUrl && setLightboxUrl(studentPhotoUrl)}
                     className={`group shrink-0 ${studentPhotoUrl ? 'cursor-pointer' : 'cursor-default'}`}
                     title={studentPhotoUrl ? 'Click to view full photo' : undefined}
                   >
-                    <div className="h-36 w-28 overflow-hidden rounded-[1.6rem] border border-white/80 bg-gradient-to-br from-violet-200 to-pink-100 p-1 shadow-[0_18px_45px_rgba(139,92,246,0.25)]">
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[1.25rem] bg-white/50 text-3xl font-black text-violet-600">
+                    <div className="h-36 w-28 overflow-hidden rounded-[1.6rem] border border-emerald-100 bg-gradient-to-br from-emerald-100 to-teal-50 p-1 shadow-[0_18px_45px_rgba(13,158,117,0.18)]">
+                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[1.25rem] bg-white/80 text-3xl font-black text-emerald-700">
                         {studentPhotoUrl
                           ? <img src={studentPhotoUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                           : `${student.first_name[0]}${student.last_name[0]}`}
@@ -2494,7 +2435,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <h2 className="text-2xl font-black leading-tight tracking-tight text-slate-950 text-center sm:text-left">{studentFullName}</h2>
                     <p className="mt-2 text-sm font-medium text-slate-500 text-center sm:text-left">Student ID: {student.admission_number}</p>
                     <div className="mt-4 flex flex-wrap gap-2 justify-center sm:justify-start">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-violet-100 bg-white/70 px-3 py-1.5 text-xs font-bold text-violet-700 shadow-sm">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50/80 px-3 py-1.5 text-xs font-bold text-emerald-800 shadow-sm">
                         <Trophy className="h-3.5 w-3.5" /> {student.class_name}
                       </span>
                       {student.gender && (
@@ -2509,14 +2450,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   </div>
                 </div>
 
-                <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-white/70 pt-4">
+                <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-emerald-100/80 pt-4">
                   {[
                     { label: 'School', value: student.school_name || schoolName || 'Sacred Hearts School', icon: <Home className="h-3.5 w-3.5" /> },
                     { label: 'Academic Year', value: student.current_year || '2026', icon: <CalendarCheck className="h-3.5 w-3.5" /> },
                     { label: 'Current Term', value: student.current_term || 'Term 3 2026', icon: <CalendarCheck className="h-3.5 w-3.5" /> },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-white/70 bg-white/45 p-3 shadow-sm backdrop-blur-xl">
-                      <p className="flex items-center gap-1.5 text-[10px] font-bold text-violet-500">
+                    <div key={item.label} className="rounded-2xl border border-emerald-100/80 bg-white/70 p-3 shadow-sm">
+                      <p className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600">
                         {item.icon}
                         {item.label}
                       </p>
@@ -2524,7 +2465,6 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     </div>
                   ))}
                 </div>
-              </div>
             </section>
 
             {/* Continue Learning */}
@@ -2538,12 +2478,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   openStudentMode();
                 }
               }}
-              className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl cursor-pointer transition-transform active:scale-[0.99] hover:-translate-y-0.5"
+              className="snp-glass-card snp-parent-glass-panel relative overflow-hidden p-4 cursor-pointer transition-transform active:scale-[0.99] hover:-translate-y-0.5"
             >
               <div className="absolute -right-8 top-1/2 h-20 w-20 -translate-y-1/2 rounded-full border border-white/60 pointer-events-none" />
               <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(139,92,246,0.28)]">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-emerald-600 to-teal-500 text-white shadow-[0_12px_28px_rgba(13,158,117,0.28)]">
                     <GraduationCap className="h-6 w-6" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -2552,7 +2492,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     <p className="mt-1 text-[11px] font-bold text-orange-500">🔥 Daily practice available</p>
                   </div>
                 </div>
-                <span className="w-full sm:w-auto text-center shrink-0 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 px-4 py-2.5 sm:py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(139,92,246,0.30)]">
+                <span className="w-full sm:w-auto text-center shrink-0 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 px-4 py-2.5 sm:py-2 text-xs font-black text-white shadow-[0_12px_28px_rgba(13,158,117,0.30)]">
                   Enter →
                 </span>
               </div>
@@ -2592,14 +2532,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <button
                   key={action.key}
                   onClick={() => handleTabChange(action.key)}
-                  className="group relative min-h-[126px] overflow-hidden rounded-[1.5rem] border border-white/70 bg-white/58 p-4 text-left shadow-[0_14px_38px_rgba(15,23,42,0.08)] backdrop-blur-2xl transition-all hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(139,92,246,0.18)] active:scale-[0.98]"
+                  className="group relative min-h-[126px] overflow-hidden rounded-[1.5rem] snp-glass-card p-4 text-left transition-all hover:-translate-y-0.5 active:scale-[0.98]"
                 >
-                  <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${action.tone} shadow-lg shadow-violet-500/10`}>
+                  <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${action.tone} shadow-lg shadow-emerald-500/10`}>
                     {action.icon}
                   </div>
                   <p className="text-sm font-black text-slate-950">{action.label}</p>
                   <p className="mt-1 max-w-[8.5rem] text-xs font-medium leading-snug text-slate-500">{action.description}</p>
-                  <span className="absolute right-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-violet-500 shadow-sm transition-transform group-hover:translate-x-0.5">
+                  <span className="absolute right-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-emerald-600 shadow-sm transition-transform group-hover:translate-x-0.5">
                     <ChevronRight className="h-4 w-4" />
                   </span>
                 </button>
@@ -2607,7 +2547,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
             </section>
 
             {/* Admission Letter */}
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/75 bg-white/62 p-4 shadow-[0_14px_38px_rgba(139,92,246,0.14)] backdrop-blur-2xl">
+            <section className="snp-glass-card snp-parent-glass-panel relative overflow-hidden p-4">
               <div className="relative">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.25rem] bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-[0_12px_28px_rgba(251,146,60,0.28)]">
@@ -2637,7 +2577,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                 setTimeout(() => setSelectedAdmissionLetter(data), 50);
                               } catch { }
                             }}
-                            className="rounded-xl border border-white/70 bg-white/60 px-3 py-1.5 text-[10px] font-bold text-violet-700 hover:bg-white transition-all"
+                            className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-3 py-1.5 text-[10px] font-bold text-emerald-800 hover:bg-emerald-50 transition-all"
                           >
                             Preview
                           </button>
@@ -2684,9 +2624,9 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-purple-600" /> Grade Summary
+                <BookOpen className="w-5 h-5 text-emerald-600" /> Grade Summary
               </h2>
-              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
+              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-emerald-600 transition-colors">
                 <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
@@ -2782,7 +2722,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     Print Report Card
                   </button>
                 )}
-                <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
+                <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-emerald-600 transition-colors">
                   <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
@@ -3103,7 +3043,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         </div>
                       </div>
                       <div className="text-center font-extrabold uppercase text-xs mt-3 tracking-wide">
-                        AGGREGATE: <span className="text-sm text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded ml-1 font-mono">{bece.aggregate}</span>
+                        AGGREGATE: <span className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded ml-1 font-mono">{bece.aggregate}</span>
                       </div>
                     </div>
 
@@ -3479,7 +3419,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                                       <button
                                         type="button"
                                         onClick={() => openReceipt(p)}
-                                        className="font-medium text-purple-600 hover:text-purple-700 underline underline-offset-2"
+                                        className="font-medium text-emerald-600 hover:text-emerald-700 underline underline-offset-2"
                                       >
                                         #{p.receipt_number}
                                       </button>
@@ -3504,7 +3444,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                             <button
                               type="button"
                               onClick={() => openReceipt(p)}
-                              className="w-full sm:w-auto text-center text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 shrink-0"
+                              className="w-full sm:w-auto text-center text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 shrink-0"
                             >
                               View Receipt
                             </button>
@@ -3526,7 +3466,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <CalendarCheck className="w-5 h-5 text-blue-600" /> Attendance Record
               </h2>
-              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-purple-600 transition-colors">
+              <button onClick={refreshTab} disabled={dataLoading} className="text-gray-400 hover:text-emerald-600 transition-colors">
                 <RefreshCw className={`w-4 h-4 ${dataLoading ? 'animate-spin' : ''}`} />
               </button>
             </div>
@@ -3609,12 +3549,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           </div>
         )}
 
+        {activeTab === 'boarding' && boardingTabAvailable && token ? (
+          <ParentBoardingPanel
+            token={token}
+            parentFetch={parentFetch}
+            onPayBoarding={() => {
+              setActiveTab('finance');
+              setFinanceSubTab('make-payment');
+            }}
+          />
+        ) : null}
+
         {activeTab === 'desk' && (
           <div className="space-y-4">
             <div className="flex justify-end">
               <button
                 onClick={() => setShowDeskGuide(true)}
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
               >
                 How to use Parent Desk
               </button>
@@ -3643,14 +3594,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-slate-900">Your Conversations</h2>
-              <button onClick={() => loadDeskMessages()} className="text-sm text-purple-700 hover:text-purple-800">Refresh</button>
+              <button onClick={() => loadDeskMessages()} className="text-sm text-emerald-700 hover:text-emerald-800">Refresh</button>
             </div>
 
             {isSwitchingStudent || deskLoading ? (
               <LoadingCard logoUrl={schoolLogoUrl ?? student?.school_logo_url} onRetry={refreshTab} />
             ) : deskMessages.length === 0 ? (
               <div className="bg-white border border-gray-200 rounded-xl p-8 text-center shadow-sm">
-                <MessageSquare className="w-10 h-10 text-purple-300 mx-auto mb-3" />
+                <MessageSquare className="w-10 h-10 text-emerald-300 mx-auto mb-3" />
                 <p className="text-sm font-semibold text-slate-700">Have a question or concern?</p>
                 <p className="text-xs text-slate-500 mt-1">Your school is just one message away.</p>
               </div>
@@ -3661,7 +3612,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                     key={m.id}
                     type="button"
                     onClick={() => openDeskConversation(Number(m.id))}
-                    className="w-full text-left rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-lg hover:border-purple-200 transition-all"
+                    className="w-full text-left rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-lg hover:border-emerald-200 transition-all"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -3678,7 +3629,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         }`}>
                         {String(m.status || 'pending').replace('_', ' ')}
                       </span>
-                      {(Number(m.unread_replies || 0) > 0) && <span className="text-[11px] text-purple-700 font-semibold animate-pulse">● New Reply</span>}
+                      {(Number(m.unread_replies || 0) > 0) && <span className="text-[11px] text-emerald-700 font-semibold animate-pulse">● New Reply</span>}
                     </div>
                   </button>
                 ))}
@@ -3687,7 +3638,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             <button
               onClick={() => setDeskComposeOpen(true)}
-              className="fixed bottom-24 right-5 sm:bottom-8 sm:right-8 w-14 h-14 rounded-full text-white shadow-2xl flex items-center justify-center animate-bounce"
+              className="snp-parent-desk-fab fixed bottom-24 right-5 sm:bottom-8 sm:right-8 w-14 h-14 rounded-full text-white shadow-2xl flex items-center justify-center animate-bounce z-20"
               style={{ background: `linear-gradient(135deg, ${brandPrimary}, ${brandSecondary})` }}
             >
               <Plus className="w-6 h-6" />
@@ -3701,36 +3652,17 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
         {student.school_name} · Parent Portal · Secure & Private
       </footer>
 
-      {/* Mobile bottom navigation */}
-      <nav className="sm:hidden fixed bottom-4 left-5 right-5 z-40 overflow-hidden rounded-[1.875rem] border border-white/75 bg-white/58 px-2.5 py-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] shadow-[0_22px_65px_rgba(139,92,246,0.24)] backdrop-blur-2xl">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/60 via-violet-100/20 to-white/60" />
-        <div className="relative grid grid-cols-5 gap-1">
-          {mobileTabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-2 text-[9px] xs:text-[10px] font-bold transition-all active:scale-95 ${activeTab === t.key
-                  ? 'text-white shadow-[0_12px_28px_rgba(139,92,246,0.35)]'
-                  : 'text-slate-500 hover:text-violet-700'
-                }`}
-              style={activeTab === t.key ? { background: 'linear-gradient(135deg, #8B5CF6, #A855F7 55%, #EC4899)' } : undefined}
-            >
-              <span className="relative inline-flex">
-                {t.icon}
-                {t.key === 'desk' && parentDeskUnread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-500 px-0.5 text-[8px] font-bold leading-none text-white ring-2 ring-white">
-                    {parentDeskUnread > 9 ? '9' : parentDeskUnread}
-                  </span>
-                )}
-              </span>
-              <span className="leading-none">{t.key === 'desk' ? 'Desk' : t.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
+      {!deskComposeOpen && !selectedDeskMessage ? (
+        <ParentPortalMobileNav
+          tabs={mobilePortalTabs}
+          activeTab={activeTab}
+          onTabChange={(key) => handleTabChange(key as Tab)}
+          deskUnread={parentDeskUnread}
+        />
+      ) : null}
 
       {showInstallPrompt && installPromptEvent && (
-        <div className="fixed bottom-20 right-4 z-50 max-w-xs rounded-2xl border border-purple-200 bg-white shadow-2xl p-3">
+        <div className="fixed bottom-20 right-4 snp-parent-modal-layer max-w-xs rounded-2xl border border-emerald-200 bg-white shadow-2xl p-3">
           <p className="text-sm font-semibold text-slate-800">Install Parent App</p>
           <p className="text-xs text-slate-500 mt-1">
             Add this portal to your home screen for faster access and better notifications.
@@ -3754,11 +3686,11 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {showInstallHelp && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-purple-100 bg-white shadow-2xl overflow-hidden">
-            <div className="px-4 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white">
+        <div className="fixed inset-0 snp-parent-modal-layer bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-emerald-100 bg-white shadow-2xl overflow-hidden">
+            <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
               <p className="text-sm font-semibold">Install Parent App</p>
-              <p className="text-xs text-violet-100 mt-0.5">Get faster access and better notifications</p>
+              <p className="text-xs text-emerald-100 mt-0.5">Get faster access and better notifications</p>
             </div>
             <div className="p-4 space-y-3">
               <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
@@ -3782,8 +3714,8 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {deskComposeOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="modal w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl p-4 sm:p-5">
+        <div className="fixed inset-0 snp-parent-modal-layer bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="modal snp-parent-modal-sheet snp-parent-desk-compose w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-slate-900">New Parent Desk Message</h3>
               <button onClick={() => setDeskComposeOpen(false)} className="text-slate-500 hover:text-slate-700"><X className="w-4 h-4" /></button>
@@ -3800,7 +3732,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 <button
                   key={k}
                   onClick={() => setDeskType(k as any)}
-                  className={`rounded-xl border px-3 py-2 text-sm transition-all ${deskType === k ? 'border-purple-400 bg-purple-50 text-purple-700 scale-[1.01]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  className={`rounded-xl border px-3 py-2 text-sm transition-all ${deskType === k ? 'border-emerald-400 bg-emerald-50 text-emerald-700 scale-[1.01]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 >
                   {label}
                 </button>
@@ -3832,7 +3764,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   onChange={(e) => setDeskBody(e.target.value)}
                   rows={1}
                   placeholder="Message"
-                  className="flex-1 min-w-0 min-h-[44px] max-h-[140px] resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-200/60"
+                  className="flex-1 min-w-0 min-h-[44px] max-h-[140px] resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-200/60"
                 />
                 <button
                   type="button"
@@ -3855,14 +3787,14 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {selectedDeskMessage && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="fixed inset-0 snp-parent-modal-layer bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
           <MessageDeleteConfirmDialog
             open={pendingDeskDelete != null}
             onOpenChange={(open) => { if (!open) setPendingDeskDelete(null); }}
             onConfirm={() => { void executeDeskDelete(); }}
             kind={(pendingDeskDelete?.kind ?? 'message') as MessageDeleteKind}
           />
-          <div className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col overscroll-contain">
+          <div className="snp-parent-modal-sheet snp-parent-desk-thread w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl bg-white shadow-2xl max-h-[92dvh] overflow-hidden flex flex-col overscroll-contain">
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <p className="font-semibold text-slate-900 text-sm">{selectedDeskMessage.subject}</p>
@@ -3929,7 +3861,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
               ))}
               <div ref={parentScrollRef} />
             </div>
-            <div className="p-3 border-t border-slate-100 bg-slate-50/80">
+            <div className="p-3 border-t border-slate-100 bg-slate-50/80 shrink-0">
               <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-white pl-1.5 pr-1 py-1 shadow-sm">
                 <input
                   ref={deskReplyFileRef}
@@ -3951,7 +3883,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                   onChange={(e) => setDeskReply(e.target.value)}
                   rows={1}
                   placeholder="Type a message"
-                  className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-200/50"
+                  className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2.5 text-base text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-200/50"
                 />
                 <button
                   type="button"
@@ -3973,7 +3905,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       )}
 
       {showDeskGuide && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 snp-parent-modal-layer bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden">
             <div className="px-4 py-3 text-white" style={{ background: `linear-gradient(90deg, ${brandPrimary}, ${brandSecondary})` }}>
               <p className="text-sm font-semibold">Parent Desk Guide</p>
@@ -4020,7 +3952,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {selectedNotification && (
         <div
-          className="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 snp-parent-modal-layer bg-black/55 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setSelectedNotification(null)}
         >
           <div
@@ -4077,7 +4009,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
       {/* Photo lightbox */}
       {lightboxUrl && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 snp-parent-modal-layer bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setLightboxUrl(null)}
         >
           <div className="relative max-w-sm w-full" onClick={e => e.stopPropagation()}>
@@ -4114,7 +4046,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       {/* Account Switcher - Instagram Style Bottom Sheet */}
       {showSwitcher && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
+        <div className="fixed inset-0 snp-parent-modal-layer flex items-end sm:items-center justify-center">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300"
@@ -4140,7 +4072,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
             <div className="max-h-[60dvh] overflow-y-auto [-webkit-overflow-scrolling:touch] overscroll-contain px-2 py-2">
               {isSwitchingStudent ? (
-                <div className="px-4 py-6 text-center text-sm text-purple-600 font-medium">
+                <div className="px-4 py-6 text-center text-sm text-emerald-600 font-medium">
                   <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
                   Switching student…
                 </div>
@@ -4155,12 +4087,12 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                       disabled={isSwitchingStudent}
                       onClick={() => void handleSwitchAccount(acc)}
                       className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none ${isActive
-                          ? 'bg-purple-50/50 border border-purple-100'
+                          ? 'bg-emerald-50/50 border border-emerald-100'
                           : 'hover:bg-slate-50'
                         }`}
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-300 ${isActive ? 'border-purple-500 scale-105' : 'border-white'
+                        <div className={`relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-300 ${isActive ? 'border-emerald-500 scale-105' : 'border-white'
                           }`}>
                           {acc.student.passport_photo_url ? (
                             <img src={resolveMediaUrl(acc.student.passport_photo_url)!} alt="" className="w-full h-full object-cover" />
@@ -4171,7 +4103,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                           )}
                         </div>
                         <div className="text-left">
-                          <p className={`font-bold text-sm tracking-tight ${isActive ? 'text-purple-900' : 'text-slate-800'}`}>
+                          <p className={`font-bold text-sm tracking-tight ${isActive ? 'text-emerald-900' : 'text-slate-800'}`}>
                             {acc.student.first_name} {acc.student.last_name}
                           </p>
                           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mt-0.5">
@@ -4180,7 +4112,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                         </div>
                       </div>
                       {isActive && (
-                        <div className="w-6 h-6 rounded-full bg-purple-600 flex items-center justify-center shadow-lg shadow-purple-200">
+                        <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-200">
                           <CheckCircle2 className="w-4 h-4 text-white" />
                         </div>
                       )}
@@ -4201,6 +4133,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

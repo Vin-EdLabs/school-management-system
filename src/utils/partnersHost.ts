@@ -38,7 +38,8 @@ export function getPartnerReferralJoinUrl(partnerId: string): string {
 /** Public partners section on the main ScholarNerve site. */
 export function getPartnersLandingUrl(options?: { apply?: boolean }): string {
   const base = getScholarNerveMainUrl().replace(/\/$/, '');
-  return options?.apply ? `${base}/#apply` : `${base}/#partners`;
+  if (options?.apply) return `${base}/partners#apply`;
+  return `${base}/partners`;
 }
 
 /** Main marketing homepage — no tenant subdomain, root path only. */

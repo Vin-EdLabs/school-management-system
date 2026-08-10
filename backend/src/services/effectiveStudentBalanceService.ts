@@ -103,11 +103,12 @@ export async function enrichBalanceShapeWithExpectedFees(
     if (!resolved) return shape;
 
     const individualCharges = roundMoney(shape.individualCharges ?? 0);
+    const boardingFees = roundMoney(shape.boardingFees ?? 0);
     const arrears = roundMoney(shape.totalArrears ?? 0);
     const totalPaid = roundMoney(shape.totalPaid ?? 0);
     const creditBroughtForward = roundMoney(shape.creditBroughtForward ?? 0);
     const currentTermFee = resolved.netTotal;
-    const totalDue = roundMoney(currentTermFee + individualCharges + arrears);
+    const totalDue = roundMoney(currentTermFee + individualCharges + boardingFees + arrears);
     const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
     const outstanding = roundMoney(Math.max(0, netBalance));
 
@@ -144,11 +145,12 @@ export async function enrichBalanceShapeWithExpectedFees(
 
   if (resolved && resolved.discountAmount > 0 && ledgerTermFee > resolved.netTotal + 0.001) {
     const individualCharges = roundMoney(shape.individualCharges ?? 0);
+    const boardingFees = roundMoney(shape.boardingFees ?? 0);
     const arrears = roundMoney(shape.totalArrears ?? 0);
     const totalPaid = roundMoney(shape.totalPaid ?? 0);
     const creditBroughtForward = roundMoney(shape.creditBroughtForward ?? 0);
     const currentTermFee = resolved.netTotal;
-    const totalDue = roundMoney(currentTermFee + individualCharges + arrears);
+    const totalDue = roundMoney(currentTermFee + individualCharges + boardingFees + arrears);
     const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);
     const outstanding = roundMoney(Math.max(0, netBalance));
 

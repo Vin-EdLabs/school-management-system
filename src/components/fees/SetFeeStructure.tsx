@@ -16,20 +16,24 @@ import {
 import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { toast } from '@/hooks/use-toast';
-import { DollarSign, Pencil, Trash2, UserPlus, Archive, PlusCircle } from 'lucide-react';
+import { DollarSign, Pencil, Trash2, UserPlus, Archive, PlusCircle, BedDouble } from 'lucide-react';
 import { apiService } from '../../services/api';
 import FeeStructureItemsForm, { validateFeeStructureItemsForm } from './FeeStructureItemsForm';
 import TermBillBreakdown from './TermBillBreakdown';
 import BillStudentModal from './BillStudentModal';
 import ArchivedFeeStructurePanel from './ArchivedFeeStructurePanel';
+import BoardingFeeSetupPanel from './BoardingFeeSetupPanel';
 import {
   saveFeeStructureItems,
   type FeeStructureItem,
 } from '../../services/feeStructureItems';
 import { feeStructureMatchesActiveTerm } from '../../utils/termLabelMatch';
+import { useSchool } from '../../contexts/SchoolContext';
 
 const SetFeeStructure = () => {
   const queryClient = useQueryClient();
+  const { school } = useSchool();
+  const boardingModuleEnabled = Boolean(school?.boarding_enabled);
   const { classes, updateFeeStructure, deleteFeeStructure, feeStructures, refresh } = useData();
   const { currentTerm, currentYear, isLoading, activeLedgerTermId, refresh: refreshActiveTerm } = useActiveTerm();
   const [formData, setFormData] = useState({
@@ -49,6 +53,7 @@ const SetFeeStructure = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [billModalOpen, setBillModalOpen] = useState(false);
   const [setupMode, setSetupMode] = useState<'new' | 'reuse'>('new');
+  const [boardingFeeDialogOpen, setBoardingFeeDialogOpen] = useState(false);
 
   const handleFeesRefreshed = async () => {
     await Promise.all([refresh(['fees']), refreshActiveTerm()]);
@@ -267,6 +272,14 @@ const SetFeeStructure = () => {
 
   return (
     <div className="space-y-6">
+      {boardingModuleEnabled ? (
+        <BoardingFeeSetupPanel
+          currentTerm={currentTerm}
+          dialogOpen={boardingFeeDialogOpen}
+          onDialogOpenChange={setBoardingFeeDialogOpen}
+        />
+      ) : null}
+
       <Card className="border-border bg-card text-card-foreground shadow-sm">
         <CardHeader className="border-b border-border/70 bg-muted/30 pb-4">
           <CardTitle className="text-base font-semibold">Set up fees for {currentTerm}</CardTitle>
@@ -321,17 +334,31 @@ const SetFeeStructure = () => {
               <span>Set Fee Structure</span>
             </div>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="bill-student-button rounded-full border-emerald-500 text-emerald-600 hover:border-emerald-600 hover:text-emerald-700"
-                onClick={openBillStudent}
-              >
-                <span className="bill-student-orbit-dot" />
-                <UserPlus className="mr-2 h-4 w-4" />
-                Bill Student
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                {boardingModuleEnabled ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full border-emerald-500 text-emerald-700 hover:border-emerald-600 hover:bg-emerald-50"
+                    onClick={() => setBoardingFeeDialogOpen(true)}
+                  >
+                    <BedDouble className="mr-2 h-4 w-4" />
+                    Set boarding fee
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="bill-student-button rounded-full border-emerald-500 text-emerald-600 hover:border-emerald-600 hover:text-emerald-700"
+                  onClick={openBillStudent}
+                >
+                  <span className="bill-student-orbit-dot" />
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Bill Student
+                </Button>
+              </div>
               <p className="text-sm text-muted-foreground font-normal text-right">
                 Active Term: <span className="font-semibold text-foreground">{currentTerm}</span> ({currentYear})
               </p>

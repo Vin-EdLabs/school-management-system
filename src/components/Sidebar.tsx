@@ -57,6 +57,12 @@ import {
   QrCode,
   Flag,
   Globe,
+  BedDouble,
+  UtensilsCrossed,
+  Stethoscope,
+  DoorOpen,
+  Printer,
+  HeartPulse,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
@@ -77,6 +83,25 @@ import {
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { useImpersonationOptional } from '../contexts/ImpersonationContext';
 import SidebarMenuSearch, { type SidebarSearchItem } from './sidebar/SidebarMenuSearch';
+
+import { BOARDING_MODULE_URLS } from '@/utils/boardingModule';
+
+const TRANSPORT_MODULE_URLS: Record<string, string> = {
+  'transport-overview': '/transport',
+  'transport-map': '/transport/map',
+  'transport-routes': '/transport/routes',
+  'transport-vehicles': '/transport/vehicles',
+  'transport-drivers': '/transport/drivers',
+  'transport-students': '/transport/students',
+};
+
+function pushModuleUrl(moduleId: string, urlMap: Record<string, string>) {
+  const path = urlMap[moduleId];
+  if (!path) return;
+  const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
+  const prefix = schoolMatch ? schoolMatch[0] : '';
+  window.history.pushState({}, '', `${prefix}${path}`);
+}
 
 interface AppSidebarProps {
   activeModule: string;
@@ -110,6 +135,9 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
       ? [{ id: 'staff-attendance', label: 'Staff Attendance', icon: Clock }]
       : []),
     ...(hasAccess('complaints') ? [{ id: 'complaints', label: 'Complaints', icon: Flag }] : []),
+    ...(hasAccess('boarding-complaints')
+      ? [{ id: 'boarding-complaints', label: 'Boarding Complaints', icon: AlertTriangle }]
+      : []),
     ...(hasAccess('students-view-only') ? [{ id: 'students', label: 'All Students', icon: Users }] : []),
     ...(hasAccess('headmaster-grades') ? [{ id: 'headmaster-grades', label: 'Grades & Reports', icon: Award }] : []),
     ...(hasAccess('print-fee-status') ? [{ id: 'print-fee-status', label: 'Fees Status', icon: FileText }] : []),
@@ -132,7 +160,7 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
   ],
 });
 
-const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string) => ({
+const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: string, boardingEnabled = false) => ({
   dashboard: [
     ...(hasAccess('dashboard') ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }] : []),
     ...(hasAccess('financial-dashboard')
@@ -238,6 +266,20 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('transport-drivers') ? [{ id: 'transport-drivers', label: 'Drivers', icon: UserCheck }] : []),
     ...(hasAccess('transport-students') ? [{ id: 'transport-students', label: 'Students', icon: Users }] : []),
   ],
+  boarding: boardingEnabled
+    ? [
+        ...(hasAccess('boarding-overview') ? [{ id: 'boarding-overview', label: 'Overview', icon: LayoutDashboard }] : []),
+        ...(hasAccess('boarding-dormitories') ? [{ id: 'boarding-dormitories', label: 'Dormitories & Rooms', icon: DoorOpen }] : []),
+        ...(hasAccess('boarding-boarders') ? [{ id: 'boarding-boarders', label: 'Boarders', icon: Users }] : []),
+        ...(hasAccess('boarding-exeats') ? [{ id: 'boarding-exeats', label: 'Exeat Management', icon: LogOut }] : []),
+        ...(hasAccess('boarding-rollcall') ? [{ id: 'boarding-rollcall', label: 'Roll Call', icon: ClipboardList }] : []),
+        ...(hasAccess('boarding-feeding') ? [{ id: 'boarding-feeding', label: 'Meal Menu', icon: UtensilsCrossed }] : []),
+        ...(hasAccess('boarding-sickbay') ? [{ id: 'boarding-sickbay', label: 'Sick Bay', icon: Stethoscope }] : []),
+        ...(hasAccess('boarding-complaints') ? [{ id: 'boarding-complaints', label: 'Complaints', icon: AlertTriangle }] : []),
+        ...(hasAccess('boarding-finance') ? [{ id: 'boarding-finance', label: 'Finance Overview', icon: DollarSign }] : []),
+        ...(hasAccess('boarding-print') ? [{ id: 'boarding-print', label: 'Print Lists', icon: Printer }] : []),
+      ]
+    : [],
   /** Users, Settings, Audit — always last before footer. */
   system: [
     ...(hasAccess('users') ? [{ id: 'users', label: 'Users', icon: UserCog }] : []),
@@ -287,39 +329,6 @@ const MenuSection: React.FC<{
                       await markCommsRead(item.id);
                     }
                     setActiveModule(item.id);
-
-                    const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
-                    const prefix = schoolMatch ? schoolMatch[0] : '';
-
-                    if (item.id === 'transactions') {
-                      window.history.pushState({}, '', `${prefix}/finance/transactions`);
-                    } else if (item.id === 'daily-fees') {
-                      window.history.pushState({}, '', `${prefix}/finance/daily-fees`);
-                    } else {
-                      // Remove any subpaths if navigating back to main modules
-                      let base = window.location.pathname;
-                      if (base.includes('/finance/transactions')) {
-                        base = base.replace(/\/finance\/transactions\/?$/, '') || '/';
-                      }
-                      if (base.includes('/finance/daily-fees')) {
-                        base = base.replace(/\/finance\/daily-fees\/?$/, '') || '/';
-                      }
-                      const subpaths = [
-                        '/transport/map',
-                        '/transport/routes',
-                        '/transport/vehicles',
-                        '/transport/drivers',
-                        '/transport/students',
-                        '/transport',
-                      ];
-                      for (const sub of subpaths) {
-                        if (base.includes(sub)) {
-                          base = base.replace(new RegExp(`${sub}\\/?$`), '') || '/';
-                          break;
-                        }
-                      }
-                      window.history.pushState({}, '', base);
-                    }
                     if (isMobile) setOpenMobile(false);
                   }}
                   tooltip={item.label}
@@ -370,17 +379,35 @@ const CollapsibleMenuSection: React.FC<{
   setActiveModule: (module: string) => void;
   markCommsRead: (moduleId: string) => Promise<void>;
   termNavigationBlocked: boolean;
-}> = ({ items, label, activeModule, setActiveModule, markCommsRead, termNavigationBlocked }) => {
+  moduleUrls?: Record<string, string>;
+  sectionIcon?: React.ElementType;
+  overviewModuleId?: string;
+  collapsedTooltip?: string;
+  accent?: 'default' | 'wellness';
+}> = ({
+  items,
+  label,
+  activeModule,
+  setActiveModule,
+  markCommsRead,
+  termNavigationBlocked,
+  moduleUrls = TRANSPORT_MODULE_URLS,
+  sectionIcon: SectionIcon = Bus,
+  overviewModuleId,
+  collapsedTooltip,
+  accent = 'default',
+}) => {
+  const isWellness = accent === 'wellness';
   const { isMobile, setOpenMobile, state } = useSidebar();
   const [isOpen, setIsOpen] = useState(true);
   const isCollapsed = state === 'collapsed';
+  const overviewId = overviewModuleId ?? Object.keys(moduleUrls).find((k) => k.endsWith('-overview')) ?? items[0]?.id ?? '';
 
   if (items.length === 0) return null;
 
   if (isCollapsed) {
-    // In icon-only mode, render a single highlighted icon representing the transport module
     const activeChild = items.find(i => activeModule === i.id);
-    const parentItem = items.find(i => i.id === 'transport-overview') || items[0];
+    const parentItem = items.find(i => i.id === overviewId) || items[0];
 
     return (
       <SidebarGroup className="py-1 flex justify-center">
@@ -391,20 +418,20 @@ const CollapsibleMenuSection: React.FC<{
               onClick={async () => {
                 await markCommsRead(parentItem.id);
                 setActiveModule(parentItem.id);
-                const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
-                const prefix = schoolMatch ? schoolMatch[0] : '';
-                window.history.pushState({}, '', `${prefix}/transport`);
+                pushModuleUrl(parentItem.id, moduleUrls);
                 if (isMobile) setOpenMobile(false);
               }}
-              tooltip="Transport Management"
+              tooltip={collapsedTooltip ?? label}
               className={cn(
                 "readonly-allowed relative rounded-xl mx-auto w-9 h-9 justify-center transition-all duration-300 dark:h-9 dark:text-sidebar-foreground/70",
                 activeChild
-                  ? "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 dark:bg-sidebar-primary dark:text-sidebar-primary-foreground"
+                  ? isWellness
+                    ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-400/30 ring-1 ring-white/15"
+                    : "bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-400/25 ring-1 ring-white/15 dark:bg-sidebar-primary dark:text-sidebar-primary-foreground"
                   : "hover:bg-white/10 hover:text-white dark:hover:bg-sidebar-accent dark:hover:text-sidebar-foreground"
               )}
             >
-              <Bus className="h-[1.1rem] w-[1.1rem] opacity-80" />
+              <SectionIcon className="h-[1.1rem] w-[1.1rem] opacity-80" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -415,18 +442,24 @@ const CollapsibleMenuSection: React.FC<{
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
       <SidebarGroup className="py-1">
-        <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-3 mb-1.5 opacity-80 cursor-pointer flex items-center justify-between w-full select-none" asChild>
+        <SidebarGroupLabel className={cn(
+          "text-[10px] font-bold uppercase tracking-[0.2em] px-3 mb-1.5 opacity-80 cursor-pointer flex items-center justify-between w-full select-none",
+          isWellness ? "text-teal-100/90 dark:text-teal-200/90" : "text-sidebar-foreground/50"
+        )} asChild>
           <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:text-white transition-colors">
             <span className="flex items-center gap-1.5">
-              <Bus className="h-3.5 w-3.5 opacity-70" />
+              <SectionIcon className={cn("h-3.5 w-3.5", isWellness ? "text-teal-200" : "opacity-70")} />
               <span>{label}</span>
             </span>
             <ChevronDown className={cn("h-3 w-3 transition-transform duration-200 shrink-0 ml-auto opacity-70", isOpen ? "rotate-0" : "-rotate-90")} />
           </CollapsibleTrigger>
         </SidebarGroupLabel>
-        <CollapsibleContent className="space-y-1 relative pl-3.5">
+        <CollapsibleContent className={cn("space-y-1 relative pl-3.5", isWellness && "rounded-xl mx-2 mb-1 bg-teal-950/20 dark:bg-teal-950/30 ring-1 ring-teal-400/10 dark:ring-teal-500/20 py-2")}>
           {/* Guide Line */}
-          <div className="absolute left-[18px] top-2 bottom-2 w-[1px] bg-white/10 dark:bg-sidebar-border/60" />
+          <div className={cn(
+            "absolute left-[18px] top-2 bottom-2 w-[1px]",
+            isWellness ? "bg-teal-300/20" : "bg-white/10 dark:bg-sidebar-border/60"
+          )} />
 
           <SidebarGroupContent>
             <SidebarMenu className="space-y-1">
@@ -447,31 +480,20 @@ const CollapsibleMenuSection: React.FC<{
                         }
                         await markCommsRead(item.id);
                         setActiveModule(item.id);
-
-                        const schoolMatch = window.location.pathname.match(/^\/school\/[^/]+/);
-                        const prefix = schoolMatch ? schoolMatch[0] : '';
-
-                        if (item.id === 'transport-overview') {
-                          window.history.pushState({}, '', `${prefix}/transport`);
-                        } else if (item.id === 'transport-map') {
-                          window.history.pushState({}, '', `${prefix}/transport/map`);
-                        } else if (item.id === 'transport-routes') {
-                          window.history.pushState({}, '', `${prefix}/transport/routes`);
-                        } else if (item.id === 'transport-vehicles') {
-                          window.history.pushState({}, '', `${prefix}/transport/vehicles`);
-                        } else if (item.id === 'transport-drivers') {
-                          window.history.pushState({}, '', `${prefix}/transport/drivers`);
-                        } else if (item.id === 'transport-students') {
-                          window.history.pushState({}, '', `${prefix}/transport/students`);
-                        }
+                        pushModuleUrl(item.id, moduleUrls);
                         if (isMobile) setOpenMobile(false);
                       }}
                       tooltip={item.label}
                       className={cn(
-                        "readonly-allowed relative rounded-lg w-full h-8.5 text-xs text-emerald-50/70 transition-all duration-200 dark:h-8 dark:text-sidebar-foreground/60",
+                        "readonly-allowed relative rounded-lg w-full h-8.5 text-xs transition-all duration-200 dark:h-8",
+                        isWellness ? "text-teal-50/90 dark:text-sidebar-foreground/85" : "text-emerald-50/70 dark:text-sidebar-foreground/60",
                         isActive
-                          ? "bg-white/10 text-white font-bold shadow-sm border border-white/5 dark:bg-sidebar-accent dark:text-sidebar-foreground"
-                          : "hover:bg-white/5 hover:text-white dark:hover:bg-sidebar-accent/50 dark:hover:text-sidebar-foreground"
+                          ? isWellness
+                            ? "bg-gradient-to-r from-teal-500/90 to-emerald-500/90 text-white font-bold shadow-md shadow-teal-500/20 border border-teal-300/20"
+                            : "bg-white/10 text-white font-bold shadow-sm border border-white/5 dark:bg-sidebar-accent dark:text-sidebar-foreground"
+                          : isWellness
+                            ? "hover:bg-teal-400/10 hover:text-teal-50 dark:hover:bg-sidebar-accent/50 dark:hover:text-sidebar-foreground"
+                            : "hover:bg-white/5 hover:text-white dark:hover:bg-sidebar-accent/50 dark:hover:text-sidebar-foreground"
                       )}
                     >
                       <span className="relative inline-flex shrink-0">
@@ -512,10 +534,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     !!(actsAsPrimaryAdmin || isPlatformSuperAdmin || adminEligible || user?.role === 'super-admin');
 
   const isHeadmaster = isHeadmasterRole(user?.role);
+  const isBoardingStaff = user?.role === 'matron' || user?.role === 'house-master';
+  const boardingStaffLabel = user?.role === 'matron' ? 'Matron' : user?.role === 'house-master' ? 'House Master' : null;
   const headmasterMenu = isHeadmaster
     ? getHeadmasterMenuItems(hasAccess, user?.role, headmasterHasTeachingAccess(user))
     : null;
-  const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role);
+  const boardingEnabled = Boolean(school?.boarding_enabled);
+  const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role, boardingEnabled);
 
   const sidebarSearchItems = useMemo((): SidebarSearchItem[] => {
     const sections: Array<[string, Array<{ id: string; label: string }>]> = isHeadmaster && headmasterMenu
@@ -526,6 +551,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           ['Management', headmasterMenu.management],
           ['Configurations', headmasterMenu.configurations],
         ]
+      : isBoardingStaff
+        ? [
+            ...(menuItems.boarding.length > 0 ? [['Boarding & Wellness', menuItems.boarding]] : []),
+            ['System', menuItems.system],
+          ]
       : [
           ['Overview', menuItems.dashboard],
           ['Academic Central', menuItems.academic],
@@ -533,6 +563,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           ['Financial Ops', menuItems.financial],
           ['Data Center', menuItems.records],
           ['Transport Management', menuItems.transport],
+          ...(menuItems.boarding.length > 0 ? [['Boarding', menuItems.boarding]] : []),
           ['Announcements & parent desk', menuItems.announcements],
           ['Innovation', menuItems.ai],
           ['Configurations', menuItems.configurations],
@@ -541,7 +572,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     return sections.flatMap(([group, items]) =>
       items.map((item) => ({ id: item.id, label: item.label, group }))
     );
-  }, [isHeadmaster, headmasterMenu, menuItems]);
+  }, [isHeadmaster, headmasterMenu, menuItems, isBoardingStaff]);
 
   const refreshCommsBadges = useCallback(async () => {
     let deskCount = 0;
@@ -633,7 +664,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
       collapsible="icon"
       className={cn(
         'border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-hidden print:hidden',
-        isHeadmaster ? 'shadow-amber-950/25' : 'shadow-emerald-950/20'
+        isHeadmaster ? 'shadow-amber-950/25' : isBoardingStaff ? 'shadow-teal-950/25' : 'shadow-emerald-950/20'
       )}
     >
       <SidebarHeader
@@ -641,6 +672,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           'min-h-24 flex items-center justify-center border-b border-white/10 mb-3 px-3 py-4 overflow-hidden dark:min-h-24 dark:border-sidebar-border dark:bg-none',
           isHeadmaster
             ? 'bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.22),transparent_65%)]'
+            : isBoardingStaff
+              ? 'bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.22),transparent_65%)]'
             : 'bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.22),transparent_65%)]'
         )}
       >
@@ -664,6 +697,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
               <div className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-100 ring-1 ring-amber-400/30">
                 <Crown className="h-3 w-3" />
                 Headmaster
+              </div>
+              <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
+                {school?.name || 'EDUNERVE'}
+              </h2>
+            </div>
+          ) : isBoardingStaff && boardingStaffLabel ? (
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1 rounded-full bg-teal-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-teal-100 ring-1 ring-teal-400/30">
+                <HeartPulse className="h-3 w-3" />
+                {boardingStaffLabel}
               </div>
               <h2 className="break-words text-sm font-black leading-tight text-white uppercase tracking-tight dark:text-sidebar-foreground">
                 {school?.name || 'EDUNERVE'}
@@ -697,6 +740,25 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
             <MenuSection items={headmasterMenu.management} label="Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
             <MenuSection items={headmasterMenu.configurations} label="Configurations" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} headmasterAccent />
           </>
+        ) : isBoardingStaff ? (
+          <>
+            {menuItems.boarding.length > 0 ? (
+              <CollapsibleMenuSection
+                items={menuItems.boarding}
+                label="Boarding & Wellness"
+                activeModule={activeModule}
+                setActiveModule={setActiveModule}
+                markCommsRead={markCommsRead}
+                termNavigationBlocked={termNavigationBlocked}
+                moduleUrls={BOARDING_MODULE_URLS}
+                sectionIcon={HeartPulse}
+                overviewModuleId="boarding-overview"
+                collapsedTooltip="Boarding"
+                accent="wellness"
+              />
+            ) : null}
+            <MenuSection items={menuItems.system} label="System" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+          </>
         ) : (
           <>
         <MenuSection items={menuItems.dashboard} label="Overview" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
@@ -705,6 +767,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         <MenuSection items={menuItems.financial} label="Financial Ops" activeModule={activeModule} setActiveModule={setActiveModule} itemCounts={{ 'payment-submissions': paymentSubmissionsPending }} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <MenuSection items={menuItems.records} label="Data Center" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
         <CollapsibleMenuSection items={menuItems.transport} label="Transport Management" activeModule={activeModule} setActiveModule={setActiveModule} markCommsRead={markCommsRead} termNavigationBlocked={termNavigationBlocked} />
+        {menuItems.boarding.length > 0 ? (
+          <CollapsibleMenuSection
+            items={menuItems.boarding}
+            label="Boarding & Wellness"
+            activeModule={activeModule}
+            setActiveModule={setActiveModule}
+            markCommsRead={markCommsRead}
+            termNavigationBlocked={termNavigationBlocked}
+            moduleUrls={BOARDING_MODULE_URLS}
+            sectionIcon={HeartPulse}
+            overviewModuleId="boarding-overview"
+            collapsedTooltip="Boarding"
+            accent="wellness"
+          />
+        ) : null}
         <MenuSection
           items={menuItems.announcements}
           label="Announcements & parent desk"

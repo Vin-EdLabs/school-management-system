@@ -5,13 +5,13 @@ import LandingBrandMark from './LandingBrandMark';
 type LegalDocKey = 'privacy' | 'terms';
 
 const EXPLORE = [
-  { href: '/#features', label: 'Features' },
-  { href: '/#parent-app', label: 'Mobile App' },
-  { href: '/#pricing', label: 'Pricing' },
-  { href: '/#about', label: 'About' },
-  { href: '/#contact', label: 'Contact' },
-  { href: '/#school-website', label: 'School Website' },
-  { href: '/#partners', label: 'Partners' },
+  { path: '/features', label: 'Features' },
+  { path: '/#parent-app', label: 'Mobile App', hash: 'parent-app' },
+  { path: '/pricing', label: 'Pricing' },
+  { path: '/about', label: 'About' },
+  { path: '/contact', label: 'Contact' },
+  { path: '/#school-website', label: 'School Website', hash: 'school-website' },
+  { path: '/partners', label: 'Partners', hash: 'partners' },
 ] as const;
 
 export default function LandingFooter() {
@@ -37,25 +37,15 @@ export default function LandingFooter() {
             <div>
               <p className="mb-4 text-sm font-bold text-white">Explore</p>
               <div className="space-y-3">
-                {EXPLORE.map((item) =>
-                  'to' in item ? (
-                    <Link
-                      key={item.label}
-                      to={item.to}
-                      className="block text-sm text-white/50 transition-colors hover:text-white"
-                    >
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <a
-                      key={item.href}
-                      href={item.href}
-                      className="block text-sm text-white/50 transition-colors hover:text-white"
-                    >
-                      {item.label}
-                    </a>
-                  )
-                )}
+                {EXPLORE.map((item) => (
+                  <Link
+                    key={item.label}
+                    to={item.path}
+                    className="block text-sm text-white/50 transition-colors hover:text-white"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
             </div>
 
@@ -79,9 +69,9 @@ export default function LandingFooter() {
               </div>
               <p className="mb-4 mt-8 text-sm font-bold text-white">Support</p>
               <div className="space-y-3">
-                <a href="/#contact" className="block text-sm text-white/50 transition-colors hover:text-white">
+                <Link to="/contact" className="block text-sm text-white/50 transition-colors hover:text-white">
                   Contact Us
-                </a>
+                </Link>
               </div>
             </div>
           </div>

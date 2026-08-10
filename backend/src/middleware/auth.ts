@@ -29,6 +29,7 @@ const normalizeRole = (role: string | null | undefined): string => {
   const r = String(role || '').toLowerCase().trim();
   if (r === 'superadmin') return 'super-admin';
   if (r === 'admin') return 'administrator';
+  if (r === 'house_master' || r === 'housemaster') return 'house-master';
   return r;
 };
 

@@ -75,7 +75,10 @@ export function resolveApiBaseUrl(): string {
       host === 'localhost' ||
       host === '127.0.0.1' ||
       host.endsWith('.localhost') ||
-      host.endsWith('.lvh.me')
+      host.endsWith('.lvh.me') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^10\./.test(host)
     ) {
       return '/api';
     }

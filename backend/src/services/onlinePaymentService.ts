@@ -21,6 +21,33 @@ import {
 } from './paystackService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from './webPushService.js';
+import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
+import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Ensure online payment amount does not exceed live ledger outstanding (includes boarding fees). */
+export async function validatePaymentAmountAgainstOutstanding(
+  tenantId: number,
+  studentId: number,
+  amountGhs: number
+): Promise<{ ok: boolean; outstanding: number; totalDue: number }> {
+  const { ledgerTermId } = await resolveActiveLedgerTerm(query, tenantId);
+  if (!ledgerTermId) {
+    return { ok: amountGhs > 0, outstanding: 0, totalDue: 0 };
+  }
+  const balance = await getStudentBalanceFromLedger(null, tenantId, studentId, ledgerTermId);
+  const outstanding = roundMoney(balance.outstanding);
+  const totalDue = roundMoney(balance.totalDue);
+  if (amountGhs > outstanding + 0.01) {
+    throw new Error(
+      `Payment amount GHS ${amountGhs.toFixed(2)} exceeds outstanding balance of GHS ${outstanding.toFixed(2)}`
+    );
+  }
+  return { ok: true, outstanding, totalDue };
+}
 
 export type SavePaystackConfigInput = {
   tenantId: number;
@@ -255,6 +282,8 @@ export async function initializeOnlinePayment(input: {
 
   const amountGhs = Number(input.amountGhs);
   if (!Number.isFinite(amountGhs) || amountGhs <= 0) throw new Error('Invalid payment amount');
+
+  await validatePaymentAmountAgainstOutstanding(input.tenantId, input.studentId, amountGhs);
 
   const student = await assertStudentBelongsToTenant(input.tenantId, input.studentId);
   const email = String(input.email || student.email || fallbackParentEmail(input.tenantId, input.studentId)).trim();

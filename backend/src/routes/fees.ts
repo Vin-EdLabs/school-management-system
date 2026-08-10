@@ -13,6 +13,8 @@ import { sqlBeneficiaryAdjustedAmount } from '../utils/beneficiaryFee.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { checkFeeStructureCompleteness } from '../services/feeStructureCheckService.js';
 import { resolveActiveLedgerTerm } from '../services/studentUnifiedBalanceService.js';
+import { getBoardingTermFee, upsertBoardingTermFee, syncAllBoardingFees } from '../services/boardingFeeService.js';
+import { requireBoardingEnabled } from '../middleware/requireBoardingEnabled.js';
 
 const router = express.Router();
 
@@ -77,6 +79,105 @@ router.use(authenticate);
 router.use(requireTenant);
 router.use(setTenantContext);
 attachWritableTermGuard(router);
+
+const FEE_ADMIN_ROLES = ['super-admin', 'administrator', 'finance'] as const;
+
+async function resolveBoardingTermId(tenantId: number, rawTermId?: unknown): Promise<number | null> {
+  if (rawTermId != null && String(rawTermId).trim() !== '') {
+    const parsed = parseInt(String(rawTermId), 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  const active = await resolveActiveLedgerTerm(query, tenantId);
+  return active.ledgerTermId;
+}
+
+router.get('/boarding-term', requireBoardingEnabled, async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const termId = await resolveBoardingTermId(tenantId, req.query.term_id ?? req.query.termId);
+    if (!termId) {
+      return res.status(400).json({ error: 'No active term found' });
+    }
+    const row = await getBoardingTermFee(tenantId, termId);
+    res.json({
+      term_id: termId,
+      amount: row?.amount ?? 0,
+      lodging_amount: row?.lodging_amount ?? 0,
+      feeding_amount: row?.feeding_amount ?? 0,
+      fee_mode: row?.fee_mode ?? 'same',
+      boys_lodging_amount: row?.boys_lodging_amount ?? 0,
+      boys_feeding_amount: row?.boys_feeding_amount ?? 0,
+      girls_lodging_amount: row?.girls_lodging_amount ?? 0,
+      girls_feeding_amount: row?.girls_feeding_amount ?? 0,
+      is_active: row?.is_active ?? false,
+      is_configured: Boolean(row?.is_active && Number(row?.amount) > 0),
+    });
+  } catch (error) {
+    console.error('Get boarding term fee error:', error);
+    res.status(500).json({ error: 'Failed to fetch boarding fee' });
+  }
+});
+
+router.put('/boarding-term', requireBoardingEnabled, requireRole(...FEE_ADMIN_ROLES), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const { amount, lodging_amount, lodgingAmount, feeding_amount, feedingAmount, is_active } = req.body ?? {};
+    const parsedLodging = Number(lodging_amount ?? lodgingAmount);
+    const parsedFeeding = Number(feeding_amount ?? feedingAmount);
+    const parsedLegacyAmount = Number(amount);
+    let lodging = parsedLodging;
+    let feeding = parsedFeeding;
+    if (!Number.isFinite(lodging) && Number.isFinite(parsedLegacyAmount)) {
+      lodging = parsedLegacyAmount;
+      feeding = 0;
+    }
+    if (!Number.isFinite(lodging)) lodging = 0;
+    if (!Number.isFinite(feeding)) feeding = 0;
+    if (lodging <= 0 && feeding <= 0) {
+      return res.status(400).json({ error: 'Enter at least one amount greater than 0 (lodging or feeding)' });
+    }
+    const termId = await resolveBoardingTermId(tenantId, req.body?.term_id);
+    if (!termId) {
+      return res.status(400).json({ error: 'No active term found' });
+    }
+    const saved = await upsertBoardingTermFee(
+      tenantId,
+      termId,
+      lodging,
+      feeding,
+      typeof is_active === 'boolean' ? is_active : true,
+      {
+        feeMode: req.body?.fee_mode === 'by_gender' ? 'by_gender' : 'same',
+        boysLodgingAmount: Number(req.body?.boys_lodging_amount ?? req.body?.boysLodgingAmount ?? 0),
+        boysFeedingAmount: Number(req.body?.boys_feeding_amount ?? req.body?.boysFeedingAmount ?? 0),
+        girlsLodgingAmount: Number(req.body?.girls_lodging_amount ?? req.body?.girlsLodgingAmount ?? 0),
+        girlsFeedingAmount: Number(req.body?.girls_feeding_amount ?? req.body?.girlsFeedingAmount ?? 0),
+      }
+    );
+    const syncResult = await syncAllBoardingFees(tenantId, termId).catch((syncErr) => {
+      console.error('[boarding-term] sync after save failed:', syncErr);
+      return null;
+    });
+    emitTenantDataChanged(tenantId, 'fee', 'updated');
+    res.json({
+      term_id: saved.term_id,
+      amount: saved.amount,
+      lodging_amount: saved.lodging_amount,
+      feeding_amount: saved.feeding_amount,
+      fee_mode: saved.fee_mode,
+      boys_lodging_amount: saved.boys_lodging_amount,
+      boys_feeding_amount: saved.boys_feeding_amount,
+      girls_lodging_amount: saved.girls_lodging_amount,
+      girls_feeding_amount: saved.girls_feeding_amount,
+      is_active: saved.is_active,
+      is_configured: saved.is_active && saved.amount > 0,
+      sync: syncResult,
+    });
+  } catch (error) {
+    console.error('Save boarding term fee error:', error);
+    res.status(500).json({ error: 'Failed to save boarding fee' });
+  }
+});
 
 // Get all fee structures (ledger-only)
 router.get('/', async (req: AuthRequest, res) => {

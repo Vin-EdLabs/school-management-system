@@ -90,7 +90,7 @@ const PERKS = [
   { icon: Smartphone, title: 'MoMo Payouts', body: 'Commissions paid directly to your mobile money — no bank account needed.' },
 ];
 
-export function PartnersLandingSection() {
+export function PartnersLandingSection({ hideHero = false }: { hideHero?: boolean }) {
   const formRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
 
@@ -99,7 +99,7 @@ export function PartnersLandingSection() {
 
   return (
     <div id="partners">
-        {/* Hero */}
+        {!hideHero ? (
         <section className="scholar-hero-bg relative flex min-h-[calc(100dvh-64px)] items-center px-4 pb-16 pt-12 sm:px-5 sm:pb-20 sm:pt-16">
           <div className="relative mx-auto w-full max-w-[1100px] text-center">
             <div className="scholar-fade-up mx-auto mb-6 flex justify-center" style={{ animationDelay: '0s' }}>
@@ -177,6 +177,7 @@ export function PartnersLandingSection() {
             </p>
           </div>
         </section>
+        ) : null}
 
         {/* How it works */}
         <section

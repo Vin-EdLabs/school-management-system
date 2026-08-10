@@ -120,6 +120,7 @@ import SystemHealthModule from '../components/superadmin/SystemHealthModule';
 import PlatformSettingsModule from '../components/superadmin/PlatformSettingsModule';
 import PaystackPlatformPanel from '../components/superadmin/PaystackPlatformPanel';
 import SuperAdminTenantPaystackCard from '../components/superadmin/SuperAdminTenantPaystackCard';
+import SuperAdminBoardingToggle from '../components/superadmin/SuperAdminBoardingToggle';
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
 import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
 import SuperAdminFinanceWipeModule from '../components/superadmin/SuperAdminFinanceWipeModule';
@@ -142,6 +143,7 @@ interface School {
   subscription_status?: string;
   is_active?: boolean;
   archived_at?: string | null;
+  boarding_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -1316,9 +1318,9 @@ const SuperAdminDashboard = () => {
           payments: { full_paid: number; partial: number; unpaid: number; overpaid: number };
         };
       }>(
-        `/super-admin/tenants/${target.id}/restore`,
-        { type: 'demo', tenant_id: target.id },
-        { skipTenant: true }
+        `/super-admin/tenants/${target.id}/load-demo`,
+        {},
+        { skipTenant: true, skipTenantHeaders: true }
       );
       const s = result.summary;
       toast({
@@ -2249,6 +2251,24 @@ const SuperAdminDashboard = () => {
                           <SuperAdminTenantPaystackCard
                             tenantId={selectedSchoolDetail.id}
                             tenantName={selectedSchoolDetail.name}
+                          />
+                        ) : null}
+
+                        {selectedSchoolDetail ? (
+                          <SuperAdminBoardingToggle
+                            schoolId={selectedSchoolDetail.id}
+                            schoolName={selectedSchoolDetail.name}
+                            boardingEnabled={Boolean(selectedSchoolDetail.boarding_enabled)}
+                            onUpdated={(enabled) => {
+                              setSelectedSchoolDetail((prev) =>
+                                prev ? { ...prev, boarding_enabled: enabled } : prev
+                              );
+                              setSchools((prev) =>
+                                prev.map((s) =>
+                                  s.id === selectedSchoolDetail.id ? { ...s, boarding_enabled: enabled } : s
+                                )
+                              );
+                            }}
                           />
                         ) : null}
                       </div>

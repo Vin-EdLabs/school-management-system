@@ -34,11 +34,35 @@ const PRIMARY_ADMIN_MODULES = [
   'my-complaints',
   'messages',
   'website-management',
+  'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats',
+  'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints',
+  'boarding-finance', 'boarding-print',
+] as const;
+
+const MATRON_BOARDING_MODULES = [
+  'boarding-overview', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall',
+  'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-print',
+  'settings', 'settings-password-only',
+] as const;
+
+const HOUSEMASTER_BOARDING_MODULES = [
+  ...MATRON_BOARDING_MODULES,
+  'boarding-finance', 'boarding-print',
 ] as const;
 
 const PLATFORM_SUPER_ADMIN_MODULES = [...PRIMARY_ADMIN_MODULES, 'schools'] as const;
 
-export type UserRole = 'administrator' | 'finance' | 'super-admin' | 'teacher' | 'staff' | 'driver' | 'headmaster' | 'website-manager';
+export type UserRole =
+  | 'administrator'
+  | 'finance'
+  | 'super-admin'
+  | 'teacher'
+  | 'staff'
+  | 'driver'
+  | 'headmaster'
+  | 'website-manager'
+  | 'matron'
+  | 'house-master';
 
 interface User {
   id: number;
@@ -415,7 +439,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-finance', 'boarding-print', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management'].includes(module);
+    }
+
+    if (user.role === 'matron') {
+      return (MATRON_BOARDING_MODULES as readonly string[]).includes(module);
+    }
+
+    if (user.role === 'house-master') {
+      return (HOUSEMASTER_BOARDING_MODULES as readonly string[]).includes(module);
     }
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)

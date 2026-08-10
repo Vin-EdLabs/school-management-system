@@ -21,6 +21,19 @@ const backupUpload = multer({
   limits: { fileSize: 100 * 1024 * 1024 },
 });
 
+/** JSON demo-import requests must skip multer or req.body is empty and restore returns 400. */
+function optionalBackupUpload(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (contentType.includes('multipart/form-data')) {
+    return backupUpload.single('backup')(req, res, next);
+  }
+  return next();
+}
+
 router.use(authenticate);
 router.use(requireRole('super-admin'));
 
@@ -123,8 +136,41 @@ router.post('/:tenantId/validate-backup', backupUpload.single('backup'), async (
   }
 });
 
+// POST /api/super-admin/tenants/:tenantId/load-demo
+router.post('/:tenantId/load-demo', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId, 10);
+    if (!tenantId) return res.status(400).json({ error: 'Invalid tenant id' });
+
+    const tenant = await query('SELECT id, name, slug FROM tenants WHERE id = $1', [tenantId]);
+    if (tenant.rows.length === 0) return res.status(404).json({ error: 'School not found' });
+    const schoolName = String(tenant.rows[0].name);
+
+    const summary = await importDemoDataForTenant(tenantId);
+
+    await logBackupAction(req, {
+      action: 'DEMO_IMPORT',
+      tenantId,
+      schoolName,
+      summary: `Demo data loaded for ${schoolName} by ${req.user!.username}`,
+      details: { ...summary },
+    });
+
+    emitTenantChanged(tenantId, 'updated');
+    return res.json({
+      success: true,
+      type: 'demo',
+      message: `Demo data loaded for ${schoolName}`,
+      summary,
+    });
+  } catch (error) {
+    console.error('Demo import error:', error);
+    return res.status(500).json({ error: (error as Error).message || 'Failed to load demo data' });
+  }
+});
+
 // POST /api/super-admin/tenants/:tenantId/restore
-router.post('/:tenantId/restore', backupUpload.single('backup'), async (req: AuthRequest, res) => {
+router.post('/:tenantId/restore', optionalBackupUpload, async (req: AuthRequest, res) => {
   const tenantId = parseInt(req.params.tenantId, 10);
   if (!tenantId) return res.status(400).json({ error: 'Invalid tenant id' });
 

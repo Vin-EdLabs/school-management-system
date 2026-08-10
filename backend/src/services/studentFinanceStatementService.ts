@@ -12,6 +12,8 @@ import { listStudentCharges } from './studentChargesService.js';
 import { resolveSchoolDisplayName } from './schoolBrandingService.js';
 import { formatTermLedgerLabel } from '../utils/termLabel.js';
 import { syncBeneficiaryLedgerDebitsForStudent } from './ledgerFinanceService.js';
+import { isBoardingEnabledForTenant } from './boardingModuleService.js';
+import { resolveBoardingStatementDisplay } from './boardingStatementHelpers.js';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -551,6 +553,8 @@ export async function buildStudentFinanceStatement(
 
   await syncBeneficiaryLedgerDebitsForStudent(tenantId, studentId);
 
+  const boardingModuleEnabled = await isBoardingEnabledForTenant(tenantId);
+
   const settingsRes = await query(
     `SELECT ss.school_name, ss.current_year, ss.current_term,
             COALESCE(NULLIF(ss.physical_address, ''), ss.address, ss.postal_address, '') AS address,
@@ -601,6 +605,23 @@ export async function buildStudentFinanceStatement(
   // Load individual charges for the student and group by term so they can be
   // attached to each term block in the statement.
   const chargeRows = await listStudentCharges(tenantId, studentId, null);
+  const boardingRes = await query(
+    `SELECT term_id,
+            COALESCE(SUM(CASE WHEN entry_type = 'boarding_fee' THEN debit ELSE 0 END), 0)::numeric AS lodging,
+            COALESCE(SUM(CASE WHEN entry_type = 'boarding_feeding' THEN debit ELSE 0 END), 0)::numeric AS feeding
+     FROM student_ledger
+     WHERE tenant_id = $1 AND student_id = $2
+       AND entry_type IN ('boarding_fee', 'boarding_feeding')
+     GROUP BY term_id`,
+    [tenantId, studentId]
+  );
+  const boardingByTerm = new Map<number, { lodging: number; feeding: number; total: number }>(
+    boardingRes.rows.map((row) => {
+      const lodging = roundMoney(parseFloat(String(row.lodging)) || 0);
+      const feeding = roundMoney(parseFloat(String(row.feeding)) || 0);
+      return [Number(row.term_id), { lodging, feeding, total: roundMoney(lodging + feeding) }];
+    })
+  );
   const termLabelById = new Map(termRows.map((r) => [r.termId, r.termName]));
   const individualCharges: IndividualChargeStatementLine[] = chargeRows.map((c) => ({
     id: c.id,
@@ -628,8 +649,18 @@ export async function buildStudentFinanceStatement(
     termRows.map(async (row) => {
     const fs = feeStructureByTerm.get(row.termId);
     const ledgerTermFee = roundMoney(row.termFee);
+    const rawBoardingFee = boardingByTerm.get(row.termId) ?? { lodging: 0, feeding: 0, total: 0 };
+    const isCurrentTerm = row.termId === ledgerTermId;
+    const boardingDisplay = await resolveBoardingStatementDisplay(
+      tenantId,
+      studentId,
+      row.termId,
+      rawBoardingFee,
+      { boardingModuleEnabled, isCurrentTerm }
+    );
+    const boardingBillable = boardingDisplay.billableTotal;
 
-    if (!fs && ledgerTermFee <= 0) {
+    if (!fs && ledgerTermFee <= 0 && boardingBillable <= 0 && rawBoardingFee.total <= 0) {
       return {
         termId: row.termId,
         termLabel: row.termName,
@@ -647,16 +678,21 @@ export async function buildStudentFinanceStatement(
 
     if (!fs) {
       const { totalFees: effectiveFee } = beneficiaryAdjustedFee(ledgerTermFee, beneficiary);
-      const netBilled = roundMoney(effectiveFee);
+      const netBilled = roundMoney(effectiveFee + boardingBillable);
+      const lines: TermFeeBreakdownLine[] = [];
+      if (effectiveFee > 0) lines.push({ label: 'Total Term Bill', amount: effectiveFee });
+      for (const bl of boardingDisplay.lines) {
+        lines.push({ label: bl.label, amount: bl.amount });
+      }
       return {
         termId: row.termId,
         termLabel: row.termName,
         className,
-        lines: netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
+        lines,
         subtotal: ledgerTermFee,
-        discountAmount: roundMoney(Math.max(0, ledgerTermFee - netBilled)),
+        discountAmount: roundMoney(Math.max(0, ledgerTermFee - effectiveFee)),
         discountLabel:
-          ledgerTermFee > netBilled ? formatDiscountLabel(beneficiary) : null,
+          ledgerTermFee > effectiveFee ? formatDiscountLabel(beneficiary) : null,
         netBilled,
         noFeeStructure: false,
         individualCharges: [],
@@ -678,13 +714,17 @@ export async function buildStudentFinanceStatement(
     const effectiveTermFee = roundMoney(structureSubtotal - discountAmountRounded);
     const termIndividualCharges = chargesByTerm.get(row.termId) || [];
     const termChargesSum = roundMoney(termIndividualCharges.reduce((s, c) => s + c.amount, 0));
-    const termTotal = roundMoney(effectiveTermFee + termChargesSum);
-    const netBilled = effectiveTermFee;
+    const netBilled = roundMoney(effectiveTermFee + boardingBillable);
+    const termTotal = roundMoney(netBilled + termChargesSum);
+    const linesWithBoarding = [...lines];
+    for (const bl of boardingDisplay.lines) {
+      linesWithBoarding.push({ label: bl.label, amount: bl.amount });
+    }
     return {
       termId: row.termId,
       termLabel: row.termName,
       className,
-      lines: lines.length > 0 ? lines : netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
+      lines: linesWithBoarding.length > 0 ? linesWithBoarding : netBilled > 0 ? [{ label: 'Total Term Bill', amount: netBilled }] : [],
       subtotal: structureSubtotal,
       discountAmount: roundMoney(discountAmount),
       discountLabel: discountAmount > 0 ? formatDiscountLabel(beneficiary) : null,

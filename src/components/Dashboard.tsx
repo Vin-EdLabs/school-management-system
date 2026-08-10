@@ -54,6 +54,17 @@ import TransportRoutes from './transport/TransportRoutes';
 import TransportVehicles from './transport/TransportVehicles';
 import TransportDrivers from './transport/TransportDrivers';
 import TransportStudents from './transport/TransportStudents';
+import BoardingModule from './boarding/BoardingModule';
+import BoardingOverview from './boarding/BoardingOverview';
+import BoardingDormitories from './boarding/BoardingDormitories';
+import BoardingBoarders from './boarding/BoardingBoarders';
+import BoardingExeats from './boarding/BoardingExeats';
+import BoardingRollCall from './boarding/BoardingRollCall';
+import BoardingFeeding from './boarding/BoardingFeeding';
+import BoardingSickBay from './boarding/BoardingSickBay';
+import BoardingComplaints from './boarding/BoardingComplaints';
+import BoardingFinance from './boarding/BoardingFinance';
+import BoardingPrintHouseList from './boarding/BoardingPrintHouseList';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
@@ -83,6 +94,7 @@ import ClosedTermViewBar from './common/ClosedTermViewBar';
 import ActiveTermRequiredShell from './common/ActiveTermRequiredShell';
 import { useTermStatus } from '../contexts/TermStatusContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSchool } from '../contexts/SchoolContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
 import { useEnsureData } from '../hooks/useEnsureData';
 import { useFinanceRealtime } from '../hooks/useFinanceRealtime';
@@ -90,13 +102,17 @@ import { domainsForModule } from '../config/moduleDataNeeds';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from './impersonation/ImpersonationShell';
 import { IMPERSONATION_GO_MODULE_KEY } from '../utils/impersonationHelpers';
-import { readInitialModuleFromUrl } from '../utils/appNavigation';
+import { readInitialModuleFromUrl, syncAppUrlForModule } from '../utils/appNavigation';
 import { shouldUseAdministratorDashboard } from '../utils/schoolAdminView';
+import { isBoardingModule, redirectBoardingPathToDashboard, syncBoardingModuleUrl } from '../utils/boardingModule';
 import { PrintPreviewProvider } from '../contexts/PrintPreviewContext';
 import { NavigationGuardProvider, useNavigationGuard } from '../contexts/NavigationGuardContext';
 
 const DashboardContent = () => {
   const { hasAccess, user } = useAuth();
+  const { school } = useSchool();
+  const boardingReady = school !== null;
+  const boardingEnabled = Boolean(school?.boarding_enabled);
   useStaffPushSync();
   useFinanceRealtime();
   const [activeModule, setActiveModuleState] = useState(() => {
@@ -119,9 +135,21 @@ const DashboardContent = () => {
     if (path.includes('/transport/vehicles')) return 'transport-vehicles';
     if (path.includes('/transport/drivers')) return 'transport-drivers';
     if (path.includes('/transport/students')) return 'transport-students';
+    if (path.endsWith('/boarding') || /\/boarding\/?$/.test(path)) return 'boarding-overview';
+    if (path.includes('/boarding/dormitories')) return 'boarding-dormitories';
+    if (path.includes('/boarding/boarders')) return 'boarding-boarders';
+    if (path.includes('/boarding/exeats')) return 'boarding-exeats';
+    if (path.includes('/boarding/rollcall')) return 'boarding-rollcall';
+    if (path.includes('/boarding/feeding')) return 'boarding-feeding';
+    if (path.includes('/boarding/sickbay')) return 'boarding-sickbay';
+    if (path.includes('/boarding/complaints')) return 'boarding-complaints';
+    if (path.includes('/boarding/finance')) return 'boarding-finance';
+    if (path.includes('/boarding/print')) return 'boarding-print';
     // Set default module based on user role
     if (user?.role === 'finance') {
       return 'financial-dashboard';
+    } else if (user?.role === 'matron' || user?.role === 'house-master') {
+      return 'boarding-overview';
     } else if (user?.role === 'administrator') {
       return 'dashboard';
     } else if (user?.role === 'teacher' || user?.role === 'staff') {
@@ -151,6 +179,16 @@ const DashboardContent = () => {
     }
   }, [activeModule]);
 
+  useEffect(() => {
+    if (!boardingReady || boardingEnabled || !isBoardingModule(activeModule)) return;
+
+    setActiveModuleState('dashboard');
+    const nextPath = redirectBoardingPathToDashboard(window.location.pathname);
+    if (nextPath !== window.location.pathname) {
+      window.history.replaceState({}, '', nextPath);
+    }
+  }, [boardingReady, boardingEnabled, activeModule]);
+
   const domains = useMemo(() => domainsForModule(activeModule), [activeModule]);
   useEnsureData(domains);
   const { setViewingTermLabel, browseMode } = useTermStatus();
@@ -170,7 +208,21 @@ const DashboardContent = () => {
     if (user?.role === 'headmaster' && activeModule === 'dashboard') {
       setActiveModuleState('headmaster-dashboard');
     }
+    if ((user?.role === 'matron' || user?.role === 'house-master') && activeModule === 'dashboard') {
+      setActiveModuleState('boarding-overview');
+    }
   }, [user?.role, activeModule]);
+
+  useEffect(() => {
+    if (user?.role !== 'matron' && user?.role !== 'house-master') return;
+    if (isBoardingModule(activeModule)) {
+      syncBoardingModuleUrl(activeModule);
+    }
+  }, [user?.role, activeModule]);
+
+  useEffect(() => {
+    syncAppUrlForModule(activeModule);
+  }, [activeModule]);
 
   /** After impersonation start/exit — land on the correct dashboard module */
   useEffect(() => {
@@ -194,13 +246,23 @@ const DashboardContent = () => {
   const { requestNavigation } = useNavigationGuard();
 
   const setActiveModule = (module: string) => {
+    if (isBoardingModule(module) && boardingReady && !boardingEnabled) {
+      requestNavigation(() => {
+        setActiveModuleState('dashboard');
+        const nextPath = redirectBoardingPathToDashboard(window.location.pathname);
+        if (nextPath !== window.location.pathname) {
+          window.history.replaceState({}, '', nextPath);
+        }
+      });
+      return;
+    }
     requestNavigation(() => setActiveModuleState(module));
   };
 
   const renderActiveModule = () => {
     // Check access before rendering
     const hasModuleAccess =
-      hasAccess(activeModule) ||
+      (hasAccess(activeModule) ||
       hasAccess(activeModule + '-view-only') ||
       (activeModule === 'other-staff' && (hasAccess('teachers') || hasAccess('teachers-view-only'))) ||
       (activeModule === 'appointment-letter-settings' && hasAccess('settings-full')) ||
@@ -212,8 +274,12 @@ const DashboardContent = () => {
       (activeModule === 'headmaster-all-attendance' && hasAccess('headmaster-all-attendance')) ||
       (activeModule === 'headmaster-all-staff' && hasAccess('headmaster-all-staff')) ||
       (activeModule === 'headmaster-grades' && hasAccess('headmaster-grades')) ||
-      (activeModule === 'academic-reports' && hasAccess('reports'));
+      (activeModule === 'academic-reports' && hasAccess('reports'))) &&
+      (!isBoardingModule(activeModule) || !boardingReady || boardingEnabled);
     if (!hasModuleAccess) {
+      if (isBoardingModule(activeModule) && boardingReady && !boardingEnabled) {
+        return null;
+      }
       return (
         <div className="p-6 text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h2>
@@ -381,6 +447,66 @@ const DashboardContent = () => {
         return <TransportDrivers />;
       case 'transport-students':
         return <TransportStudents />;
+      case 'boarding-overview':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingOverview onNavigate={setActiveModule} />
+          </BoardingModule>
+        );
+      case 'boarding-dormitories':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingDormitories />
+          </BoardingModule>
+        );
+      case 'boarding-boarders':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingBoarders />
+          </BoardingModule>
+        );
+      case 'boarding-exeats':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingExeats />
+          </BoardingModule>
+        );
+      case 'boarding-rollcall':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingRollCall />
+          </BoardingModule>
+        );
+      case 'boarding-feeding':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingFeeding />
+          </BoardingModule>
+        );
+      case 'boarding-sickbay':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingSickBay />
+          </BoardingModule>
+        );
+      case 'boarding-complaints':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingComplaints />
+          </BoardingModule>
+        );
+      case 'boarding-finance':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingFinance />
+          </BoardingModule>
+        );
+      case 'boarding-print':
+        return (
+          <BoardingModule onNavigate={setActiveModule}>
+            <BoardingPrintHouseList />
+          </BoardingModule>
+        );
       case 'checkin-dashboard':
         return <CheckinDashboard />;
       case 'checkin-staff':

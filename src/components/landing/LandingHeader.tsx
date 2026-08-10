@@ -1,17 +1,24 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Menu, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { getScholarNerveMainUrl, getPartnersPortalLoginUrl, isPartnersHost } from '@/utils/partnersHost';
-import { REGISTER_SCHOOL_PATH, handleRegisterNavClick } from '@/utils/landingScroll';
+import { REGISTER_SCHOOL_PATH, handleLandingSectionNavClick, handleRegisterNavClick } from '@/utils/landingScroll';
 
-const HOME_NAV = [
-  { href: '/#features', label: 'Features' },
-  { href: '/#parent-app', label: 'Mobile App' },
-  { href: '/#pricing', label: 'Pricing' },
-  { href: '/#about', label: 'About' },
-  { href: '/#contact', label: 'Contact' },
-  { href: '/#school-website', label: 'School Website' },
-] as const;
+type HomeNavItem = {
+  label: string;
+  path: string;
+  hash?: string;
+};
+
+const HOME_NAV: HomeNavItem[] = [
+  { label: 'Features', path: '/features', hash: 'features' },
+  { label: 'Mobile App', path: '/#parent-app', hash: 'parent-app' },
+  { label: 'Pricing', path: '/pricing', hash: 'pricing' },
+  { label: 'About', path: '/about', hash: 'about' },
+  { label: 'Contact', path: '/contact', hash: 'contact' },
+  { label: 'School Website', path: '/#school-website', hash: 'school-website' },
+];
 
 const PARTNERS_NAV = [
   { href: '#how-it-works', label: 'How it works' },
@@ -85,6 +92,48 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
     handleRegisterNavClick(e, location.pathname, closeMenu);
   };
 
+  const isNavActive = (path: string) => {
+    if (path.startsWith('/#')) return false;
+    return location.pathname === path;
+  };
+
+  const renderHomeNavLink = (item: HomeNavItem, className: string, tabIndex?: number) => {
+    const active = isNavActive(item.path);
+    const onClick = (e: React.MouseEvent) => {
+      if (item.hash) {
+        handleLandingSectionNavClick(e, location.pathname, item.hash, closeMenu);
+      } else {
+        closeMenu();
+      }
+    };
+
+    if (item.path.startsWith('/#')) {
+      return (
+        <Link
+          key={item.label}
+          to={item.path}
+          className={cn(className, active && 'text-[var(--brand-dark)] font-semibold')}
+          onClick={onClick}
+          tabIndex={tabIndex}
+        >
+          {item.label}
+        </Link>
+      );
+    }
+
+    return (
+      <Link
+        key={item.label}
+        to={item.path}
+        className={cn(className, active && 'text-[var(--brand-dark)] font-semibold')}
+        onClick={onClick}
+        tabIndex={tabIndex}
+      >
+        {item.label}
+      </Link>
+    );
+  };
+
   return (
     <header className="scholar-landing-header fixed left-0 right-0 top-0 z-[100]">
       <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-2 px-4 sm:h-16 sm:gap-3 sm:px-5">
@@ -122,32 +171,40 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
               Partner Login
             </a>
           )}
-          {navLinks.map((link) =>
-            'to' in link ? (
-              <Link key={link.to} to={link.to} className="scholar-nav-link">
-                {link.label}
-              </Link>
-            ) : (
-              <a key={link.href} href={link.href} className="scholar-nav-link">
-                {link.label}
-              </a>
-            )
-          )}
           {!isPartners && (
-            <a href="/#partners" className="scholar-nav-link font-semibold text-[var(--brand-dark)]">
-              Partners
+            <a href={partnerLoginUrl} className="scholar-nav-link hidden font-semibold text-[var(--brand-dark)] md:inline-flex">
+              Partner Login
             </a>
+          )}
+          {isPartners
+            ? navLinks.map((link) => (
+                <a key={link.href} href={link.href} className="scholar-nav-link">
+                  {link.label}
+                </a>
+              ))
+            : HOME_NAV.map((item) => renderHomeNavLink(item, 'scholar-nav-link'))}
+          {!isPartners && (
+            <Link
+              to="/partners"
+              className={cn(
+                'scholar-nav-link font-semibold text-[var(--brand-dark)]',
+                location.pathname === '/partners' && 'underline underline-offset-4',
+              )}
+              onClick={closeMenu}
+            >
+              Partners
+            </Link>
           )}
         </nav>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {!isPartners && (
-            <a
-              href="/#partners"
+            <Link
+              to="/partners"
               className="scholar-nav-partner-cta scholar-header-desktop-only"
             >
               Become a Partner
-            </a>
+            </Link>
           )}
 
           {isPartners ? (
@@ -215,46 +272,55 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                     </Link>
                   )
                 )}
-                {navLinks.map((link, index) =>
-                  'to' in link ? (
-                    <Link
-                      key={link.to}
-                      to={link.to}
-                      className="scholar-mobile-nav-link"
-                      style={{ '--nav-delay': `${index * 40}ms` } as React.CSSProperties}
-                      onClick={closeMenu}
-                      tabIndex={menuOpen ? 0 : -1}
-                    >
-                      {link.label}
-                    </Link>
-                  ) : (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      className="scholar-mobile-nav-link"
-                      style={{ '--nav-delay': `${index * 40}ms` } as React.CSSProperties}
-                      onClick={closeMenu}
-                      tabIndex={menuOpen ? 0 : -1}
-                    >
-                      {link.label}
-                    </a>
-                  )
-                )}
+                {isPartners
+                  ? navLinks.map((link, index) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        className="scholar-mobile-nav-link"
+                        style={{ '--nav-delay': `${index * 40}ms` } as React.CSSProperties}
+                        onClick={closeMenu}
+                        tabIndex={menuOpen ? 0 : -1}
+                      >
+                        {link.label}
+                      </a>
+                    ))
+                  : HOME_NAV.map((item, index) =>
+                      renderHomeNavLink(
+                        item,
+                        'scholar-mobile-nav-link',
+                        menuOpen ? 0 : -1,
+                      )
+                    )}
                 {!isPartners && (
-                  <a
-                    href="/#partners"
-                    className="scholar-mobile-nav-link font-semibold text-[var(--brand-dark)]"
+                  <Link
+                    to="/partners"
+                    className={cn(
+                      'scholar-mobile-nav-link font-semibold text-[var(--brand-dark)]',
+                      location.pathname === '/partners' && 'underline underline-offset-4',
+                    )}
                     style={{ '--nav-delay': `${navLinks.length * 40}ms` } as React.CSSProperties}
                     onClick={closeMenu}
                     tabIndex={menuOpen ? 0 : -1}
                   >
                     Partners
-                  </a>
+                  </Link>
                 )}
                 {isPartners && (
                   <a
                     href={partnerLoginUrl}
                     className="snp-partner-login-nav-btn w-full justify-center"
+                    style={{ '--nav-delay': `${(navLinks.length + 1) * 40}ms` } as React.CSSProperties}
+                    onClick={closeMenu}
+                    tabIndex={menuOpen ? 0 : -1}
+                  >
+                    Partner Login
+                  </a>
+                )}
+                {!isPartners && (
+                  <a
+                    href={partnerLoginUrl}
+                    className="scholar-mobile-nav-link font-semibold text-[var(--brand-dark)]"
                     style={{ '--nav-delay': `${(navLinks.length + 1) * 40}ms` } as React.CSSProperties}
                     onClick={closeMenu}
                     tabIndex={menuOpen ? 0 : -1}
@@ -275,14 +341,14 @@ export default function LandingHeader({ brandMark, variant = 'home', brandLockup
                   </a>
                 ) : (
                   <>
-                    <a
-                      href="/#partners"
+                    <Link
+                      to="/partners"
                       className="scholar-mobile-nav-partner-cta"
                       onClick={closeMenu}
                       tabIndex={menuOpen ? 0 : -1}
                     >
                       Become a Partner
-                    </a>
+                    </Link>
                     <Link
                       to={REGISTER_SCHOOL_PATH}
                       className="scholar-mobile-nav-cta"

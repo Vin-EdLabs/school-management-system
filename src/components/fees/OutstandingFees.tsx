@@ -100,6 +100,7 @@ const OutstandingFees = () => {
       'Term Fee': student.termFee,
       Arrears: student.arrears,
       'Individual Charges': student.individualCharges,
+      'Boarding Fee': student.boardingFees ?? 0,
       'Total Paid': student.totalPaid,
       'Outstanding Balance': student.outstanding,
     }));
@@ -247,7 +248,7 @@ const OutstandingFees = () => {
               <tbody className="divide-y divide-border/30">
                 {filteredStudents.map((student) => {
                   const studentName = `${student.firstName} ${student.lastName}`;
-                  const totalDue = student.termFee + student.arrears + student.individualCharges;
+                  const totalDue = student.termFee + student.arrears + student.individualCharges + (student.boardingFees ?? 0);
                   return (
                   <tr key={student.id} className="hover:bg-indigo-500/5 transition-colors group">
                     <td className="p-3 align-top">

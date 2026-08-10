@@ -113,6 +113,7 @@ export function resolveStudentDisplayBalance(
   const ledgerTermFee = balance.currentTermFee ?? 0;
   const arrears = balance.totalArrears ?? 0;
   const individualCharges = balance.individualCharges ?? 0;
+  const boardingFees = balance.boardingFees ?? 0;
   const totalPaid = balance.totalPaid ?? 0;
   const creditBroughtForward = balance.creditBroughtForward ?? 0;
   const credit = balance.credit ?? 0;
@@ -120,7 +121,7 @@ export function resolveStudentDisplayBalance(
 
   const ledgerTotalDue = balance.totalDue ?? 0;
   const totalDue = roundMoney(
-    ledgerTotalDue > 0 ? ledgerTotalDue : currentTermFee + individualCharges + arrears
+    ledgerTotalDue > 0 ? ledgerTotalDue : currentTermFee + individualCharges + boardingFees + arrears
   );
 
   const netBalance = roundMoney(totalDue - totalPaid - creditBroughtForward);

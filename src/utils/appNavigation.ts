@@ -1,4 +1,6 @@
 /** Apply in-app navigation from a notification/deep-link URL without reloading the page. */
+import { BOARDING_MODULE_URLS, getSchoolPathPrefix, stripFeatureSubpaths } from './boardingModule';
+
 export function applyAppNavigationFromUrl(rawUrl: string): { module: string | null; handled: boolean } {
   try {
     const url = new URL(rawUrl, window.location.origin);
@@ -47,5 +49,38 @@ export function readInitialModuleFromUrl(): string | null {
     return module;
   } catch {
     return null;
+  }
+}
+
+const TRANSPORT_MODULE_URLS: Record<string, string> = {
+  'transport-overview': '/transport',
+  'transport-map': '/transport/map',
+  'transport-routes': '/transport/routes',
+  'transport-vehicles': '/transport/vehicles',
+  'transport-drivers': '/transport/drivers',
+  'transport-students': '/transport/students',
+};
+
+const FINANCE_MODULE_URLS: Record<string, string> = {
+  transactions: '/finance/transactions',
+  'daily-fees': '/finance/daily-fees',
+};
+
+/** Keep the browser URL aligned with the active in-app module (no full reload). */
+export function syncAppUrlForModule(moduleId: string): void {
+  const prefix = getSchoolPathPrefix();
+  const deepLink =
+    BOARDING_MODULE_URLS[moduleId] ||
+    TRANSPORT_MODULE_URLS[moduleId] ||
+    FINANCE_MODULE_URLS[moduleId];
+
+  if (deepLink) {
+    window.history.pushState({}, '', `${prefix}${deepLink}`);
+    return;
+  }
+
+  const next = stripFeatureSubpaths(window.location.pathname);
+  if (next !== window.location.pathname) {
+    window.history.pushState({}, '', next);
   }
 }

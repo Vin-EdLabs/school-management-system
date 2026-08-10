@@ -71,6 +71,8 @@ const roleLabels: Record<string, string> = {
   staff: 'Staff',
   headmaster: 'Headmaster',
   'website-manager': 'Website Manager',
+  matron: 'Matron',
+  'house-master': 'House Master',
 };
 
 const roleColors: Record<string, string> = {
@@ -91,6 +93,15 @@ const roleIcons: Record<string, React.ElementType> = {
   headmaster: Crown,
 };
 
+const ROLES_REQUIRING_FULL_NAME = new Set([
+  'administrator',
+  'finance',
+  'headmaster',
+  'website-manager',
+  'matron',
+  'house-master',
+]);
+
 const UsersModule = () => {
   const { schoolId } = useSchool();
   const { socket } = useSocket();
@@ -105,7 +116,7 @@ const UsersModule = () => {
     fullName: '',
     password: '',
     email: '',
-    role: 'administrator' as 'administrator' | 'finance' | 'teacher' | 'staff',
+    role: 'administrator' as 'administrator' | 'finance' | 'teacher' | 'staff' | 'matron' | 'house-master',
   });
   const [resetPassword, setResetPassword] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -223,11 +234,11 @@ const UsersModule = () => {
       toast({ title: 'Error', description: 'Username and password required', variant: 'destructive' });
       return;
     }
-    if ((newUser.role === 'administrator' || newUser.role === 'finance') && !newUser.fullName.trim()) {
-      toast({ title: 'Error', description: 'Full name is required for Administrator and Finance users', variant: 'destructive' });
+    if (ROLES_REQUIRING_FULL_NAME.has(newUser.role) && !newUser.fullName.trim()) {
+      toast({ title: 'Error', description: 'Full name is required for this role', variant: 'destructive' });
       return;
     }
-    const minLength = newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6;
+    const minLength = newUser.role === 'teacher' || newUser.role === 'staff' || newUser.role === 'matron' || newUser.role === 'house-master' ? 5 : 6;
     if (newUser.password.length < minLength) {
       toast({ title: 'Error', description: `Password must be at least ${minLength} characters`, variant: 'destructive' });
       return;
@@ -659,18 +670,36 @@ const UsersModule = () => {
                   required
                 />
               </div>
-              {(newUser.role === 'administrator' || newUser.role === 'finance') && (
-                <div className="space-y-2">
-                  <Label>Full name *</Label>
-                  <Input
-                    value={newUser.fullName}
-                    onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
-                    placeholder="e.g. Barbara Acquah"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">This name appears in the system header and audit records.</p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select value={newUser.role} onValueChange={(v: any) => setNewUser({ ...newUser, role: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="administrator">Administrator</SelectItem>
+                    <SelectItem value="finance">Finance</SelectItem>
+                    <SelectItem value="teacher">Teacher</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="matron">Matron</SelectItem>
+                    <SelectItem value="house-master">House Master</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Full name{ROLES_REQUIRING_FULL_NAME.has(newUser.role) ? ' *' : ''}</Label>
+                <Input
+                  value={newUser.fullName}
+                  onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })}
+                  placeholder="e.g. Barbara Acquah"
+                  required={ROLES_REQUIRING_FULL_NAME.has(newUser.role)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {ROLES_REQUIRING_FULL_NAME.has(newUser.role)
+                    ? 'Required — appears in the system header and audit records.'
+                    : 'Optional for teacher and staff accounts.'}
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label>Password * (min {newUser.role === 'teacher' || newUser.role === 'staff' ? 5 : 6} characters)</Label>
                 <Input
@@ -690,20 +719,6 @@ const UsersModule = () => {
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   placeholder="Optional"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={newUser.role} onValueChange={(v: any) => setNewUser({ ...newUser, role: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="administrator">Administrator</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
-                    <SelectItem value="teacher">Teacher</SelectItem>
-                    <SelectItem value="staff">Staff</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </DialogBody>
             <DialogFooter className="form-action-bar shrink-0 gap-2 border-t border-border/70 px-6 py-4">

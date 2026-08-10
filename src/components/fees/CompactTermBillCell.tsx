@@ -11,6 +11,7 @@ import {
   detailDialogHeaderClass,
   detailDialogBodyClass,
 } from '@/components/ui/dialog';
+import BoardingFeeBreakdownDisplay, { boardingFeeBreakdownTotal } from './BoardingFeeBreakdownDisplay';
 import { prefetchFeeStructureItemsSummary } from '../../services/feeStructureItems';
 
 const TermBillBreakdown = lazy(() => import('./TermBillBreakdown'));
@@ -28,6 +29,8 @@ type CompactTermBillCellProps = {
     reason?: string | null;
   }>;
   individualChargeAmount?: number;
+  boardingFeeAmount?: number;
+  boardingFeeBreakdown?: { lodging: number; feeding: number };
   studentId?: number | string;
   termId?: number | null;
   discountAmount?: number;
@@ -43,6 +46,8 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
   studentLabel,
   individualCharges,
   individualChargeAmount,
+  boardingFeeAmount,
+  boardingFeeBreakdown,
   studentId,
   termId,
   discountAmount,
@@ -50,10 +55,16 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
 
+  const boardingFeeTotal = boardingFeeBreakdown
+    ? boardingFeeBreakdownTotal(boardingFeeBreakdown)
+    : Number(boardingFeeAmount ?? 0);
+  const termBillTotal = total + Number(individualChargeAmount ?? 0) + boardingFeeTotal;
+
   const canExpand = Boolean(
     feeStructureId ||
       (individualCharges && individualCharges.length > 0) ||
       Number(individualChargeAmount ?? 0) > 0 ||
+      boardingFeeTotal > 0 ||
       (studentId != null && termId != null)
   );
 
@@ -71,7 +82,7 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
     <>
       <div className="inline-flex flex-col items-end gap-0.5">
         <span className="font-mono tabular-nums font-medium">
-          GHS {formatMoney(total)}
+          GHS {formatMoney(termBillTotal)}
         </span>
         {canExpand ? (
           <button
@@ -113,7 +124,7 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
                 Total term bill
               </p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-900 dark:text-emerald-100">
-                GHS {formatMoney(total)}
+                GHS {formatMoney(termBillTotal)}
               </p>
             </div>
 
@@ -131,6 +142,8 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
                   feeStructureId={feeStructureId}
                   individualCharges={individualCharges}
                   individualChargeAmount={individualChargeAmount}
+                  boardingFeeAmount={boardingFeeAmount}
+                  boardingFeeBreakdown={boardingFeeBreakdown}
                   studentId={studentId}
                   termId={termId}
                   discountAmount={discountAmount}

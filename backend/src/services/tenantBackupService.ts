@@ -804,25 +804,28 @@ export type TenantClearResult = {
 };
 
 async function runPreClearTenantFixups(client: pg.PoolClient, tenantId: number): Promise<void> {
-  await client.query(
+  const fixups = [
     `UPDATE students
      SET admission_academic_term_id = NULL,
          inactivated_academic_term_id = NULL
      WHERE tenant_id = $1`,
-    [tenantId]
-  ).catch(() => undefined);
-
-  await client.query(
     `UPDATE school_website_applications SET student_id = NULL
      WHERE tenant_id = $1 AND student_id IS NOT NULL`,
-    [tenantId]
-  ).catch(() => undefined);
-
-  await client.query(
     `UPDATE complaints SET subject_student_id = NULL
      WHERE tenant_id = $1 AND subject_student_id IS NOT NULL`,
-    [tenantId]
-  ).catch(() => undefined);
+  ];
+
+  for (const sql of fixups) {
+    await client.query('SAVEPOINT pre_clear_fixup');
+    try {
+      await client.query(sql, [tenantId]);
+      await client.query('RELEASE SAVEPOINT pre_clear_fixup');
+    } catch {
+      // A failed statement aborts the whole transaction in Postgres unless rolled back to a savepoint.
+      await client.query('ROLLBACK TO SAVEPOINT pre_clear_fixup').catch(() => undefined);
+      await client.query('RELEASE SAVEPOINT pre_clear_fixup').catch(() => undefined);
+    }
+  }
 }
 
 export async function verifyTenantOperationalDataCleared(

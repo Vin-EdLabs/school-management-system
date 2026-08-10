@@ -568,8 +568,22 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'users.role_check drop'
   );
   await safe(
-    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager'))`,
-    'users.role_check add headmaster'
+    `ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('super-admin', 'administrator', 'finance', 'teacher', 'staff', 'driver', 'headmaster', 'website-manager', 'matron', 'house-master'))`,
+    'users.role_check add boarding roles'
+  );
+
+  await safe(
+    `UPDATE boarding_complaints SET status = 'pending' WHERE status = 'open'`,
+    'boarding_complaints pending migration'
+  );
+  await safe(
+    `UPDATE boarding_complaints SET status = 'under_review' WHERE status IN ('reviewed', 'escalated')`,
+    'boarding_complaints under_review migration'
+  );
+  await safe(`ALTER TABLE boarding_complaints DROP CONSTRAINT IF EXISTS boarding_complaints_status_check`, 'boarding_complaints status drop');
+  await safe(
+    `ALTER TABLE boarding_complaints ADD CONSTRAINT boarding_complaints_status_check CHECK (status IN ('pending', 'under_review', 'resolved'))`,
+    'boarding_complaints status add'
   );
 
   await safe(

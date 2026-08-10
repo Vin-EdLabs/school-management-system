@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useSocket } from '../contexts/SocketContext';
 import { apiService } from '../services/api';
 import { fetchTenantById } from '../services/tenantService';
 
@@ -11,6 +12,7 @@ interface School {
   primary_color?: string;
   secondary_color?: string;
   is_demo?: boolean;
+  boarding_enabled?: boolean;
 }
 
 interface SchoolContextType {
@@ -25,6 +27,7 @@ interface SchoolContextType {
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
 
 export const SchoolProvider: React.FC<{ children: React.ReactNode; schoolIdFromUrl: number | null }> = ({ children, schoolIdFromUrl }) => {
+  const { socket } = useSocket();
   const [schoolId, setSchoolIdState] = useState<number | null>(schoolIdFromUrl);
   const [school, setSchool] = useState<School | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
@@ -66,6 +69,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode; schoolIdFromU
           logo_url: tenant.logo_url || undefined,
           primary_color: tenant.primary_color || undefined,
           secondary_color: tenant.secondary_color || undefined,
+          boarding_enabled: tenant.boarding_enabled === true,
         });
       } else {
         setSchool(null);
@@ -93,6 +97,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode; schoolIdFromU
     window.addEventListener('school-branding-changed', onBrandingChanged);
     return () => window.removeEventListener('school-branding-changed', onBrandingChanged);
   }, [reloadSchool]);
+
+  useEffect(() => {
+    if (!socket || !schoolId) return;
+
+    const onTenantDataChanged = (evt: { tenantId?: number; entity?: string; boarding_enabled?: boolean }) => {
+      const evtTenantId = Number(evt?.tenantId);
+      if (!evtTenantId || evtTenantId !== schoolId) return;
+      if (evt?.entity === 'boarding-module' || typeof evt?.boarding_enabled === 'boolean') {
+        void reloadSchool();
+      }
+    };
+
+    socket.on('tenant-data-changed', onTenantDataChanged);
+    return () => {
+      socket.off('tenant-data-changed', onTenantDataChanged);
+    };
+  }, [socket, schoolId, reloadSchool]);
 
   return (
     <SchoolContext.Provider value={{ schoolId, school, schools, setSchoolId, loadSchools, reloadSchool }}>

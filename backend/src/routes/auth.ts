@@ -438,7 +438,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res) => {
     let tenant = null;
     if (user.tenant_id) {
       const tenantResult = await query(
-        'SELECT id, name, is_demo FROM tenants WHERE id = $1',
+        'SELECT id, name, is_demo, boarding_enabled FROM tenants WHERE id = $1',
         [user.tenant_id]
       );
       if (tenantResult.rows.length > 0) {

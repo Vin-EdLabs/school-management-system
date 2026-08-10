@@ -21,8 +21,11 @@ import PublicCheckinPage from "./pages/PublicCheckinPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
 import LandingPage from "./pages/LandingPage";
-import PricingPage from "./pages/PricingPage";
-import ContactPage from "./pages/ContactPage";
+import FeaturesPage from "./pages/landing/FeaturesPage";
+import PricingPage from "./pages/landing/PricingPage";
+import AboutPage from "./pages/landing/AboutPage";
+import PartnersPage from "./pages/landing/PartnersPage";
+import ContactPage from "./pages/landing/ContactPage";
 import PublicLandingSwitch from "./pages/PublicLandingSwitch";
 import RegisterSchool from "./pages/RegisterSchool";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
@@ -77,8 +80,7 @@ const HostAwareLanding = () => {
 
 function PartnersLegacyRedirect() {
   React.useEffect(() => {
-    const hash = window.location.hash === '#apply' ? '#apply' : '#partners';
-    window.location.replace(`/${hash}`);
+    window.location.replace('/partners');
   }, []);
   return null;
 }
@@ -478,11 +480,13 @@ const App = () => {
                     <Route path="/verify/:entityType/:entityId" element={<VerifyCardPage />} />
                     <Route path="/checkin" element={<PublicCheckinPage />} />
                     <Route path="/" element={<PublicLandingSwitch />} />
-                    <Route path="/partners" element={<PartnersLegacyRedirect />} />
-                    <Route path="/partners/*" element={<PartnersLegacyRedirect />} />
-                    <Route path="/register-school" element={<RegisterSchool />} />
+                    <Route path="/features" element={<FeaturesPage />} />
                     <Route path="/pricing" element={<PricingPage />} />
+                    <Route path="/about" element={<AboutPage />} />
+                    <Route path="/partners" element={<PartnersPage />} />
+                    <Route path="/partners/*" element={<PartnersLegacyRedirect />} />
                     <Route path="/contact" element={<ContactPage />} />
+                    <Route path="/register-school" element={<RegisterSchool />} />
                     <Route path={PLATFORM_ADMIN_PATH} element={<SuperAdminDashboard />} />
                     <Route path="/school/:schoolId/*" element={<IndexWithSchool />} />
                     <Route path="/sch/:slug/*" element={<LegacySubdomainRedirect />} />

@@ -8,6 +8,7 @@ import {
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { enrichBalanceShapeWithExpectedFees } from './effectiveStudentBalanceService.js';
 import { query } from '../db/connection.js';
+import { applyBoardingDisabledToBalanceShape } from './boardingDisabledBalanceService.js';
 
 export type LiveFeeLine = { termName: string; amount: number };
 
@@ -61,7 +62,8 @@ export async function getStudentLiveFeeBreakdown(
   const effectiveTermId = shape.activeTermId ?? ledgerTermId ?? activeTermId ?? null;
   if (!effectiveTermId) return shape;
 
-  return enrichBalanceShapeWithExpectedFees(client, tenantId, studentId, effectiveTermId, shape);
+  const enriched = await enrichBalanceShapeWithExpectedFees(client, tenantId, studentId, effectiveTermId, shape);
+  return applyBoardingDisabledToBalanceShape(tenantId, studentId, effectiveTermId, enriched);
 }
 
 /** Payment context from ledger — used when recording payments. */
@@ -85,6 +87,27 @@ export async function getCurrentTermPaymentContext(
   if (!ledgerTermId || !academicYearId || !termLabel) return null;
 
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, ledgerTermId);
+  const adjustedShape = await applyBoardingDisabledToBalanceShape(tenantId, studentId, ledgerTermId, {
+    currentTermFee: balance.termFee,
+    currentTermName: termLabel,
+    activeTermId: ledgerTermId,
+    arrearLines: [],
+    totalArrears: balance.arrears,
+    creditBroughtForward: balance.creditFromCarryForward,
+    totalDue: balance.totalDue,
+    paidLines: [],
+    totalPaid: balance.paymentsMade,
+    outstanding: balance.outstanding,
+    credit: balance.creditBalance,
+    netBalance: balance.netBalance,
+    status: 'Owing',
+    termRows: [],
+    paymentsMade: balance.paymentsMade,
+    totalCharged: balance.totalDue,
+    individualCharges: balance.individualCharges,
+    boardingFees: balance.boardingFees,
+    boardingFeeBreakdown: balance.boardingFeeBreakdown,
+  });
 
   return {
     ledgerTermId,
@@ -92,9 +115,9 @@ export async function getCurrentTermPaymentContext(
     termLabel,
     termFee: balance.termFee,
     arrears: balance.arrears,
-    totalDue: balance.totalDue,
+    totalDue: adjustedShape.totalDue,
     totalPaid: balance.paymentsMade,
-    outstandingBefore: balance.outstanding,
+    outstandingBefore: adjustedShape.outstanding,
     creditBroughtForward: balance.creditFromCarryForward,
   };
 }

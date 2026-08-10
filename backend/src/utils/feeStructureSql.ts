@@ -90,6 +90,7 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
     SELECT
       sl.student_id,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0)::numeric AS term_fee,
+      COALESCE(SUM(CASE WHEN sl.entry_type IN ('student_charge', 'boarding_fee', 'boarding_feeding') THEN sl.debit ELSE 0 END), 0)::numeric AS other_fees,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0)::numeric AS arrears_ledger,
       COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN sl.credit ELSE 0 END), 0)::numeric AS paid_amt
     FROM student_ledger sl
@@ -116,6 +117,7 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
         WHEN COALESCE(rlt.term_fee, 0) > 0 THEN rlt.term_fee
         ELSE COALESCE(stf.structure_term_fee, 0)
       END::numeric AS term_fee,
+      COALESCE(rlt.other_fees, 0)::numeric AS other_fees,
       CASE
         WHEN EXISTS (SELECT 1 FROM prev_closed_term)
           THEN COALESCE(sa.arrears_amt, 0)
@@ -128,6 +130,7 @@ export const SQL_EFFECTIVE_STUDENT_LEDGER_TOTALS_CTE = `
           WHEN COALESCE(rlt.term_fee, 0) > 0 THEN rlt.term_fee
           ELSE COALESCE(stf.structure_term_fee, 0)
         END
+        + COALESCE(rlt.other_fees, 0)
         + CASE
             WHEN EXISTS (SELECT 1 FROM prev_closed_term)
               THEN COALESCE(sa.arrears_amt, 0)

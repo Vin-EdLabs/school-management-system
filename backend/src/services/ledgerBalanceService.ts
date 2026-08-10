@@ -4,11 +4,31 @@ import { formatTermLedgerLabel } from '../utils/termLabel.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { listStudentCharges } from './studentChargesService.js';
 import { enrichBalanceShapeWithExpectedFees } from './effectiveStudentBalanceService.js';
+import { applyBoardingDisabledToBalanceShape } from './boardingDisabledBalanceService.js';
+import { ensureBoardingFeeSyncedForStudent } from './boardingFeeService.js';
 
 type QueryFn = typeof query;
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function parseBoardingFromRow(row: Record<string, unknown>): {
+  boardingFees: number;
+  boardingFeeBreakdown: BoardingFeeBreakdown;
+} {
+  const lodging = roundMoney(parseFloat(String(row.boarding_lodging ?? 0)) || 0);
+  const feeding = roundMoney(parseFloat(String(row.boarding_feeding ?? 0)) || 0);
+  const summed = roundMoney(lodging + feeding);
+  const legacyTotal = roundMoney(parseFloat(String(row.boarding_fees ?? 0)) || 0);
+  const boardingFees = summed > 0 ? summed : legacyTotal;
+  return {
+    boardingFees,
+    boardingFeeBreakdown: {
+      lodging: lodging > 0 ? lodging : feeding <= 0 ? boardingFees : 0,
+      feeding,
+    },
+  };
 }
 
 /** Only term-fee rows in `payments` — excludes daily fee collections. */
@@ -39,10 +59,23 @@ export const CREDIT_AVAILABLE_ENTRY_TYPES = ['carry_forward_credit', 'credit_bro
 
 const CREDIT_AVAILABLE_SQL = CREDIT_AVAILABLE_ENTRY_TYPES.map((t) => `'${t}'`).join(', ');
 
+/** Term/class fees plus boarding — used for totalDue and fee_billed summaries. */
+export const STRUCTURED_FEE_DEBIT_ENTRY_TYPES = ['term_fee', 'student_charge', 'boarding_fee', 'boarding_feeding'] as const;
+export const STRUCTURED_FEE_DEBIT_SQL = STRUCTURED_FEE_DEBIT_ENTRY_TYPES.map((t) => `'${t}'`).join(', ');
+export const BOARDING_FEE_DEBIT_SQL = `'boarding_fee', 'boarding_feeding'`;
+
+export type BoardingFeeBreakdown = {
+  lodging: number;
+  feeding: number;
+};
+
 export type LedgerBalance = {
   termFee: number;
   /** One-time individual charges (student_charge ledger entries). */
   individualCharges: number;
+  /** Boarding fee debits for boarders (lodging + feeding). */
+  boardingFees: number;
+  boardingFeeBreakdown: BoardingFeeBreakdown;
   arrears: number;
   /** carry_forward_credit only — shown in Credit column */
   creditFromCarryForward: number;
@@ -83,6 +116,8 @@ export type BatchStudentLedgerBalance = {
   className: string;
   termFee: number;
   individualCharges: number;
+  boardingFees: number;
+  boardingFeeBreakdown: BoardingFeeBreakdown;
   arrears: number;
   creditBroughtForward: number;
   amountPaidThisTerm: number;
@@ -183,6 +218,9 @@ export async function getStudentBalanceFromLedger(
       `SELECT
          COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
          COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_fee' THEN sl.debit ELSE 0 END), 0) AS boarding_lodging,
+         COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_feeding' THEN sl.debit ELSE 0 END), 0) AS boarding_feeding,
+         COALESCE(SUM(CASE WHEN sl.entry_type IN (${BOARDING_FEE_DEBIT_SQL}) THEN sl.debit ELSE 0 END), 0) AS boarding_fees,
          COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears_ledger,
          COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_available,
          COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS payments_made,
@@ -209,6 +247,7 @@ export async function getStudentBalanceFromLedger(
     const row = res.rows[0] || {};
     const termFee = roundMoney(parseFloat(row.term_fee) || 0);
     const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
+    const { boardingFees, boardingFeeBreakdown } = parseBoardingFromRow(row);
     const arrears =
       row.prev_term_id != null
         ? roundMoney(parseFloat(row.snapshot_arrears) || 0)
@@ -219,13 +258,15 @@ export async function getStudentBalanceFromLedger(
     const paymentsMade = roundMoney(Math.max(ledgerPaymentsMade, paymentsTableTotal));
     const paymentGap = roundMoney(Math.max(0, paymentsMade - ledgerPaymentsMade));
     const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
-    const totalDue = roundMoney(termFee + individualCharges + arrears);
+    const totalDue = roundMoney(termFee + individualCharges + boardingFees + arrears);
     const outstanding = roundMoney(Math.max(0, netBalance));
     const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
 
     return {
       termFee,
       individualCharges,
+      boardingFees,
+      boardingFeeBreakdown,
       arrears,
       creditFromCarryForward,
       paymentsMade,
@@ -244,6 +285,9 @@ export async function getStudentBalanceFromLedger(
     `SELECT
        COALESCE(SUM(CASE WHEN entry_type = 'term_fee' THEN debit ELSE 0 END), 0) AS term_fee,
        COALESCE(SUM(CASE WHEN entry_type = 'student_charge' THEN debit ELSE 0 END), 0) AS individual_charges,
+       COALESCE(SUM(CASE WHEN entry_type = 'boarding_fee' THEN debit ELSE 0 END), 0) AS boarding_lodging,
+       COALESCE(SUM(CASE WHEN entry_type = 'boarding_feeding' THEN debit ELSE 0 END), 0) AS boarding_feeding,
+       COALESCE(SUM(CASE WHEN entry_type IN (${BOARDING_FEE_DEBIT_SQL}) THEN debit ELSE 0 END), 0) AS boarding_fees,
        COALESCE(SUM(CASE WHEN entry_type = 'arrears' THEN debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN credit ELSE 0 END), 0) AS credit_available,
        COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL_UNALIASED}) ELSE 0 END), 0) AS payments_made,
@@ -256,17 +300,20 @@ export async function getStudentBalanceFromLedger(
   const row = res.rows[0] || {};
   const termFee = roundMoney(parseFloat(row.term_fee) || 0);
   const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
+  const { boardingFees, boardingFeeBreakdown } = parseBoardingFromRow(row);
   const arrears = roundMoney(parseFloat(row.arrears) || 0);
   const creditFromCarryForward = roundMoney(parseFloat(row.credit_available) || 0);
   const paymentsMade = roundMoney(parseFloat(row.payments_made) || 0);
   const netBalance = roundMoney(parseFloat(row.net_balance) || 0);
-  const totalDue = roundMoney(termFee + individualCharges + arrears);
+  const totalDue = roundMoney(termFee + individualCharges + boardingFees + arrears);
   const outstanding = roundMoney(Math.max(0, netBalance));
   const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
 
   return {
     termFee,
     individualCharges,
+    boardingFees,
+    boardingFeeBreakdown,
     arrears,
     creditFromCarryForward,
     paymentsMade,
@@ -380,6 +427,9 @@ export async function getBatchStudentBalancesFromLedger(
        c.class_name,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_fee' THEN sl.debit ELSE 0 END), 0) AS boarding_lodging,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_feeding' THEN sl.debit ELSE 0 END), 0) AS boarding_feeding,
+       COALESCE(SUM(CASE WHEN sl.entry_type IN (${BOARDING_FEE_DEBIT_SQL}) THEN sl.debit ELSE 0 END), 0) AS boarding_fees,
        (${BATCH_ARREARS_DISPLAY_SQL}) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN sl.credit ELSE 0 END), 0) AS credit_brought_forward,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS ledger_paid,
@@ -413,6 +463,7 @@ export async function getBatchStudentBalancesFromLedger(
   return res.rows.map((row) => {
     const termFee = roundMoney(parseFloat(row.term_fee) || 0);
     const individualCharges = roundMoney(parseFloat(row.individual_charges) || 0);
+    const { boardingFees, boardingFeeBreakdown } = parseBoardingFromRow(row);
     const arrears = roundMoney(parseFloat(row.arrears) || 0);
     const creditBroughtForward = roundMoney(parseFloat(row.credit_brought_forward) || 0);
     const ledgerPaid = roundMoney(parseFloat(row.ledger_paid) || 0);
@@ -420,7 +471,7 @@ export async function getBatchStudentBalancesFromLedger(
     const amountPaidThisTerm = roundMoney(Math.max(ledgerPaid, paymentsTableTotal));
     const paymentGap = roundMoney(Math.max(0, amountPaidThisTerm - ledgerPaid));
     const netBalance = roundMoney((parseFloat(row.net_balance) || 0) - paymentGap);
-    const totalDue = roundMoney(termFee + individualCharges + arrears);
+    const totalDue = roundMoney(termFee + individualCharges + boardingFees + arrears);
     const outstanding = roundMoney(Math.max(0, netBalance));
     const creditBalance = roundMoney(netBalance < -0.001 ? Math.abs(netBalance) : 0);
     return {
@@ -432,6 +483,8 @@ export async function getBatchStudentBalancesFromLedger(
       className: String(row.class_name || ''),
       termFee,
       individualCharges,
+      boardingFees,
+      boardingFeeBreakdown,
       arrears,
       creditBroughtForward,
       amountPaidThisTerm,
@@ -455,6 +508,7 @@ export type OutstandingFeeLedgerRow = {
   enrollmentStatus: string;
   termFee: number;
   individualCharges: number;
+  boardingFees: number;
   arrears: number;
   totalPaid: number;
   outstanding: number;
@@ -487,6 +541,9 @@ export async function getOutstandingFeesFromLedger(
        c.class_name,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'term_fee' THEN sl.debit ELSE 0 END), 0) AS term_fee,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'student_charge' THEN sl.debit ELSE 0 END), 0) AS individual_charges,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_fee' THEN sl.debit ELSE 0 END), 0) AS boarding_lodging,
+       COALESCE(SUM(CASE WHEN sl.entry_type = 'boarding_feeding' THEN sl.debit ELSE 0 END), 0) AS boarding_feeding,
+       COALESCE(SUM(CASE WHEN sl.entry_type IN (${BOARDING_FEE_DEBIT_SQL}) THEN sl.debit ELSE 0 END), 0) AS boarding_fees,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'arrears' THEN sl.debit ELSE 0 END), 0) AS arrears,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS total_paid,
        COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance
@@ -514,6 +571,7 @@ export async function getOutstandingFeesFromLedger(
     enrollmentStatus: String(row.enrollment_status || 'active'),
     termFee: roundMoney(parseFloat(String(row.term_fee)) || 0),
     individualCharges: roundMoney(parseFloat(String(row.individual_charges)) || 0),
+    boardingFees: parseBoardingFromRow(row).boardingFees,
     arrears: roundMoney(parseFloat(String(row.arrears)) || 0),
     totalPaid: roundMoney(parseFloat(String(row.total_paid)) || 0),
     outstanding: roundMoney(Math.max(0, parseFloat(String(row.net_balance)) || 0)),
@@ -532,7 +590,7 @@ export async function getTermByTermLedgerSummary(
        t.id AS term_id,
        t.name AS term_part,
        ay.name AS year_part,
-       COALESCE(SUM(CASE WHEN sl.entry_type IN ('term_fee', 'student_charge') THEN sl.debit ELSE 0 END), 0) AS fee_billed,
+       COALESCE(SUM(CASE WHEN sl.entry_type IN (${STRUCTURED_FEE_DEBIT_SQL}) THEN sl.debit ELSE 0 END), 0) AS fee_billed,
        COALESCE(SUM(CASE WHEN sl.entry_type = 'payment' THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS amount_paid,
        COALESCE(SUM(CASE WHEN sl.entry_type IN (${CREDIT_AVAILABLE_SQL}) THEN (${LEDGER_TERM_CREDIT_SQL}) ELSE 0 END), 0) AS credit,
        COALESCE(SUM(sl.debit), 0) - COALESCE(SUM(${LEDGER_TERM_CREDIT_SQL}), 0) AS net_balance
@@ -597,6 +655,8 @@ export type StudentBalanceApiShape = {
   paymentsMade: number;
   totalCharged: number;
   individualCharges?: number;
+  boardingFees?: number;
+  boardingFeeBreakdown?: BoardingFeeBreakdown;
   individualChargeLines?: Array<{
     id: number;
     description: string;
@@ -617,6 +677,7 @@ function deriveBalanceStatus(balance: LedgerBalance): StudentBalanceApiShape['st
   if (
     balance.termFee <= 0 &&
     balance.individualCharges <= 0 &&
+    balance.boardingFees <= 0 &&
     balance.paymentsMade <= 0 &&
     balance.arrears <= 0 &&
     balance.creditFromCarryForward <= 0
@@ -661,9 +722,13 @@ export async function ledgerBalanceToApiShape(
       paymentsMade: 0,
       totalCharged: 0,
       individualCharges: 0,
+      boardingFees: 0,
+      boardingFeeBreakdown: { lodging: 0, feeding: 0 },
       individualChargeLines: [],
     };
   }
+
+  await ensureBoardingFeeSyncedForStudent(tenantId, studentId, effectiveTermId);
 
   const balance = await getStudentBalanceFromLedger(client, tenantId, studentId, effectiveTermId);
   const arrearsLines = await getArrearsBreakdownFromLedger(client, tenantId, studentId, effectiveTermId);
@@ -707,6 +772,8 @@ export async function ledgerBalanceToApiShape(
     paymentsMade: balance.paymentsMade,
     totalCharged: balance.totalDue,
     individualCharges: balance.individualCharges,
+    boardingFees: balance.boardingFees,
+    boardingFeeBreakdown: balance.boardingFeeBreakdown,
     individualChargeLines,
     termRows: [
       {
@@ -721,11 +788,13 @@ export async function ledgerBalanceToApiShape(
     ],
   };
 
-  return enrichBalanceShapeWithExpectedFees(
+  const enriched = await enrichBalanceShapeWithExpectedFees(
     client,
     tenantId,
     studentId,
     effectiveTermId,
     baseShape
   );
+
+  return applyBoardingDisabledToBalanceShape(tenantId, studentId, effectiveTermId, enriched);
 }

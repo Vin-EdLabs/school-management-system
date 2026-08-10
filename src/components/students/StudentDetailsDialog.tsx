@@ -17,6 +17,7 @@ import {
   CreditCard,
   GraduationCap,
   Bus,
+  BedDouble,
   Compass,
   Loader2,
   FileDown,
@@ -31,6 +32,8 @@ import AdmissionLetterDocument, { type AdmissionLetterData } from './AdmissionLe
 import { downloadAdmissionLetterPdfFromData } from './admissionLetterPdf';
 import { toast } from '@/hooks/use-toast';
 import { useSchool } from '@/contexts/SchoolContext';
+import { StudentBoardingTab } from '@/components/boarding/StudentBoardingTab';
+import { boardingService } from '@/services/boardingService';
 
 interface Student {
   id: string;
@@ -134,6 +137,9 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
 
   const [transportInfo, setTransportInfo] = React.useState<StudentTransportInfo | null>(null);
   const [loadingTransport, setLoadingTransport] = React.useState(false);
+  const [showBoardingTab, setShowBoardingTab] = React.useState(false);
+
+  const boardingModuleEnabled = Boolean(school?.boarding_enabled);
 
   const [admissionLetters, setAdmissionLetters] = React.useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
   const [loadingLetters, setLoadingLetters] = React.useState(false);
@@ -155,6 +161,15 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
           setLoadingTransport(false);
         });
 
+      if (boardingModuleEnabled) {
+        boardingService
+          .getStudentSummary(student.id)
+          .then((data) => setShowBoardingTab(Boolean(data?.enrollment)))
+          .catch(() => setShowBoardingTab(false));
+      } else {
+        setShowBoardingTab(false);
+      }
+
       setLoadingLetters(true);
       apiService.get<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>(`/students/${student.id}/admission-letters`)
         .then(data => {
@@ -168,10 +183,11 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
         });
     } else {
       setTransportInfo(null);
+      setShowBoardingTab(false);
       setAdmissionLetters([]);
       setSelectedLetter(null);
     }
-  }, [open, student?.id]);
+  }, [open, student?.id, boardingModuleEnabled]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -267,11 +283,14 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
           </Card>
 
           <Tabs defaultValue="general" className="w-full mt-4 flex flex-col">
-            <TabsList className="grid grid-cols-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-10 w-full max-w-lg shrink-0">
+            <TabsList className={`grid ${showBoardingTab && boardingModuleEnabled ? 'grid-cols-5' : 'grid-cols-4'} bg-slate-100 dark:bg-slate-800 p-1 rounded-xl h-10 w-full max-w-2xl shrink-0`}>
               <TabsTrigger value="general" className="rounded-lg text-xs font-semibold">General Info</TabsTrigger>
               <TabsTrigger value="billing" className="rounded-lg text-xs font-semibold">Billing & Payments</TabsTrigger>
               <TabsTrigger value="admission-letter" className="rounded-lg text-xs font-semibold">Admission Letter</TabsTrigger>
               <TabsTrigger value="transport" className="rounded-lg text-xs font-semibold">Transport</TabsTrigger>
+      {showBoardingTab && boardingModuleEnabled ? (
+                <TabsTrigger value="boarding" className="rounded-lg text-xs font-semibold">Boarding</TabsTrigger>
+              ) : null}
             </TabsList>
 
             <TabsContent value="general" className="space-y-6 pt-4 focus-visible:outline-none">
@@ -793,6 +812,12 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
                 </div>
               )}
             </TabsContent>
+
+            {showBoardingTab && boardingModuleEnabled ? (
+              <TabsContent value="boarding" className="space-y-6 pt-4 focus-visible:outline-none">
+                <StudentBoardingTab studentId={student.id} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         </DialogBody>
 

@@ -152,6 +152,7 @@ const StudentBalances = () => {
         feeStatus: { status: 'Not Set', balance: 0 },
         paymentCount: 0,
         individualCharges: 0,
+        boardingFees: 0,
         individualChargeLines: [],
       };
     }
@@ -166,6 +167,7 @@ const StudentBalances = () => {
     );
     const creditBroughtForward = balance?.creditBroughtForward ?? 0;
     const individualCharges = balance?.individualCharges ?? 0;
+    const boardingFees = balance?.boardingFees ?? 0;
     const netBalance = roundMoney(display.totalDue - display.totalPaid - creditBroughtForward);
 
     let feeStatus: { status: string; balance: number };
@@ -205,6 +207,8 @@ const StudentBalances = () => {
       feeStructureMissing: !display.feeStructureConfigured && display.currentTermFee <= 0,
       paymentCount: countTermPayments(student.id),
       individualCharges,
+      boardingFees,
+      boardingFeeBreakdown: balance?.boardingFeeBreakdown,
       individualChargeLines: balance?.individualChargeLines ?? [],
       discountAmount: discountDetails.discountAmount,
       discountLabel: discountDetails.discountLabel,
@@ -489,6 +493,8 @@ const StudentBalances = () => {
                         feeStructureId={student.feeStructureId}
                         individualCharges={student.individualChargeLines}
                         individualChargeAmount={student.individualCharges}
+                        boardingFeeAmount={student.boardingFees}
+                        boardingFeeBreakdown={student.boardingFeeBreakdown}
                         studentId={student.id}
                         termId={student.activeTermId}
                         discountAmount={student.discountAmount}

@@ -462,7 +462,9 @@ router.get('/financial-summary', async (req: AuthRequest, res) => {
       ? await query(
           `WITH ${LEDGER_STUDENT_TOTALS_CTE}
            SELECT
-             COALESCE(SUM(COALESCE(slt.term_fee, 0) + COALESCE(slt.arrears_amt, 0)), 0)::numeric AS total_expected,
+             COALESCE(SUM(
+               COALESCE(slt.term_fee, 0) + COALESCE(slt.other_fees, 0) + COALESCE(slt.arrears_amt, 0)
+             ), 0)::numeric AS total_expected,
              COALESCE(SUM(COALESCE(slt.paid_amt, 0)), 0)::numeric AS total_collected,
              COALESCE(SUM(COALESCE(slt.outstanding_amt, 0)), 0)::numeric AS total_outstanding
            FROM students s

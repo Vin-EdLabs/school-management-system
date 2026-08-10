@@ -36,7 +36,7 @@ export function idempotencyGuard(req: Request, res: Response, next: NextFunction
     });
   }
 
-  if (existing && existing.expiresAt > Date.now()) {
+  if (existing && existing.expiresAt > Date.now() && existing.statusCode < 400) {
     if (existing.contentType) res.type(existing.contentType);
     return res.status(existing.statusCode).send(existing.body as any);
   }

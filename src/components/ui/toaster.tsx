@@ -42,7 +42,7 @@ export function Toaster() {
       <ToastViewport
         className={cn(
           isParentPortal
-            ? "fixed top-[5.25rem] left-3 right-3 z-[120] flex max-h-[calc(100dvh-6rem)] w-auto flex-col gap-2 p-0 sm:left-auto sm:right-5 sm:top-[5.5rem] sm:max-w-[min(100vw-2.5rem,24rem)]"
+            ? "snp-parent-toast-viewport fixed left-3 right-3 flex max-h-[calc(100dvh-var(--snp-parent-chrome-h)-var(--snp-parent-banner-h)-2rem)] w-auto flex-col gap-2 p-0 sm:flex-col"
             : undefined
         )}
       />

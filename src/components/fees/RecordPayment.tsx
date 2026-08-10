@@ -14,7 +14,7 @@ import { useTermReadOnly } from '../../contexts/TermStatusContext';
 import { useActiveTerm } from '../../hooks/useActiveTerm';
 import { useRecordPayment } from '../../hooks/useRecordPayment';
 import { shouldTrackStudentFees } from '../students/studentRegistryUtils';
-import { toast } from '@/hooks/use-toast';
+import BoardingFeeBreakdownDisplay from './BoardingFeeBreakdownDisplay';
 import PaymentAccountSelect from '../common/PaymentAccountSelect';
 import {
   fetchStudentBalance,
@@ -110,6 +110,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       paymentTerm
     );
     const individualCharges = source?.individualCharges ?? 0;
+    const boardingFees = source?.boardingFees ?? 0;
     const grossForDiscount =
       (termBillSummary?.total ?? 0) > 0
         ? termBillSummary!.total
@@ -124,10 +125,10 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         ? display.currentTermFee
         : grossForDiscount;
     const totalDue = selectedStudent?.isBeneficiary
-      ? Math.round((termFee + display.arrears + individualCharges) * 100) / 100
+      ? Math.round((termFee + display.arrears + individualCharges + boardingFees) * 100) / 100
       : display.totalDue > 0
         ? display.totalDue
-        : Math.round((termFee + display.arrears + individualCharges) * 100) / 100;
+        : Math.round((termFee + display.arrears + individualCharges + boardingFees) * 100) / 100;
     const outstanding = display.outstanding;
     const termBillTotal = termBillSummary?.total ?? 0;
     if (!source && termBillTotal <= 0 && !selectedStudent?.isBeneficiary) return null;
@@ -142,6 +143,7 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
         credit: 0,
         creditBroughtForward: 0,
         individualCharges: 0,
+        boardingFees: 0,
         individualChargeLines: [],
       }),
       currentTermFee: termFee,
@@ -221,9 +223,10 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       ? netTermFee
       : enrichedStudentBalance.currentTermFee;
     const individualCharges = enrichedStudentBalance.individualCharges ?? 0;
+    const boardingFees = enrichedStudentBalance.boardingFees ?? 0;
     const creditBroughtForward = enrichedStudentBalance.creditBroughtForward ?? 0;
     const grossDue = Math.round(
-      (currentTermFee + enrichedStudentBalance.totalArrears + individualCharges) * 100
+      (currentTermFee + enrichedStudentBalance.totalArrears + individualCharges + boardingFees) * 100
     ) / 100;
     const netAmountDue = Math.round((grossDue - creditBroughtForward) * 100) / 100;
     const arrearsBreakdown = studentBalance?.arrearsBreakdown ?? [];
@@ -243,6 +246,8 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
       outstanding: enrichedStudentBalance.outstanding,
       creditBalance: enrichedStudentBalance.credit,
       individualCharges,
+      boardingFees,
+      boardingFeeBreakdown: enrichedStudentBalance.boardingFeeBreakdown,
       individualChargeLines: enrichedStudentBalance.individualChargeLines ?? [],
       baseFee: grossFee,
       discountAmount,
@@ -535,6 +540,21 @@ const RecordPayment: React.FC<RecordPaymentProps> = ({
                           <span className="font-mono tabular-nums text-orange-600">
                             −GHS {(selectedStudentFeeDetails.discountAmount ?? 0).toFixed(2)}
                           </span>
+                        </div>
+                      )}
+
+                      {(selectedStudentFeeDetails.boardingFees ?? 0) > 0 && (
+                        <div className="py-0.5 border-t border-dashed border-emerald-100">
+                          <BoardingFeeBreakdownDisplay
+                            breakdown={
+                              selectedStudentFeeDetails.boardingFeeBreakdown ?? {
+                                lodging: selectedStudentFeeDetails.boardingFees ?? 0,
+                                feeding: 0,
+                              }
+                            }
+                            total={selectedStudentFeeDetails.boardingFees ?? 0}
+                            compact
+                          />
                         </div>
                       )}
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   BookOpen,
   Check,
@@ -15,7 +15,7 @@ import {
   UserCheck,
   type LucideIcon,
 } from 'lucide-react';
-import { CONTACT_DEMO_PATH, CONTACT_PATH, REGISTER_SCHOOL_PATH, handleContactNavClick } from '@/utils/landingScroll';
+import { CONTACT_DEMO_PATH, CONTACT_PATH, REGISTER_SCHOOL_PATH } from '@/utils/landingScroll';
 import {
   BillingCycle,
   FEATURE_CATEGORIES,
@@ -112,7 +112,6 @@ function FeatureCategoryCard({ cat, index, Icon }: { cat: FeatureCategory; index
 }
 
 export default function PricingSection() {
-  const location = useLocation();
   const [billing, setBilling] = useState<BillingCycle>('term');
   const [studentCount, setStudentCount] = useState(200);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
@@ -341,22 +340,17 @@ export default function PricingSection() {
             <Link to={REGISTER_SCHOOL_PATH} className="sn-pricing-cta-primary">
               Start Free — 2 Months Free
             </Link>
-            <a
-              href={CONTACT_DEMO_PATH}
-              className="sn-pricing-cta-secondary"
-              onClick={(e) => handleContactNavClick(e, location.pathname, { demo: true })}
-            >
+            <Link to={CONTACT_DEMO_PATH} className="sn-pricing-cta-secondary">
               Book a Free Demo
-            </a>
+            </Link>
           </div>
           <p className="mt-5 text-sm text-emerald-100/80">No setup fees • No hidden charges • Cancel anytime</p>
-          <a
-            href={CONTACT_PATH}
+          <Link
+            to={CONTACT_PATH}
             className="mt-4 inline-block text-sm font-semibold text-white underline-offset-4 hover:underline"
-            onClick={(e) => handleContactNavClick(e, location.pathname)}
           >
             Contact us instead →
-          </a>
+          </Link>
         </div>
       </div>
     </section>

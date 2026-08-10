@@ -17,6 +17,8 @@ export type StudentBalance = {
   totalArrears: number;
   creditBroughtForward?: number;
   individualCharges?: number;
+  boardingFees?: number;
+  boardingFeeBreakdown?: { lodging: number; feeding: number };
   individualChargeLines?: Array<{
     id: number;
     description: string;
@@ -181,6 +183,7 @@ export type OutstandingFeeStudent = {
   enrollmentStatus: string;
   termFee: number;
   individualCharges: number;
+  boardingFees: number;
   arrears: number;
   totalPaid: number;
   outstanding: number;
@@ -214,8 +217,20 @@ export function formatBalanceLines(b: StudentBalance) {
   }> = [];
 
   const termLabel = b.currentTermName ?? 'Current term';
-  const totalTermBillAmount = Number(b.currentTermFee || 0) + Number(b.individualCharges || 0);
+  const totalTermBillAmount =
+    Number(b.currentTermFee || 0) + Number(b.individualCharges || 0) + Number(b.boardingFees || 0);
   lines.push({ label: `Total Term Bill (${termLabel})`, amount: totalTermBillAmount, kind: 'charge' });
+
+  if ((b.boardingFees ?? 0) > 0 && b.boardingFeeBreakdown) {
+    if (b.boardingFeeBreakdown.lodging > 0) {
+      lines.push({ label: 'Boarding — Lodging', amount: b.boardingFeeBreakdown.lodging, kind: 'charge' });
+    }
+    if (b.boardingFeeBreakdown.feeding > 0) {
+      lines.push({ label: 'Boarding — Feeding', amount: b.boardingFeeBreakdown.feeding, kind: 'charge' });
+    }
+  } else if ((b.boardingFees ?? 0) > 0) {
+    lines.push({ label: 'Boarding Fee', amount: b.boardingFees ?? 0, kind: 'charge' });
+  }
 
   for (const row of b.arrearLines) {
     lines.push({ label: `Arrears — ${row.termName}`, amount: row.amount, kind: 'charge' });

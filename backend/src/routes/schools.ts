@@ -101,7 +101,8 @@ router.get('/', requireRole('super-admin'), async (req, res) => {
   try {
     const result = await query(
       `SELECT t.id, t.name, t.slug, t.subdomain, t.logo_url, t.primary_color, t.secondary_color,
-              t.subscription_status, t.is_active, t.archived_at, t.created_at, t.updated_at,
+              t.subscription_status, t.is_active, t.archived_at, t.boarding_enabled,
+              t.created_at, t.updated_at,
               ss.school_name AS settings_school_name
        FROM tenants t
        LEFT JOIN school_settings ss ON ss.tenant_id = t.id
@@ -545,7 +546,7 @@ router.get('/:id', async (req, res) => {
     
     const result = await query(
       `SELECT id, name, slug, subdomain, logo_url, primary_color, secondary_color,
-              subscription_status, is_active, is_demo, created_at, updated_at
+              subscription_status, is_active, is_demo, boarding_enabled, created_at, updated_at
        FROM tenants WHERE id = $1`,
       [id]
     );

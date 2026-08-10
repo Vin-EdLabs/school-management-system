@@ -1,0 +1,176 @@
+/* Parent portal — partnership glass chrome (extends partners.css) */
+
+html.snp-parent-portal-active {
+  --snp-parent-header-h: 3.5rem;
+  --snp-parent-nav-h: 0px;
+  --snp-parent-chrome-h: 3.5rem;
+  --snp-parent-banner-h: 0px;
+  --snp-parent-bottom-nav-h: 5.75rem;
+}
+
+html.snp-parent-portal-active.snp-parent-impersonation-active {
+  --snp-parent-banner-h: 2.75rem;
+}
+
+@media (min-width: 640px) {
+  html.snp-parent-portal-active {
+    --snp-parent-header-h: 4.25rem;
+    --snp-parent-nav-h: 3.25rem;
+    --snp-parent-chrome-h: 7.5rem;
+    --snp-parent-bottom-nav-h: 0px;
+  }
+}
+
+.sn-partner-portal.snp-portal-shell {
+  --snp-parent-header-h: 3.5rem;
+  --snp-parent-nav-h: 0px;
+  --snp-parent-chrome-h: 3.5rem;
+  --snp-parent-banner-h: 0px;
+  --snp-parent-bottom-nav-h: 5.75rem;
+}
+
+.sn-partner-portal.snp-portal-shell.snp-parent-impersonation-active {
+  --snp-parent-banner-h: 2.75rem;
+}
+
+@media (min-width: 640px) {
+  .sn-partner-portal.snp-portal-shell {
+    --snp-parent-header-h: 4.25rem;
+    --snp-parent-nav-h: 3.25rem;
+    --snp-parent-chrome-h: 7.5rem;
+    --snp-parent-bottom-nav-h: 0px;
+  }
+}
+
+.snp-parent-top-chrome {
+  position: fixed;
+  top: var(--snp-parent-banner-h);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid rgba(13, 158, 117, 0.1);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.dark .snp-parent-top-chrome {
+  background: rgba(15, 23, 42, 0.92);
+  border-bottom-color: rgba(13, 158, 117, 0.15);
+  box-shadow: none;
+}
+
+.snp-parent-app-header {
+  border-bottom: none;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.snp-parent-main-pad {
+  padding-top: calc(
+    var(--snp-parent-banner-h) + var(--snp-parent-chrome-h) + env(safe-area-inset-top, 0px) + 0.75rem
+  );
+  padding-bottom: calc(var(--snp-parent-bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 1rem);
+}
+
+@media (min-width: 640px) {
+  .snp-parent-main-pad {
+    padding-bottom: 2rem;
+  }
+}
+
+.snp-parent-bottom-nav {
+  grid-template-columns: repeat(5, 1fr) !important;
+  align-items: stretch !important;
+  min-height: 64px !important;
+}
+
+.snp-parent-bottom-nav .snp-nav-tab {
+  padding: 8px 2px 10px;
+}
+
+.snp-parent-desktop-nav {
+  display: none;
+  position: static;
+  z-index: auto;
+  background: transparent;
+  border-bottom: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.dark .snp-parent-desktop-nav {
+  background: transparent;
+  border-bottom: none;
+}
+
+@media (min-width: 640px) {
+  .snp-parent-desktop-nav {
+    display: block;
+  }
+}
+
+.snp-parent-main {
+  position: relative;
+  z-index: 1;
+}
+
+.snp-parent-glass-panel {
+  border-radius: 1.25rem;
+}
+
+/* Modals / sheets above fixed header (100) and bottom nav (60) */
+.snp-parent-modal-layer {
+  z-index: 150 !important;
+}
+
+.snp-parent-modal-sheet {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 639px) {
+  .snp-parent-desk-compose,
+  .snp-parent-desk-thread {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .snp-parent-desk-fab {
+    bottom: calc(var(--snp-parent-bottom-nav-h) + 0.75rem) !important;
+  }
+}
+
+/* Toasts sit below fixed chrome, above content */
+.snp-parent-toast-viewport {
+  z-index: 130 !important;
+  top: calc(
+    var(--snp-parent-banner-h) + var(--snp-parent-chrome-h) + env(safe-area-inset-top, 0px) + 0.5rem
+  ) !important;
+  bottom: auto !important;
+}
+
+@media (min-width: 640px) {
+  .snp-parent-toast-viewport {
+    left: auto !important;
+    right: max(1.25rem, calc(50vw - 768px + 1.25rem)) !important;
+    max-width: min(24rem, calc(100vw - 2.5rem)) !important;
+  }
+}
+
+.snp-parent-impersonation-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 110;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+html.snp-parent-portal-active .snp-notif-dropdown {
+  top: calc(
+    var(--snp-parent-banner-h) + var(--snp-parent-chrome-h) + env(safe-area-inset-top, 0px) + 0.35rem
+  );
+}

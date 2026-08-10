@@ -19,7 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
 const BANNER_CLASS =
-  'relative sticky top-0 z-[300] flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-600/30 bg-amber-500 px-3 py-2 text-amber-950 sm:px-4 print:hidden';
+  'snp-parent-impersonation-banner relative flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-600/30 bg-amber-500 px-3 py-2 text-amber-950 sm:px-4 print:hidden';
 
 /** Parent portal impersonation banner with Exit */
 const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId }) => {

@@ -58,6 +58,7 @@ import {
   type SchoolPortalErrorState,
 } from "./utils/schoolPortalError";
 import { MapPinOff } from "lucide-react";
+import { resolveApiBaseUrl } from "./services/api";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -117,11 +118,7 @@ const SchoolWebsiteCanonicalRedirect = () => {
     const parsed = parsePublicWebsiteHost(window.location.hostname);
     if (!parsed) return;
 
-    const apiBase =
-      import.meta.env.VITE_API_BASE_URL ||
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:3001/api'
-        : `${window.location.protocol}//${window.location.host}/api`);
+    const apiBase = resolveApiBaseUrl();
 
     void fetch(
       `${apiBase}/public-website/site?host=${encodeURIComponent(window.location.hostname)}`,
@@ -193,7 +190,7 @@ const LegacyPortalRedirect = () => {
       return;
     }
 
-    const base = import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+    const base = resolveApiBaseUrl();
     fetch(`${base}/tenant/by-id/${tenantId}`)
       .then(async (r) => {
         const d = await r.json();
@@ -238,7 +235,7 @@ const IndexWithSchool = () => {
   const [schoolPortalError, setSchoolPortalError] = React.useState<SchoolPortalErrorState | null>(null);
   const [resolveAttempt, setResolveAttempt] = React.useState(0);
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || `${window.location.origin}/api`;
+  const apiBase = resolveApiBaseUrl();
 
   const lookupTenant = React.useCallback(async (url: string) => {
     const r = await fetch(url);

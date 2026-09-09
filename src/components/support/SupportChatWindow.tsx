@@ -20,6 +20,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveApiOrigin } from '@/utils/mediaUrl';
 import MessageDeleteConfirmDialog from '@/components/common/MessageDeleteConfirmDialog';
 
 interface Message {
@@ -44,8 +45,7 @@ interface SupportChatWindowProps {
 }
 
 function apiOrigin(): string {
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  return base.replace(/\/api\/?$/, '');
+  return resolveApiOrigin();
 }
 
 export function resolveSupportImageUrl(url: string | null | undefined): string | null {

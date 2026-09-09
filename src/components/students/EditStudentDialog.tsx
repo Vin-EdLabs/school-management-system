@@ -14,6 +14,7 @@ import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
 import PasswordConfirmDialog from '@/components/common/PasswordConfirmDialog';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
+import { resolveApiOrigin } from '@/utils/mediaUrl';
 import {
   clearFieldError,
   fieldInvalidClass,
@@ -65,7 +66,7 @@ interface EditStudentDialogProps {
   onSuccess: () => void;
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+const API_BASE = resolveApiOrigin();
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;

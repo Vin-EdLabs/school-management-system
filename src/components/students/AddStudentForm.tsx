@@ -21,12 +21,13 @@ import {
   scrollToFormField,
   validateFormFields,
 } from '@/utils/formValidation';
+import { resolveApiOrigin } from '@/utils/mediaUrl';
 
 interface AddStudentFormProps {
   onSuccess?: (mode?: 'active' | 'pending') => void;
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+const API_BASE = resolveApiOrigin();
 
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;

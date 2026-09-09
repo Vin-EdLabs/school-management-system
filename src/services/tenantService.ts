@@ -2,8 +2,11 @@
  * Tenant service - fetches tenant/school info for branding
  * Uses public API - no auth required
  */
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-const API_ORIGIN = API_BASE.replace(/\/api.*$/, '');
+import { resolveApiBaseUrl } from './api';
+import { resolveApiOrigin } from '../utils/mediaUrl';
+
+const API_BASE = resolveApiBaseUrl();
+const API_ORIGIN = resolveApiOrigin();
 
 export interface TenantBranding {
   id: number;

@@ -57,7 +57,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useStaffPushSync } from '../hooks/useStaffPushSync';
-import { apiService } from '../services/api';
+import { apiService, resolveApiBaseUrl } from '../services/api';
 import { toast } from '@/hooks/use-toast';
 import {
   Building2,
@@ -807,7 +807,7 @@ const SuperAdminDashboard = () => {
         const formData = new FormData();
         formData.append('logo', logoFile);
         const token = localStorage.getItem('authToken');
-        const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+        const base = resolveApiBaseUrl();
         await fetch(`${base}/schools/${res.id}/logo`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
@@ -856,7 +856,7 @@ const SuperAdminDashboard = () => {
         const formData = new FormData();
         formData.append('logo', editLogoFile);
         const token = localStorage.getItem('authToken');
-        const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+        const base = resolveApiBaseUrl();
         await fetch(`${base}/schools/${editForm.id}/logo`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },

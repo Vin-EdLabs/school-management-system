@@ -13,6 +13,7 @@ import {
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import { resolveApiOrigin } from '../../utils/mediaUrl';
 import { isActiveEnrolledStudent } from '../students/studentRegistryUtils';
 import { useSchool } from '../../contexts/SchoolContext';
 import { formatDisplayDate } from '../../utils/dateFormat';
@@ -52,8 +53,7 @@ type AttendanceStatus = Record<string, boolean | undefined>;
 const resolvePhotoUrl = (photoUrl?: string | null) => {
   if (!photoUrl) return '';
   if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  const origin = apiBase.replace(/\/api\/?$/, '');
+  const origin = resolveApiOrigin();
   const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
   return `${origin}${normalized}`;
 };

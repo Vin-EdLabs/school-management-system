@@ -23,6 +23,7 @@ import {
   X, Clock, UserCheck, History, Send, EyeOff, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import { apiService } from '../../services/api';
+import { resolveApiOrigin } from '../../utils/mediaUrl';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -223,8 +224,7 @@ function groupAssignmentsByComponent(
 const resolvePhotoUrl = (photoUrl?: string | null) => {
   if (!photoUrl) return '';
   if (/^https?:\/\//i.test(photoUrl) || photoUrl.startsWith('data:')) return photoUrl;
-  const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  const origin = apiBase.replace(/\/api\/?$/, '');
+  const origin = resolveApiOrigin();
   const normalized = photoUrl.startsWith('/') ? photoUrl : `/${photoUrl}`;
   return `${origin}${normalized}`;
 };

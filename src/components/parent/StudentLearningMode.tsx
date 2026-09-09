@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Flame, ChevronRight, Trophy, Sparkles, CheckCircle2, XCircle, Star } from 'lucide-react';
+import { resolveApiBaseUrl } from '@/services/api';
 
-const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API = resolveApiBaseUrl();
 
 type StudentInfo = {
   id?: number;

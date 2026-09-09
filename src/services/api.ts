@@ -55,38 +55,15 @@ function normalizeBaseUrl(value: string): string {
 }
 
 export function resolveApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (
-      host.endsWith('.edu.localhost') ||
-      host.includes('.edu.lvh.me') ||
-      host.endsWith('.edu.scholarnerve.com') ||
-      host.endsWith('.schoolsite.localhost') ||
-      host.includes('.schoolsite.lvh.me') ||
-      host.endsWith('.schoolsite.scholarnerve.com') ||
-      host === 'schoolsite.scholarnerve.com'
-    ) {
-      return `${window.location.origin}/api`;
-    }
-    if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com')) {
-      return `${window.location.origin}/api`;
-    }
-    if (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.endsWith('.localhost') ||
-      host.endsWith('.lvh.me') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-      /^192\.168\./.test(host) ||
-      /^10\./.test(host)
-    ) {
-      return '/api';
-    }
-  }
-
   const envBase = typeof import.meta !== 'undefined' ? String(import.meta.env?.VITE_API_BASE_URL || '').trim() : '';
   if (envBase) {
     return normalizeBaseUrl(envBase);
+  }
+
+  // Same-origin /api — the reverse proxy (nginx in prod, Vite in dev) forwards it
+  // to the backend, so this is correct for every host the SPA is served from.
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/api`;
   }
 
   return 'http://localhost:3001/api';

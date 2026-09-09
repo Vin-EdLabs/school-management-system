@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import LandingPageLayout from './LandingPageLayout';
 import { LandingSeoHelmet } from './LandingSeoHelmet';
 import FeaturesSection, { type PublicStats } from '@/components/landing/FeaturesSection';
+import { resolveApiBaseUrl } from '@/services/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE = resolveApiBaseUrl();
 
 const defaultStats: PublicStats = {
   schools: 0,

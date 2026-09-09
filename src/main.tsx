@@ -29,16 +29,9 @@ import {
   SPLASH_LAST_TENANT_SLUG_KEY,
 } from './utils/splashCache'
 import { applyAppNavigationFromUrl } from './utils/appNavigation'
+import { resolveApiBaseUrl } from './services/api'
 
-const API_BASE = (() => {
-  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:3001/api';
-    return `${window.location.protocol}//${window.location.host}/api`;
-  }
-  return '/api';
-})();
+const API_BASE = resolveApiBaseUrl();
 
 const BOOTSTRAP_TIMEOUT_MS = 4000;
 

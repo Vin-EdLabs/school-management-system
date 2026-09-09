@@ -5,6 +5,7 @@
  */
 
 import { getPartnersPortalUrl } from '@/utils/partnersHost';
+import { resolveApiBaseUrl } from '@/services/api';
 
 const PARTNER_TOKEN_KEY = 'snPartnerToken';
 /** Canonical realm — same saved login on partners.localhost and partners.scholarnerve.com */
@@ -18,20 +19,7 @@ export type PartnerSavedLogin = {
 };
 
 function resolveBase(): string {
-  const host = window.location.hostname;
-  if (
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host.endsWith('.localhost') ||
-    host.endsWith('.lvh.me')
-  ) {
-    return '/api';
-  }
-  if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com') || host.endsWith('.onrender.com')) {
-    return `${window.location.origin}/api`;
-  }
-  const envBase = String(import.meta.env?.VITE_API_BASE_URL || '').trim();
-  return envBase ? envBase.replace(/\/$/, '') : 'http://localhost:3001/api';
+  return resolveApiBaseUrl();
 }
 
 export function getPartnerToken(): string | null {

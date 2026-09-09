@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolveApiBaseUrl } from '../services/api';
 
 /** Effective connection types from the Network Information API. */
 export type NetworkEffectiveType = 'slow-2g' | '2g' | '3g' | '4g' | 'unknown';
@@ -62,20 +63,9 @@ function readConnectionSnapshot(conn: NetworkInformation | undefined): Pick<
 }
 
 function resolveHealthPingUrl(): string {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'scholarnerve.com' || host.endsWith('.scholarnerve.com')) {
-      return `${window.location.origin}/api/health`;
-    }
-    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.lvh.me')) {
-      return import.meta.env.VITE_API_BASE_URL
-        ? `${import.meta.env.VITE_API_BASE_URL.replace(/\/api\/?$/, '')}/api/health`
-        : 'http://localhost:3001/api/health';
-    }
-    return `${window.location.origin}/api/health`;
-  }
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-  return `${base.replace(/\/api\/?$/, '')}/api/health`;
+  const base = resolveApiBaseUrl();
+  const origin = base.replace(/\/api\/?$/, '');
+  return `${origin}/api/health`;
 }
 
 async function pingHealth(signal: AbortSignal): Promise<{ ok: boolean; slow: boolean }> {

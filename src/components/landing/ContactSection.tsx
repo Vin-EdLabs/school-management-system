@@ -9,8 +9,9 @@ import {
   WHATSAPP_DEMO_URL,
 } from '@/content/scholarNerveContact';
 import { REGISTER_SCHOOL_PATH } from '@/utils/landingScroll';
+import { resolveApiBaseUrl } from '@/services/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE = resolveApiBaseUrl();
 
 const inputClass = 'scholar-register-field w-full';
 

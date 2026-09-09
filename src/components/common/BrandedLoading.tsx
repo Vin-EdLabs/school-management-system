@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { LOADING_TIMEOUT_MS, useLoadingTimeout } from '@/hooks/useLoadingTimeout';
 import { cn } from '@/lib/utils';
+import { resolveApiOrigin } from '@/utils/mediaUrl';
 
 export function isSplashGone(): boolean {
   const el = document.getElementById('sn-splash');
@@ -15,7 +16,7 @@ function splashStillVisible(): boolean {
   return el !== null && !el.classList.contains('sn-splash-hidden');
 }
 
-const API_ROOT = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
+const API_ROOT = resolveApiOrigin();
 
 function resolveLogo(url: string | null | undefined): string | null {
   if (!url) return null;

@@ -1,18 +1,16 @@
+import { resolveApiOrigin } from './mediaUrl';
+
 /**
  * Resolve the Socket.IO server base URL.
  *
  * Production (scholarnerve.com + school subdomains): same origin — nginx/Caddy proxy
  * `/socket.io` to the Node backend. Never use a cross-origin API host for sockets.
  *
- * Local dev: direct backend URL from VITE_API_BASE_URL, or same-origin when Vite proxies /socket.io.
+ * Local dev: same-origin when Vite proxies /socket.io.
  */
 export function resolveSocketBaseUrl(): string {
-  const apiBase =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) ||
-    'http://localhost:3001/api';
-
   if (typeof window === 'undefined') {
-    return apiBase.replace(/\/api\/?$/, '');
+    return resolveApiOrigin();
   }
 
   const { hostname, origin } = window.location;
@@ -34,13 +32,10 @@ export function resolveSocketBaseUrl(): string {
 
   if (isLocalDev && import.meta.env.DEV) {
     // Vite dev server proxies /socket.io → backend; same-origin works in dev too.
-    if (origin.includes(':8080') || origin.includes(':5173')) {
-      return origin;
-    }
-    return apiBase.replace(/\/api\/?$/, '');
+    return origin;
   }
 
-  return apiBase.replace(/\/api\/?$/, '') || origin;
+  return resolveApiOrigin();
 }
 
 export const SOCKET_IO_PATH = '/socket.io';

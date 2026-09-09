@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { apiService } from '../../services/api';
+import { resolveApiOrigin } from '../../utils/mediaUrl';
 import { formatGhs } from '../../utils/currency';
 import { FileSearch, Loader2, RefreshCw, Scale, Search, ShieldCheck, Wallet, ChevronRight } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -86,7 +87,7 @@ type Summary = {
   term_arrears?: number;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api').replace('/api', '');
+const API_BASE = resolveApiOrigin();
 
 function docUrl(url: string | null | undefined): string | null {
   if (!url) return null;

@@ -1,7 +1,7 @@
-import { apiService } from './api';
+import { apiService, resolveApiBaseUrl } from './api';
 import { detectTenantSlugFromHost } from '../utils/tenantHost';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
+const API = resolveApiBaseUrl();
 
 async function parentFetch<T>(path: string, token: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

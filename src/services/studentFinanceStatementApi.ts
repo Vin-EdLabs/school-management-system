@@ -1,4 +1,4 @@
-import { apiService } from './api';
+import { apiService, resolveApiBaseUrl } from './api';
 
 export type TermFeeBreakdownLine = { label: string; amount: number };
 
@@ -163,7 +163,7 @@ export function isFinanceStatementNotificationUrl(url?: string | null): boolean 
   return url.includes('openStatement=1') || url.includes('finance-statement');
 }
 
-const PARENT_API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const PARENT_API = resolveApiBaseUrl();
 
 export async function fetchParentFinanceStatement(token: string): Promise<StudentFinanceStatement> {
   const res = await fetch(`${PARENT_API}/parent/finance-statement`, {

@@ -8,6 +8,7 @@ import ContactSection from '../components/landing/ContactSection';
 import FeaturesSection, { type PublicStats } from '../components/landing/FeaturesSection';
 import AboutSection from '../components/landing/AboutSection';
 import ScrollToTopButton from '../components/landing/ScrollToTopButton';
+import { resolveApiBaseUrl } from '../services/api';
 import LandingHeader from '../components/landing/LandingHeader';
 import LandingBrandMark from '../components/landing/LandingBrandMark';
 import { LandingStructuredData } from '../components/landing/LandingStructuredData';
@@ -36,7 +37,7 @@ const defaultStats: PublicStats = {
   feesProcessed: 0,
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE = resolveApiBaseUrl();
 
 const BrandMark = LandingBrandMark;
 

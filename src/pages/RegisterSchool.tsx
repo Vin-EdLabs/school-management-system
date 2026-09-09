@@ -18,6 +18,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import ScrollToTopButton from '@/components/landing/ScrollToTopButton';
 import { REGISTER_FORM_ID, scrollToRegisterForm } from '@/utils/landingScroll';
+import { resolveApiBaseUrl } from '@/services/api';
 
 const BENEFITS = [
   'Quick setup — we handle everything',
@@ -66,7 +67,7 @@ const RegisterSchool = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const base = resolveApiBaseUrl();
       const res = await fetch(`${base}/school-registrations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

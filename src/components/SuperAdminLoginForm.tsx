@@ -8,6 +8,7 @@ import { toast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getFriendlyLoginMessage, getFriendlyLoginTitle } from '../utils/loginErrors';
+import { resolveApiBaseUrl } from '../services/api';
 
 const SuperAdminLoginForm = () => {
   const [username, setUsername] = useState('');
@@ -27,7 +28,7 @@ const SuperAdminLoginForm = () => {
         localStorage.setItem(key, visitorId);
       }
 
-      const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+      const base = resolveApiBaseUrl();
       fetch(`${base}/audit/super-admin/portal-visit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

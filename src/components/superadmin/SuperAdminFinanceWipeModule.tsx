@@ -36,10 +36,12 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
+  ArrowRight,
   Building2,
   CalendarRange,
   CheckCircle2,
   Database,
+  Eraser,
   Eye,
   Loader2,
   Lock,
@@ -96,6 +98,14 @@ type TermFinanceLink = {
   note?: string;
 };
 
+type CarryForwardLeakTerm = {
+  termId: number;
+  termName: string;
+  academicYear: string;
+  studentsAffected: number;
+  totalAmount: number;
+};
+
 type TermDeletePreview = {
   tenantId: number;
   ledgerTermId: number;
@@ -122,6 +132,8 @@ type TermDeletePreview = {
     feeStructuresTotal: number;
   };
   links: TermFinanceLink[];
+  carryForwardLeaks: CarryForwardLeakTerm[];
+  furtherChainWarning: string | null;
   preserved: string[];
   canDelete: boolean;
   blockReason: string | null;
@@ -134,6 +146,46 @@ type TermDeleteResult = {
   academicYear: string;
   deleted: Record<string, number>;
   academicTermsUnlinked: number;
+  carryForwardLeaksCleared: {
+    termsAffected: number;
+    rowsDeleted: number;
+    totalAmount: number;
+  };
+};
+
+type ArrearsRow = {
+  ledgerRowId: number;
+  studentId: number;
+  studentName: string;
+  admissionNumber: string | null;
+  className: string | null;
+  amount: number;
+  description: string;
+  createdAt: string;
+  termId: number;
+  termName: string;
+  academicYear: string;
+  carriedFromTermId: number | null;
+  carriedFromTermName: string | null;
+  carriedFromAcademicYear: string | null;
+};
+
+type ArrearsPreview = {
+  tenantId: number;
+  studentId: number | null;
+  totals: {
+    rowCount: number;
+    studentsAffected: number;
+    totalAmount: number;
+  };
+  rows: ArrearsRow[];
+};
+
+type ClearArrearsResult = {
+  success: boolean;
+  rowsDeleted: number;
+  studentsAffected: number;
+  totalAmount: number;
 };
 
 type SuperAdminFinanceWipeModuleProps = {
@@ -209,6 +261,20 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
   const [deleting, setDeleting] = useState(false);
   const [deleteResult, setDeleteResult] = useState<TermDeleteResult | null>(null);
   const [deleteSuccessOpen, setDeleteSuccessOpen] = useState(false);
+
+  // Clear Arrears — isolated state so it never shares selections with the wipe/delete tools above.
+  const [arrearsScope, setArrearsScope] = useState<'school' | 'student'>('school');
+  const [arrearsStudentQuery, setArrearsStudentQuery] = useState('');
+  const [arrearsStudents, setArrearsStudents] = useState<StudentRow[]>([]);
+  const [arrearsStudentId, setArrearsStudentId] = useState<number | null>(null);
+  const [arrearsPreview, setArrearsPreview] = useState<ArrearsPreview | null>(null);
+  const [arrearsPreviewLoading, setArrearsPreviewLoading] = useState(false);
+  const [arrearsConfirmOpen, setArrearsConfirmOpen] = useState(false);
+  const [arrearsPhrase, setArrearsPhrase] = useState('');
+  const [arrearsUnderstood, setArrearsUnderstood] = useState(false);
+  const [arrearsClearing, setArrearsClearing] = useState(false);
+  const [arrearsResult, setArrearsResult] = useState<ClearArrearsResult | null>(null);
+  const [arrearsSuccessOpen, setArrearsSuccessOpen] = useState(false);
 
   const forceCloseableTerms = useMemo(
     () =>
@@ -301,6 +367,33 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
     }
   }, []);
 
+  const searchArrearsStudents = useCallback(async (id: number, q: string) => {
+    const data = await apiService.get<StudentRow[]>(
+      `/super-admin/finance/tenants/${id}/students?q=${encodeURIComponent(q)}`
+    );
+    setArrearsStudents(Array.isArray(data) ? data : []);
+  }, []);
+
+  const loadArrearsPreview = useCallback(async (schoolId: number, studentIdFilter: number | null) => {
+    setArrearsPreviewLoading(true);
+    setArrearsPreview(null);
+    try {
+      const qs = studentIdFilter != null ? `?studentId=${studentIdFilter}` : '';
+      const data = await apiService.get<ArrearsPreview>(
+        `/super-admin/finance/tenants/${schoolId}/arrears/preview${qs}`
+      );
+      setArrearsPreview(data);
+    } catch (err: unknown) {
+      toast({
+        title: 'Could not load arrears preview',
+        description: err instanceof Error ? err.message : 'Failed to load arrears entries',
+        variant: 'destructive',
+      });
+    } finally {
+      setArrearsPreviewLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!tenantId) return;
     setTermId(null);
@@ -308,6 +401,11 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
     setPreview(null);
     setClassId(null);
     setStudentId(null);
+    setArrearsScope('school');
+    setArrearsStudentId(null);
+    setArrearsStudentQuery('');
+    setArrearsStudents([]);
+    setArrearsPreview(null);
     void refreshMeta();
   }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -319,16 +417,40 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
   }, [studentQuery, tenantId, searchStudents]);
 
   useEffect(() => {
-    if (!tenantId || !deleteTermId) {
+    const t = window.setTimeout(() => {
+      if (tenantId && arrearsScope === 'student') void searchArrearsStudents(tenantId, arrearsStudentQuery);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [arrearsStudentQuery, arrearsScope, tenantId, searchArrearsStudents]);
+
+  useEffect(() => {
+    if (!tenantId || deleteTermId == null) {
       setPreview(null);
       return;
     }
     void loadDeletePreview(tenantId, deleteTermId);
   }, [tenantId, deleteTermId, loadDeletePreview]);
 
+  useEffect(() => {
+    if (!tenantId) {
+      setArrearsPreview(null);
+      return;
+    }
+    if (arrearsScope === 'student' && arrearsStudentId == null) {
+      setArrearsPreview(null);
+      return;
+    }
+    void loadArrearsPreview(tenantId, arrearsScope === 'student' ? arrearsStudentId : null);
+  }, [tenantId, arrearsScope, arrearsStudentId, loadArrearsPreview]);
+
   const resetConfirmState = () => {
     setConfirmPhrase('');
     setUnderstandChecked(false);
+  };
+
+  const resetArrearsConfirmState = () => {
+    setArrearsPhrase('');
+    setArrearsUnderstood(false);
   };
 
   const resetDeleteConfirmState = () => {
@@ -403,6 +525,43 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
     }
   };
 
+  const arrearsRequiredPhrase = 'CLEAR ARREARS';
+  const arrearsPhraseMatches = arrearsPhrase.trim() === arrearsRequiredPhrase;
+  const canOpenArrearsConfirm =
+    !!tenantId &&
+    !!arrearsPreview &&
+    arrearsPreview.rows.length > 0 &&
+    (arrearsScope !== 'student' || !!arrearsStudentId);
+  const canConfirmClearArrears = canOpenArrearsConfirm && arrearsPhraseMatches && arrearsUnderstood && !arrearsClearing;
+
+  const handleClearArrears = async () => {
+    if (!tenantId || !canConfirmClearArrears) return;
+    setArrearsClearing(true);
+    try {
+      const result = await apiService.delete<ClearArrearsResult>(`/super-admin/finance/tenants/${tenantId}/arrears`, {
+        student_id: arrearsScope === 'student' ? arrearsStudentId ?? undefined : undefined,
+        confirm: 'CLEAR ARREARS',
+      });
+      setArrearsResult(result);
+      setArrearsConfirmOpen(false);
+      resetArrearsConfirmState();
+      setArrearsSuccessOpen(true);
+      toast({
+        title: 'Arrears cleared',
+        description: `${result.rowsDeleted} arrears entr${result.rowsDeleted === 1 ? 'y' : 'ies'} removed across ${result.studentsAffected} student(s).`,
+      });
+      await loadArrearsPreview(tenantId, arrearsScope === 'student' ? arrearsStudentId : null);
+    } catch (err: unknown) {
+      toast({
+        title: 'Clear failed',
+        description: err instanceof Error ? err.message : 'Could not clear arrears',
+        variant: 'destructive',
+      });
+    } finally {
+      setArrearsClearing(false);
+    }
+  };
+
   const handleForceClose = async (ledgerTermId: number) => {
     if (!tenantId) return;
     setForceClosingId(ledgerTermId);
@@ -472,8 +631,10 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
             <p className="text-sm font-bold text-red-800 dark:text-red-200">Destructive operations</p>
             <p className="text-xs leading-relaxed text-red-700/90 dark:text-red-300/85">
               Delete removes the ledger term by id and all of its finance permanently — no replacement ledger is
-              created. Students, classes, staff, grades, and other terms’ finance are never deleted. Terms are
-              identified by id and date range, not by display name.
+              created. If that term's balance was already carried forward into a later term as arrears or credit,
+              those specific rows are cleared too, so students don't stay stuck with stale arrears. Students,
+              classes, staff, grades, and other terms' own fees/payments are never deleted. Terms are identified by
+              id and date range, not by display name.
             </p>
           </div>
         </div>
@@ -508,6 +669,217 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
           ) : null}
         </CardContent>
       </Card>
+
+      {/* CLEAR ARREARS — surgical, arrears-only tool. Never touches fee structures,
+          payments, invoices, or the terms themselves. */}
+      {tenantId ? (
+        <Card className="border-orange-200/90 shadow-sm dark:border-orange-900/50">
+          <CardHeader className="border-b border-orange-100 dark:border-orange-900/40">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+                <Eraser className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="font-outfit text-lg font-black">Clear arrears</CardTitle>
+                <CardDescription>
+                  Remove stale “arrears” balances carried forward from a previous term — for the whole school or one
+                  student. Fee structures, payments, invoices, and every other finance record are left completely
+                  untouched.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-6">
+            <RadioGroup
+              value={arrearsScope}
+              onValueChange={(v) => {
+                setArrearsScope(v as 'school' | 'student');
+                setArrearsStudentId(null);
+                setArrearsStudentQuery('');
+              }}
+              className="grid gap-3 sm:grid-cols-2"
+            >
+              <label
+                className={cn(
+                  'flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all',
+                  arrearsScope === 'school'
+                    ? 'border-orange-300 bg-orange-50/60 shadow-sm dark:border-orange-700/50 dark:bg-orange-950/25'
+                    : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-slate-700'
+                )}
+              >
+                <RadioGroupItem value="school" id="arrears-scope-school" className="mt-1" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100">All students</span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Clear every stale arrears entry across the whole school.
+                  </p>
+                </div>
+              </label>
+              <label
+                className={cn(
+                  'flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all',
+                  arrearsScope === 'student'
+                    ? 'border-orange-300 bg-orange-50/60 shadow-sm dark:border-orange-700/50 dark:bg-orange-950/25'
+                    : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-slate-700'
+                )}
+              >
+                <RadioGroupItem value="student" id="arrears-scope-student" className="mt-1" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <UserRound className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100">One student</span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                    Only clear arrears for one specific student.
+                  </p>
+                </div>
+              </label>
+            </RadioGroup>
+
+            {arrearsScope === 'student' ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className={dialogLabelClass}>Search student</Label>
+                  <Input
+                    value={arrearsStudentQuery}
+                    onChange={(e) => setArrearsStudentQuery(e.target.value)}
+                    placeholder="Name or admission number"
+                    disabled={!tenantId}
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className={dialogLabelClass}>Student</Label>
+                  <Select
+                    value={arrearsStudentId != null ? String(arrearsStudentId) : ''}
+                    onValueChange={(v) => setArrearsStudentId(v ? Number(v) : null)}
+                  >
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue placeholder="Select student…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {arrearsStudents.length === 0 ? (
+                        <SelectItem value="__none" disabled>
+                          No students found
+                        </SelectItem>
+                      ) : (
+                        arrearsStudents.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>
+                            {s.last_name}, {s.first_name}
+                            {s.admission_number ? ` (${s.admission_number})` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+
+            {arrearsPreviewLoading ? (
+              <BrandedLoading label="Scanning for stale arrears entries…" className="py-10" />
+            ) : arrearsScope === 'student' && !arrearsStudentId ? (
+              <p className="text-sm text-muted-foreground">Select a student to see their arrears entries.</p>
+            ) : arrearsPreview ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Arrears entries', value: String(arrearsPreview.totals.rowCount) },
+                    { label: 'Students affected', value: String(arrearsPreview.totals.studentsAffected) },
+                    { label: 'Total amount', value: money(arrearsPreview.totals.totalAmount) },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/40"
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{stat.label}</p>
+                      <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{stat.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {arrearsPreview.rows.length === 0 ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-4 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    No stale arrears found{arrearsScope === 'student' ? ' for this student' : ' for this school'} —
+                    nothing to clear.
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-2xl border border-orange-200/70 bg-orange-50/40 dark:border-orange-900/40 dark:bg-orange-950/20">
+                      <div className="flex items-center gap-2 border-b border-orange-200/60 px-4 py-3 dark:border-orange-900/40">
+                        <Eye className="h-4 w-4 text-orange-600" />
+                        <p className="text-xs font-bold uppercase tracking-widest text-orange-700 dark:text-orange-300">
+                          Arrears entries that will be cleared
+                        </p>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto divide-y divide-orange-100/80 dark:divide-orange-900/30">
+                        {arrearsPreview.rows.map((row) => (
+                          <div key={row.ledgerRowId} className="px-4 py-3 text-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {row.studentName}
+                                  {row.admissionNumber ? (
+                                    <span className="ml-1.5 font-normal text-muted-foreground">
+                                      ({row.admissionNumber})
+                                    </span>
+                                  ) : null}
+                                </p>
+                                {row.className ? (
+                                  <Badge variant="outline" className="mt-1 text-[10px] font-bold uppercase">
+                                    {row.className}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <p className="shrink-0 font-bold tabular-nums text-orange-700 dark:text-orange-300">
+                                {money(row.amount)}
+                              </p>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                              <span>
+                                {row.carriedFromTermName
+                                  ? `${row.carriedFromTermName} ${row.carriedFromAcademicYear || ''}`.trim()
+                                  : 'Unknown term'}
+                              </span>
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="font-medium text-slate-700 dark:text-slate-300">
+                                {row.termName} {row.academicYear}
+                              </span>
+                              {row.createdAt ? (
+                                <span>· posted {new Date(row.createdAt).toLocaleDateString()}</span>
+                              ) : null}
+                            </div>
+                            {row.description ? (
+                              <p className="mt-1 text-xs italic text-muted-foreground">{row.description}</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      className="h-11 w-full rounded-xl bg-orange-600 font-bold text-xs uppercase tracking-widest text-white hover:bg-orange-700"
+                      disabled={!canOpenArrearsConfirm || arrearsPreviewLoading}
+                      onClick={() => {
+                        resetArrearsConfirmState();
+                        setArrearsConfirmOpen(true);
+                      }}
+                    >
+                      <Eraser className="mr-2 h-4 w-4" />
+                      Review &amp; clear arrears
+                    </Button>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* DELETE & RESET — primary powerful tool */}
       {tenantId ? (
@@ -645,6 +1017,35 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
                         </li>
                       ))}
                     </ul>
+                  </div>
+                ) : null}
+
+                {preview.carryForwardLeaks.length > 0 ? (
+                  <div className="rounded-xl border border-orange-200/80 bg-orange-50/60 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-orange-700 dark:text-orange-300">
+                      Already carried into later terms (will also be cleared)
+                    </p>
+                    <p className="mt-1 text-xs text-orange-800/90 dark:text-orange-200/80">
+                      This term's balance was already carried forward as arrears/credit. Deleting this term will also
+                      remove those specific rows below — other fees and payments in those terms are left untouched.
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {preview.carryForwardLeaks.map((l) => (
+                        <li key={l.termId} className="flex items-center justify-between gap-2">
+                          <span>
+                            #{l.termId} · {l.termName} {l.academicYear}
+                          </span>
+                          <span className="font-semibold tabular-nums">
+                            {l.studentsAffected} student(s) · {money(l.totalAmount)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {preview.furtherChainWarning ? (
+                      <p className="mt-3 rounded-lg border border-orange-300/70 bg-white/60 px-2.5 py-2 text-xs text-orange-900 dark:border-orange-800/60 dark:bg-slate-950/40 dark:text-orange-100">
+                        {preview.furtherChainWarning}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -1004,7 +1405,11 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
               />
               <span className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                 I understand this permanently deletes all term finance and removes ledger #{preview?.ledgerTermId}{' '}
-                with no replacement. Students and other terms are not deleted.
+                with no replacement
+                {preview && preview.carryForwardLeaks.length > 0
+                  ? `, and also clears the arrears/credit it already carried into ${preview.carryForwardLeaks.length} later term(s)`
+                  : ''}
+                . Students and other terms' own fees/payments are not deleted.
               </span>
             </label>
 
@@ -1082,10 +1487,160 @@ const SuperAdminFinanceWipeModule: React.FC<SuperAdminFinanceWipeModuleProps> = 
                 Academic terms unlinked/archived: {deleteResult.academicTermsUnlinked}. Create a new term in Settings
                 when you are ready to start again.
               </p>
+              {deleteResult.carryForwardLeaksCleared.rowsDeleted > 0 ? (
+                <div className="rounded-xl border border-orange-200/80 bg-orange-50/60 p-3 text-xs dark:border-orange-900/40 dark:bg-orange-950/20">
+                  <p className="font-bold uppercase tracking-widest text-orange-700 dark:text-orange-300">
+                    Also cleared carried-forward arrears
+                  </p>
+                  <p className="mt-1 text-orange-800/90 dark:text-orange-200/80">
+                    {deleteResult.carryForwardLeaksCleared.rowsDeleted} row(s) totaling{' '}
+                    {money(deleteResult.carryForwardLeaksCleared.totalAmount)} removed across{' '}
+                    {deleteResult.carryForwardLeaksCleared.termsAffected} later term(s).
+                  </p>
+                </div>
+              ) : null}
             </DialogBody>
           ) : null}
           <DialogFooter className={detailDialogFooterClass}>
             <Button variant="primaryAction" className="rounded-xl font-bold" onClick={() => setDeleteSuccessOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear arrears confirmation */}
+      <Dialog
+        open={arrearsConfirmOpen}
+        onOpenChange={(open) => {
+          setArrearsConfirmOpen(open);
+          if (!open) resetArrearsConfirmState();
+        }}
+      >
+        <DialogContent className={cn(destructiveDialogClass, '!border-t-orange-500 max-w-xl')}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className={cn(dialogTitleClass, 'flex items-center gap-3 text-orange-800 dark:text-orange-200')}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+                <Eraser className="h-5 w-5" />
+              </span>
+              Clear arrears
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              This permanently deletes only the arrears rows below. Fee structures, payments, invoices, and
+              everything else are untouched.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogBody className={cn(detailDialogBodyClass, 'space-y-4')}>
+            {arrearsPreview ? (
+              <>
+                <div className={dialogSectionClass}>
+                  <DetailField label="School">{selectedSchool?.name}</DetailField>
+                  <DetailField label="Scope">
+                    {arrearsScope === 'student'
+                      ? arrearsStudents.find((s) => s.id === arrearsStudentId)
+                        ? `${arrearsStudents.find((s) => s.id === arrearsStudentId)?.last_name}, ${arrearsStudents.find((s) => s.id === arrearsStudentId)?.first_name}`
+                        : 'One student'
+                      : 'All students'}
+                  </DetailField>
+                  <DetailField label="Arrears entries">{arrearsPreview.totals.rowCount}</DetailField>
+                  <DetailField label="Total amount">{money(arrearsPreview.totals.totalAmount)}</DetailField>
+                </div>
+
+                <div className="max-h-40 overflow-y-auto rounded-xl border border-orange-200/80 bg-orange-50/60 p-3 text-xs dark:border-orange-900/50 dark:bg-orange-950/30">
+                  {arrearsPreview.rows.map((row) => (
+                    <div key={row.ledgerRowId} className="flex justify-between gap-2 py-0.5">
+                      <span className="truncate">{row.studentName}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{money(row.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <Checkbox
+                checked={arrearsUnderstood}
+                onCheckedChange={(v) => setArrearsUnderstood(v === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                I understand this permanently deletes {arrearsPreview?.totals.rowCount ?? 0} arrears entr
+                {arrearsPreview?.totals.rowCount === 1 ? 'y' : 'ies'} totaling{' '}
+                {money(arrearsPreview?.totals.totalAmount ?? 0)}. Fee structures, payments, and invoices are not
+                affected.
+              </span>
+            </label>
+
+            <div className="space-y-2">
+              <Label className={dialogLabelClass}>Type confirmation phrase</Label>
+              <p className="rounded-xl border border-orange-200/80 bg-white/80 px-3 py-2 font-mono text-xs font-semibold text-orange-700 dark:border-orange-900/50 dark:bg-slate-950/60 dark:text-orange-300">
+                {arrearsRequiredPhrase}
+              </p>
+              <Input
+                value={arrearsPhrase}
+                onChange={(e) => setArrearsPhrase(e.target.value)}
+                placeholder="Type the phrase exactly"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-11 rounded-xl font-mono"
+              />
+            </div>
+          </DialogBody>
+
+          <DialogFooter className={cn(detailDialogFooterClass, 'flex-col gap-2 sm:flex-row')}>
+            <Button
+              variant="outline"
+              className="w-full rounded-xl sm:w-auto"
+              onClick={() => setArrearsConfirmOpen(false)}
+              disabled={arrearsClearing}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="w-full rounded-xl bg-orange-600 font-bold text-white hover:bg-orange-700 sm:w-auto"
+              disabled={!canConfirmClearArrears}
+              onClick={() => void handleClearArrears()}
+            >
+              {arrearsClearing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Clearing…
+                </>
+              ) : (
+                <>
+                  <Eraser className="mr-2 h-4 w-4" />
+                  Clear arrears
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear arrears success */}
+      <Dialog open={arrearsSuccessOpen} onOpenChange={setArrearsSuccessOpen}>
+        <DialogContent className={successDialogClass}>
+          <DialogHeader className={detailDialogHeaderClass}>
+            <DialogTitle className={cn(dialogTitleClass, 'flex items-center gap-3')}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+              Arrears cleared
+            </DialogTitle>
+            <DialogDescription>
+              Only the arrears rows were removed. Everything else is unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          {arrearsResult ? (
+            <DialogBody className={cn(detailDialogBodyClass, 'space-y-2 text-sm')}>
+              <p>Entries removed: <strong>{arrearsResult.rowsDeleted}</strong></p>
+              <p>Students affected: <strong>{arrearsResult.studentsAffected}</strong></p>
+              <p>Total amount cleared: <strong>{money(arrearsResult.totalAmount)}</strong></p>
+            </DialogBody>
+          ) : null}
+          <DialogFooter className={detailDialogFooterClass}>
+            <Button variant="primaryAction" className="rounded-xl font-bold" onClick={() => setArrearsSuccessOpen(false)}>
               Done
             </Button>
           </DialogFooter>

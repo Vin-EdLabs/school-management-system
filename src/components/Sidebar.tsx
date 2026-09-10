@@ -156,6 +156,7 @@ const getHeadmasterMenuItems = (hasAccess: (permission: string) => boolean, user
       : []),
   ],
   configurations: [
+    ...(hasAccess('platform-billing') ? [{ id: 'platform-billing', label: 'Billing', icon: CreditCard }] : []),
     ...(hasAccess('grade-configuration') ? [{ id: 'grade-configuration', label: 'Grade Configuration', icon: GraduationCap }] : []),
   ],
 });
@@ -248,6 +249,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
   ],
   /** Configurations — payment accounts and future setup items. */
   configurations: [
+    ...(hasAccess('platform-billing') ? [{ id: 'platform-billing', label: 'Billing', icon: CreditCard }] : []),
     ...(hasAccess('payment-accounts') ? [{ id: 'payment-accounts', label: 'Payment Accounts', icon: SlidersHorizontal }] : []),
     ...(hasAccess('grade-configuration') ? [{ id: 'grade-configuration', label: 'Grade Configuration', icon: GraduationCap }] : []),
     ...(hasAccess('settings-full') ? [{ id: 'appointment-letter-settings', label: 'Appointment Letters', icon: FileText }] : []),

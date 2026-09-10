@@ -28,6 +28,23 @@ export type TermFinanceLinkItem = {
   note?: string;
 };
 
+export type CarryForwardLeakRow = {
+  studentId: number;
+  studentName: string;
+  admissionNumber: string | null;
+  entryType: string;
+  amount: number;
+};
+
+export type CarryForwardLeakTerm = {
+  termId: number;
+  termName: string;
+  academicYear: string;
+  studentsAffected: number;
+  totalAmount: number;
+  rows: CarryForwardLeakRow[];
+};
+
 export type TermFinanceDeletePreview = {
   tenantId: number;
   ledgerTermId: number;
@@ -54,6 +71,8 @@ export type TermFinanceDeletePreview = {
     feeStructuresTotal: number;
   };
   links: TermFinanceLinkItem[];
+  carryForwardLeaks: CarryForwardLeakTerm[];
+  furtherChainWarning: string | null;
   preserved: string[];
   canDelete: boolean;
   blockReason: string | null;
@@ -66,6 +85,11 @@ export type TermFinanceDeleteResult = {
   academicYear: string;
   deleted: Record<string, number>;
   academicTermsUnlinked: number;
+  carryForwardLeaksCleared: {
+    termsAffected: number;
+    rowsDeleted: number;
+    totalAmount: number;
+  };
 };
 
 async function loadTermMeta(tenantId: number, ledgerTermId: number) {
@@ -92,6 +116,90 @@ async function loadTermMeta(tenantId: number, ledgerTermId: number) {
     start_date: string | null;
     end_date: string | null;
   };
+}
+
+const CARRY_FORWARD_ENTRY_TYPES = ['arrears', 'carry_forward_credit'];
+
+/**
+ * Find ledger rows in OTHER terms that were carried forward FROM the given term
+ * (via executeTermSwitchWithArrears' `metadata.carried_from_term_id`). Deleting a
+ * term does not automatically remove these — they were already materialized as
+ * real rows in whatever term(s) came after it.
+ */
+async function findCarryForwardLeaks(
+  tenantId: number,
+  ledgerTermId: number
+): Promise<{ leaks: CarryForwardLeakTerm[]; furtherChainWarning: string | null }> {
+  try {
+    const res = await query(
+      `SELECT sl.term_id, t.name AS term_name, COALESCE(ay.label, ay.name) AS academic_year,
+              sl.student_id, s.first_name, s.last_name, s.admission_number,
+              sl.entry_type, GREATEST(sl.debit, sl.credit) AS amount
+       FROM student_ledger sl
+       JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
+       JOIN academic_years ay ON ay.id = t.academic_year_id
+       LEFT JOIN students s ON s.id = sl.student_id AND s.tenant_id = sl.tenant_id
+       WHERE sl.tenant_id = $1
+         AND sl.term_id != $2
+         AND sl.entry_type = ANY($3::text[])
+         AND (sl.metadata->>'carried_from_term_id')::int = $2
+       ORDER BY sl.term_id ASC, s.last_name ASC NULLS LAST`,
+      [tenantId, ledgerTermId, CARRY_FORWARD_ENTRY_TYPES]
+    );
+
+    const byTerm = new Map<number, CarryForwardLeakTerm>();
+    for (const row of res.rows) {
+      const termId = Number(row.term_id);
+      if (!byTerm.has(termId)) {
+        byTerm.set(termId, {
+          termId,
+          termName: String(row.term_name),
+          academicYear: String(row.academic_year || ''),
+          studentsAffected: 0,
+          totalAmount: 0,
+          rows: [],
+        });
+      }
+      const entry = byTerm.get(termId)!;
+      const amount = parseFloat(String(row.amount)) || 0;
+      entry.rows.push({
+        studentId: Number(row.student_id),
+        studentName: row.first_name || row.last_name ? `${row.first_name || ''} ${row.last_name || ''}`.trim() : 'Unknown student',
+        admissionNumber: row.admission_number || null,
+        entryType: String(row.entry_type),
+        amount,
+      });
+      entry.studentsAffected += 1;
+      entry.totalAmount = Math.round((entry.totalAmount + amount) * 100) / 100;
+    }
+    const leaks = Array.from(byTerm.values());
+
+    let furtherChainWarning: string | null = null;
+    if (leaks.length > 0) {
+      const destinationTermIds = leaks.map((l) => l.termId);
+      const chainRes = await query(
+        `SELECT DISTINCT t.id, t.name, COALESCE(ay.label, ay.name) AS academic_year
+         FROM student_ledger sl
+         JOIN terms t ON t.id = sl.term_id AND t.tenant_id = sl.tenant_id
+         JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE sl.tenant_id = $1
+           AND sl.entry_type = ANY($2::text[])
+           AND (sl.metadata->>'carried_from_term_id')::int = ANY($3::int[])`,
+        [tenantId, CARRY_FORWARD_ENTRY_TYPES, destinationTermIds]
+      );
+      if (chainRes.rows.length > 0) {
+        const names = chainRes.rows.map((r) => `${r.name} ${r.academic_year || ''}`.trim()).join(', ');
+        furtherChainWarning =
+          `The balance from this term was already carried forward again into: ${names}. ` +
+          `Clearing this term's leaks will not fix those further terms automatically — ` +
+          `re-run this same tool afterwards on each of them if their balances still look wrong.`;
+      }
+    }
+
+    return { leaks, furtherChainWarning };
+  } catch {
+    return { leaks: [], furtherChainWarning: null };
+  }
 }
 
 export async function getTermFinanceDeletePreview(
@@ -313,6 +421,20 @@ export async function getTermFinanceDeletePreview(
     },
   ];
 
+  const { leaks: carryForwardLeaks, furtherChainWarning } = await findCarryForwardLeaks(tenantId, ledgerTermId);
+  if (carryForwardLeaks.length > 0) {
+    const leakRowCount = carryForwardLeaks.reduce((sum, l) => sum + l.rows.length, 0);
+    const leakAmount = Math.round(carryForwardLeaks.reduce((sum, l) => sum + l.totalAmount, 0) * 100) / 100;
+    links.push({
+      key: 'carry_forward_leaks',
+      label: 'Carried-forward arrears in later terms',
+      count: leakRowCount,
+      amount: leakAmount,
+      willDelete: true,
+      note: `Already carried into: ${carryForwardLeaks.map((l) => `${l.termName} ${l.academicYear}`.trim()).join(', ')}`,
+    });
+  }
+
   const activeAcademic = academicRes.rows.find((r) => r.is_active);
   return {
     tenantId,
@@ -340,13 +462,17 @@ export async function getTermFinanceDeletePreview(
       feeStructuresTotal: feeStructures.amount,
     },
     links,
+    carryForwardLeaks,
+    furtherChainWarning,
     preserved: [
       'Students and admission records',
       'Classes, teachers, and staff',
       'School income & expense (non-term ledger)',
       'Salary / payroll records',
       'Grades, attendance, and report cards',
-      'Other terms’ finance data',
+      carryForwardLeaks.length > 0
+        ? 'Other terms’ own fees & payments (only the arrears/credit rows carried from this term are cleared)'
+        : 'Other terms’ finance data',
     ],
     canDelete: true,
     blockReason: activeAcademic
@@ -427,6 +553,15 @@ export async function deleteTermCompletely(input: {
       client,
       `DELETE FROM student_ledger WHERE tenant_id = $1 AND term_id = $2`,
       [input.tenantId, input.ledgerTermId]
+    );
+    deleted.carry_forward_leaks_cleared = await deleteWhere(
+      client,
+      `DELETE FROM student_ledger
+       WHERE tenant_id = $1
+         AND term_id != $2
+         AND entry_type = ANY($3::text[])
+         AND (metadata->>'carried_from_term_id')::int = $2`,
+      [input.tenantId, input.ledgerTermId, CARRY_FORWARD_ENTRY_TYPES]
     );
     deleted.payments = await deleteWhere(
       client,
@@ -509,6 +644,13 @@ export async function deleteTermCompletely(input: {
         start_date: term.start_date,
         end_date: term.end_date,
         deleted,
+        carry_forward_leaks_cleared: preview.carryForwardLeaks.map((l) => ({
+          termId: l.termId,
+          termName: l.termName,
+          academicYear: l.academicYear,
+          studentsAffected: l.studentsAffected,
+          totalAmount: l.totalAmount,
+        })),
       },
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,
@@ -523,6 +665,11 @@ export async function deleteTermCompletely(input: {
       academicYear: String(term.year_name),
       deleted,
       academicTermsUnlinked: deleted.academic_terms_unlinked ?? 0,
+      carryForwardLeaksCleared: {
+        termsAffected: preview.carryForwardLeaks.length,
+        rowsDeleted: deleted.carry_forward_leaks_cleared ?? 0,
+        totalAmount: Math.round(preview.carryForwardLeaks.reduce((sum, l) => sum + l.totalAmount, 0) * 100) / 100,
+      },
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

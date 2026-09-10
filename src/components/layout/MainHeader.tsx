@@ -16,6 +16,7 @@ import PwaInstallButton from '../common/PwaInstallButton';
 import PersonalTodosWidget, { canUsePersonalTodos } from '../todos/PersonalTodosPanel';
 import { ModuleUserGuideDialog } from '../common/ModuleUserGuideDialog';
 import { fetchUnreadBudgetAlerts, markBudgetAlertRead } from '../../services/termBudgetApi';
+import { fetchCurrentBilling } from '../../services/platformBillingApi';
 import { getShortGreetingName } from '../../utils/displayName';
 import {
   DropdownMenu,
@@ -68,7 +69,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         | 'website-application'
         | 'website-contact'
         | 'website-employment'
-        | 'website-alumni';
+        | 'website-alumni'
+        | 'platform-billing';
       title: string;
       body: string;
       unread: number;
@@ -295,6 +297,10 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
                         setActiveModule('complaints');
                         return;
                       }
+                      if (notification.type === 'platform-billing') {
+                        setActiveModule('platform-billing');
+                        return;
+                      }
                       if (
                         notification.type === 'website-application' ||
                         notification.type === 'website-contact' ||
@@ -413,7 +419,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           | 'website-application'
           | 'website-contact'
           | 'website-employment'
-          | 'website-alumni';
+          | 'website-alumni'
+        | 'platform-billing';
         priority?: 'HIGH' | 'NORMAL';
         reportId?: string;
         notificationDbId?: number;
@@ -499,6 +506,24 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           title: 'Payment Submissions',
           body: `${paymentCount} pending payment proof${paymentCount === 1 ? '' : 's'} awaiting review.`,
         });
+      }
+      if (user?.role === 'administrator' || user?.role === 'finance' || isHeadmaster) {
+        const billing = await fetchCurrentBilling().catch(() => ({ invoice: null, billingFrequency: null }));
+        if (billing.invoice && billing.invoice.status === 'pending') {
+          const amount = `GH₵ ${Number(billing.invoice.finalAmount || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`;
+          results.push({
+            id: `platform-billing-${billing.invoice.id}`,
+            type: 'platform-billing',
+            count: 1,
+            title: 'ScholarNerve invoice due',
+            body: `${amount} due${billing.invoice.dueDate ? ` by ${billing.invoice.dueDate}` : ''} — tap to view and pay.`,
+            priority: 'HIGH',
+            timestamp: new Date(billing.invoice.createdAt).getTime() || Date.now(),
+          });
+        }
       }
       const budgetAlerts = await fetchUnreadBudgetAlerts().catch(() => ({ alerts: [], count: 0 }));
       for (const alert of budgetAlerts.alerts || []) {
@@ -634,7 +659,8 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       | 'website-application'
       | 'website-contact'
       | 'website-employment'
-      | 'website-alumni',
+      | 'website-alumni'
+      | 'platform-billing',
     alertId?: number,
     notificationDbId?: number
   ) => {
@@ -682,7 +708,7 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
       const tid = evt.tenantId;
       if (tid != null && user?.tenantId != null && tid !== user.tenantId) return;
       const e = String(evt?.entity || '');
-      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint' || e === 'chat' || e === 'staff-notification' || e === 'website-application' || e === 'website-contact' || e === 'website-employment' || e === 'website-transcript' || e === 'website-testimonial') {
+      if (e === 'parent-desk' || e === 'support-chat' || e === 'term-budget' || e === 'lost-card' || e === 'payment-submission' || e === 'complaint' || e === 'chat' || e === 'staff-notification' || e === 'website-application' || e === 'website-contact' || e === 'website-employment' || e === 'website-transcript' || e === 'website-testimonial' || e === 'platform-billing') {
         void loadAdminNotifications();
       }
     };

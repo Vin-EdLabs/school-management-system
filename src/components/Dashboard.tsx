@@ -23,6 +23,7 @@ import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import TransactionsPage from './finance/TransactionsPage';
 import CashBankModule from './finance/CashBankModule';
 import PaymentAccountsModule from './configurations/PaymentAccountsModule';
+import BillingModule from './billing/BillingModule';
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import AdmissionLetterSettings from './configurations/AdmissionLetterSettings';
 import IdCardSettings from './configurations/IdCardSettings';
@@ -385,6 +386,8 @@ const DashboardContent = () => {
         return <SettingsModule onNavigateModule={setActiveModule} />;
       case 'payment-accounts':
         return <PaymentAccountsModule />;
+      case 'platform-billing':
+        return <BillingModule />;
       case 'grade-configuration':
         return (
           <div className="mx-auto max-w-6xl p-4 md:p-6 space-y-10 pb-10">

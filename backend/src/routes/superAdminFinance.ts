@@ -8,6 +8,7 @@ import {
   deleteTermCompletely,
   getTermFinanceDeletePreview,
 } from '../services/superAdminTermDeleteService.js';
+import { clearArrears, getArrearsPreview } from '../services/superAdminArrearsService.js';
 import { getClientIp } from '../utils/clientIp.js';
 
 const router = express.Router();
@@ -116,7 +117,7 @@ router.get('/tenants/:tenantId/classes', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Invalid tenant id' });
     }
     const result = await query(
-      `SELECT id, COALESCE(NULLIF(TRIM(class_name), ''), NULLIF(TRIM(name), ''), 'Class ' || id) AS name
+      `SELECT id, COALESCE(NULLIF(TRIM(class_name), ''), 'Class ' || id) AS name
        FROM classes
        WHERE tenant_id = $1
        ORDER BY name ASC`,
@@ -208,6 +209,60 @@ router.post('/tenants/:tenantId/terms/:termId/force-close', async (req: AuthRequ
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Force close failed';
     console.error('[superadmin finance] force-close error:', error);
+    res.status(400).json({ error: message });
+  }
+});
+
+/**
+ * Arrears-only cleanup — never touches fee structures, payments, invoices, or
+ * the terms themselves. Deletes exactly the student_ledger rows with
+ * entry_type = 'arrears' for the tenant (optionally scoped to one student).
+ */
+router.get('/tenants/:tenantId/arrears/preview', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId, 10);
+    if (Number.isNaN(tenantId)) {
+      return res.status(400).json({ error: 'Invalid tenant id' });
+    }
+    const studentIdRaw = req.query.studentId;
+    const studentId =
+      studentIdRaw != null && String(studentIdRaw).trim() !== '' ? parseInt(String(studentIdRaw), 10) : null;
+    if (studentId != null && Number.isNaN(studentId)) {
+      return res.status(400).json({ error: 'Invalid student id' });
+    }
+
+    const preview = await getArrearsPreview(tenantId, studentId);
+    res.json(preview);
+  } catch (error: unknown) {
+    console.error('[superadmin finance] arrears preview error:', error);
+    res.status(500).json({ error: 'Failed to load arrears preview' });
+  }
+});
+
+const clearArrearsSchema = z.object({
+  student_id: z.number().int().nullable().optional(),
+  confirm: z.literal('CLEAR ARREARS'),
+});
+
+router.delete('/tenants/:tenantId/arrears', async (req: AuthRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId, 10);
+    if (Number.isNaN(tenantId)) {
+      return res.status(400).json({ error: 'Invalid tenant id' });
+    }
+    const body = clearArrearsSchema.parse(req.body);
+
+    const result = await clearArrears({
+      tenantId,
+      studentId: body.student_id ?? null,
+      actorUserId: req.user!.id,
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') ?? null,
+    });
+    res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to clear arrears';
+    console.error('[superadmin finance] clear arrears error:', error);
     res.status(400).json({ error: message });
   }
 });

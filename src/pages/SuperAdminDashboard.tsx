@@ -104,6 +104,7 @@ import {
   Settings,
   Handshake,
   CreditCard,
+  Receipt,
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import SuperAdminLoginForm from '../components/SuperAdminLoginForm';
@@ -124,6 +125,7 @@ import SuperAdminBoardingToggle from '../components/superadmin/SuperAdminBoardin
 import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnouncementsModule';
 import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
 import SuperAdminFinanceWipeModule from '../components/superadmin/SuperAdminFinanceWipeModule';
+import PlatformBillingModule from '../components/superadmin/PlatformBillingModule';
 import { SchoolProvider } from '../contexts/SchoolContext';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
@@ -237,7 +239,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'contact-inquiries' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'paystack' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe' | 'partners';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'contact-inquiries' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'paystack' | 'announcements' | 'online-users' | 'removed-staff' | 'finance-wipe' | 'platform-billing' | 'partners';
 
 const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'schools', label: 'Schools', group: 'Overview' as const },
@@ -257,6 +259,7 @@ const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'paystack', label: 'Paystack', group: 'System' as const },
   { id: 'platform-settings', label: 'Platform Settings', group: 'System' as const },
   { id: 'finance-wipe', label: 'Finance Config', group: 'System' as const },
+  { id: 'platform-billing', label: 'Platform Billing', group: 'System' as const },
   { id: 'removed-staff', label: 'Removed Staff', group: 'System' as const },
   { id: 'system-health', label: 'System Health', group: 'System' as const },
   { id: 'super-admins', label: 'Super Admins', group: 'System' as const },
@@ -1495,6 +1498,7 @@ const SuperAdminDashboard = () => {
     { id: 'paystack' as Section, label: 'Paystack', icon: CreditCard },
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
     { id: 'finance-wipe' as Section, label: 'Finance Config', icon: Trash2 },
+    { id: 'platform-billing' as Section, label: 'Platform Billing', icon: Receipt },
     { id: 'removed-staff' as Section, label: 'Removed Staff', icon: UserRoundSearch },
     { id: 'system-health' as Section, label: 'System Health', icon: Activity },
     { id: 'super-admins' as Section, label: 'Super Admins', icon: UserPlus },
@@ -1648,6 +1652,7 @@ const SuperAdminDashboard = () => {
               {section === 'platform-settings' && 'Platform Settings'}
               {section === 'paystack' && 'Paystack Payments'}
               {section === 'finance-wipe' && 'Finance Configuration'}
+              {section === 'platform-billing' && 'Platform Billing'}
               {section === 'removed-staff' && 'Removed Staff'}
               {section === 'school-general-chat' && 'School General Chat'}
               {section === 'chat-broadcast' && 'School Broadcast'}
@@ -3358,6 +3363,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'finance-wipe' && (
               <SuperAdminFinanceWipeModule schools={schools} />
+            )}
+
+            {section === 'platform-billing' && (
+              <PlatformBillingModule schools={schools} />
             )}
 
             {section === 'removed-staff' && (

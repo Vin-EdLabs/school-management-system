@@ -23,6 +23,7 @@ import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from './webPushService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
+import { handlePlatformBillingWebhookEvent } from './platformBillingService.js';
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -661,11 +662,18 @@ export async function verifyOnlinePayment(reference: string): Promise<{
 export async function handlePaystackWebhookEvent(rawBody: Buffer, signature: string): Promise<void> {
   const payload = JSON.parse(rawBody.toString('utf8')) as {
     event?: string;
-    data?: { reference?: string; id?: number; channel?: string; paid_at?: string; fees?: number };
+    data?: { reference?: string; id?: number; channel?: string; paid_at?: string; fees?: number; amount?: number };
   };
 
   const reference = payload.data?.reference;
   if (!reference) return;
+
+  // Platform billing (school paying ScholarNerve) uses a distinct reference prefix and its
+  // own signature/finalize path — never a school-fee payment, so hand it off immediately.
+  if (reference.startsWith('SNBILL-')) {
+    await handlePlatformBillingWebhookEvent(rawBody, signature, payload);
+    return;
+  }
 
   const parsed = parsePaymentReference(reference);
   if (!parsed) {

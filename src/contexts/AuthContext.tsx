@@ -25,6 +25,7 @@ const PRIMARY_ADMIN_MODULES = [
   'daily-fees',
   'payment-submissions',
   'paystack',
+  'platform-billing',
   'checkin-dashboard',
   'checkin-settings',
   'staff-attendance',
@@ -439,7 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-finance', 'boarding-print', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-finance', 'boarding-print', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management', 'platform-billing'].includes(module);
     }
 
     if (user.role === 'matron') {
@@ -452,7 +453,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Finance: financial sections only (financial dashboard, not the general admin dashboard)
     if (user.role === 'finance') {
-      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'daily-fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'calendar', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments', 'invoices', 'payment-submissions', 'paystack', 'my-staff-attendance', 'messages'].includes(module);
+      return ['students-view-only', 'teachers-view-only', 'other-staff-view-only', 'fees', 'daily-fees', 'income', 'expenses', 'transactions', 'cash-bank', 'payroll', 'reports', 'financial-dashboard', 'term-budget', 'calendar', 'settings', 'settings-password-only', 'payment-accounts', 'print-fee-status', 'finance-statement', 'ai-assistant', 'support-chat', 'parent-desk', 'audit', 'manual-adjustments', 'invoices', 'payment-submissions', 'paystack', 'platform-billing', 'my-staff-attendance', 'messages'].includes(module);
     }
 
     // Teacher: teacher section + profile + payment history

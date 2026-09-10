@@ -116,6 +116,7 @@ const GlobalAnnouncementPopup: React.FC = () => {
   const typeLabel = TYPE_LABELS[announcementType] || TYPE_LABELS.info;
   const typeIcon = TYPE_ICONS[announcementType] || TYPE_ICONS.info;
   const isUrgent = announcementType === 'urgent';
+  const isInvoice = announcementType === 'invoice';
 
   const sentLabel = current?.created_at
     ? new Date(current.created_at).toLocaleDateString('en-GB', {
@@ -139,6 +140,24 @@ const GlobalAnnouncementPopup: React.FC = () => {
       /* keep popup open */
     } finally {
       setMarking(false);
+    }
+  };
+
+  const handleViewInvoice = async () => {
+    if (!current || marking) return;
+    setMarking(true);
+    try {
+      await markAnnouncementRead(current.id);
+      if (hasMore) {
+        setIndex((i) => i + 1);
+      } else {
+        setQueue([]);
+      }
+    } catch {
+      /* still navigate even if marking read failed */
+    } finally {
+      setMarking(false);
+      window.dispatchEvent(new CustomEvent('scholarnerve-app-nav', { detail: { module: 'platform-billing' } }));
     }
   };
 
@@ -199,6 +218,32 @@ const GlobalAnnouncementPopup: React.FC = () => {
         <div className="global-announcement-card__body">
           {highlightSchoolName(current.displayBody, schoolName)}
         </div>
+
+        {isInvoice ? (
+          <button
+            type="button"
+            onClick={() => void handleViewInvoice()}
+            disabled={marking}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 4,
+              padding: '10px 16px',
+              borderRadius: 10,
+              border: 'none',
+              background: '#0D7377',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: marking ? 'default' : 'pointer',
+              opacity: marking ? 0.7 : 1,
+            }}
+          >
+            View Invoice
+            <span aria-hidden>→</span>
+          </button>
+        ) : null}
 
         <div className="global-announcement-card__footer-divider" />
 

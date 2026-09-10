@@ -1,11 +1,12 @@
 import { query } from '../db/connection.js';
 import { getIO } from '../socket.js';
 
-export type AnnouncementType = 'info' | 'warning' | 'maintenance' | 'update' | 'urgent';
+export type AnnouncementType = 'info' | 'warning' | 'maintenance' | 'update' | 'urgent' | 'invoice';
 export type AnnouncementTarget = 'all' | 'selected';
 export type DisplayStatus = 'Active' | 'Scheduled' | 'Expired' | 'Inactive';
 
 const TYPE_PRIORITY: Record<string, number> = {
+  invoice: 0,
   urgent: 0,
   warning: 1,
   maintenance: 2,
@@ -231,6 +232,7 @@ export async function getUnreadAnnouncementsForUser(
        AND (ga.expires_at IS NULL OR ga.expires_at > NOW())
      ORDER BY
        CASE ga.type
+         WHEN 'invoice' THEN 0
          WHEN 'urgent' THEN 0
          WHEN 'warning' THEN 1
          WHEN 'maintenance' THEN 2

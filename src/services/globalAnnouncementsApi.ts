@@ -1,6 +1,6 @@
 import { apiService } from './api';
 
-export type AnnouncementType = 'info' | 'warning' | 'maintenance' | 'update' | 'urgent';
+export type AnnouncementType = 'info' | 'warning' | 'maintenance' | 'update' | 'urgent' | 'invoice';
 export type DisplayStatus = 'Active' | 'Scheduled' | 'Expired' | 'Inactive';
 
 export type GlobalAnnouncement = {
@@ -121,6 +121,7 @@ export const TYPE_BORDER_COLORS: Record<AnnouncementType, string> = {
   maintenance: '#3b82f6',
   update: '#8b5cf6',
   urgent: '#ef4444',
+  invoice: '#0D7377',
 };
 
 export const TYPE_LABELS: Record<AnnouncementType, string> = {
@@ -129,6 +130,7 @@ export const TYPE_LABELS: Record<AnnouncementType, string> = {
   maintenance: 'MAINTENANCE NOTICE',
   update: 'SYSTEM UPDATE',
   urgent: 'URGENT NOTICE',
+  invoice: 'INVOICE',
 };
 
 export const TYPE_ICONS: Record<AnnouncementType, string> = {
@@ -137,4 +139,5 @@ export const TYPE_ICONS: Record<AnnouncementType, string> = {
   maintenance: '🔧',
   update: '🚀',
   urgent: '🚨',
+  invoice: '🧾',
 };

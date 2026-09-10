@@ -44,6 +44,29 @@ export function parsePaymentReference(reference: string): ParsedPaymentReference
   return { tenantId, studentId, timestamp };
 }
 
+export type ParsedPlatformBillingReference = {
+  tenantId: number;
+  invoiceId: number;
+  timestamp: number;
+};
+
+/** SNBILL-{tenant_id}-{invoice_id}-{timestamp} — platform billing (school paying ScholarNerve), never a school-fee reference. */
+export function buildPlatformBillingReference(tenantId: number, invoiceId: number): string {
+  return `SNBILL-${tenantId}-${invoiceId}-${Date.now()}`;
+}
+
+export function parsePlatformBillingReference(reference: string): ParsedPlatformBillingReference | null {
+  const match = String(reference || '').trim().match(/^SNBILL-(\d+)-(\d+)-(\d+)$/);
+  if (!match) return null;
+  const tenantId = Number(match[1]);
+  const invoiceId = Number(match[2]);
+  const timestamp = Number(match[3]);
+  if (!Number.isInteger(tenantId) || tenantId <= 0) return null;
+  if (!Number.isInteger(invoiceId) || invoiceId <= 0) return null;
+  if (!Number.isInteger(timestamp) || timestamp <= 0) return null;
+  return { tenantId, invoiceId, timestamp };
+}
+
 export function verifyPaystackSignature(rawBody: Buffer | string, signature: string, secretKey: string): boolean {
   const hash = crypto.createHmac('sha512', secretKey).update(rawBody).digest('hex');
   try {

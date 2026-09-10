@@ -57,6 +57,7 @@ interface Student {
   beneficiaryNotes?: string;
   enrollmentStatus?: string;
   inactivatedAcademicTermId?: number | null;
+  admissionAcademicTermId?: number | null;
 }
 
 interface EditStudentDialogProps {
@@ -75,7 +76,7 @@ function resolveMediaUrl(url: string | null | undefined): string | null {
 }
 
 const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, onClose, onSuccess }) => {
-  const { classes, updateStudent, students } = useData();
+  const { classes, updateStudent, students, setStudentAdmissionTerm } = useData();
   const queryClient = useQueryClient();
   const { schoolId } = useSchool();
   const { addAuditLog } = useAudit();
@@ -148,6 +149,12 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [academicTerms, setAcademicTerms] = useState<Array<{ id: number; label: string }>>([]);
   const [inactivationTermId, setInactivationTermId] = useState('');
+  const [admissionTermId, setAdmissionTermId] = useState('');
+  const [admissionTermReason, setAdmissionTermReason] = useState('');
+  const [savingAdmissionTerm, setSavingAdmissionTerm] = useState(false);
+
+  const canCorrectAdmissionTerm =
+    user?.role === 'super-admin' || user?.role === 'administrator' || user?.role === 'finance';
 
   const initialWasInactive = useMemo(
     () => (student ? normalizeEnrollmentStatus(student.enrollmentStatus) === 'inactive' : false),
@@ -161,6 +168,7 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
   useEffect(() => {
     if (!open) {
       setInactivationTermId('');
+      setAdmissionTermReason('');
       return;
     }
     let cancelled = false;
@@ -191,10 +199,47 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
         ...student,
         enrollmentStatus: student.enrollmentStatus || 'active',
       });
+      setAdmissionTermId(
+        student.admissionAcademicTermId != null ? String(student.admissionAcademicTermId) : ''
+      );
       setPhotoFile(null);
       setPhotoPreview(null);
     }
   }, [student]);
+
+  const handleSaveAdmissionTerm = async () => {
+    if (!student || !admissionTermId) return;
+    const newTermId = Number(admissionTermId);
+    if (newTermId === student.admissionAcademicTermId) {
+      toast({ title: 'No change', description: 'That is already the recorded admission term.' });
+      return;
+    }
+    setSavingAdmissionTerm(true);
+    try {
+      await setStudentAdmissionTerm(student.id, newTermId, admissionTermReason.trim() || undefined);
+      addAuditLog({
+        actionType: 'Edit',
+        module: 'Students',
+        itemId: student.id,
+        itemName: `${student.firstName} ${student.lastName}`,
+        reason: admissionTermReason.trim() || 'Admission term corrected',
+      });
+      toast({
+        title: 'Admission term updated',
+        description: `${student.firstName} ${student.lastName} is now recorded as admitted in the selected term.`,
+      });
+      setAdmissionTermReason('');
+      onSuccess();
+    } catch (err: unknown) {
+      toast({
+        title: 'Update failed',
+        description: err instanceof Error ? err.message : 'Failed to update admission term',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingAdmissionTerm(false);
+    }
+  };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -536,6 +581,48 @@ const EditStudentDialog: React.FC<EditStudentDialogProps> = ({ student, open, on
                 />
                 <FormFieldError message={fieldErrors.dateOfAdmission} />
               </div>
+              {canCorrectAdmissionTerm ? (
+                <div className="md:col-span-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+                  <Label htmlFor="admission-term-select">Admission term (correction)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    If this student was registered in the wrong term (e.g. added late while the previous
+                    term was still active), correct which term they should be recorded as admitted in
+                    here. This fixes the record only — it does not change any fees already posted.
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Select value={admissionTermId || undefined} onValueChange={setAdmissionTermId}>
+                      <SelectTrigger id="admission-term-select" className="sm:max-w-xs">
+                        <SelectValue placeholder="Select the correct term" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {academicTerms.map((term) => (
+                          <SelectItem key={term.id} value={String(term.id)}>
+                            {term.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        savingAdmissionTerm ||
+                        !admissionTermId ||
+                        Number(admissionTermId) === (student?.admissionAcademicTermId ?? null)
+                      }
+                      onClick={handleSaveAdmissionTerm}
+                    >
+                      {savingAdmissionTerm ? 'Saving…' : 'Save correction'}
+                    </Button>
+                  </div>
+                  <Input
+                    placeholder='Reason (optional, e.g. "added late — should be Term 2")'
+                    value={admissionTermReason}
+                    onChange={(e) => setAdmissionTermReason(e.target.value)}
+                  />
+                </div>
+              ) : null}
               <div className="md:col-span-2 space-y-2">
                 <Label htmlFor="previousSchool">Previous School</Label>
                 <Input

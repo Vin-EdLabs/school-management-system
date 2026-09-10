@@ -1088,6 +1088,100 @@ router.patch('/:id/status', requireRole('super-admin', 'administrator'), async (
   }
 });
 
+// Correct which academic term a student is recorded as admitted in.
+// Fixes the reporting/label tag only — does not touch already-posted ledger entries.
+router.patch(
+  '/:id/admission-term',
+  requireRole('super-admin', 'administrator', 'finance'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = req.user!.tenantId!;
+      const { id } = req.params;
+      const { admission_academic_term_id, reason } = req.body;
+
+      if (admission_academic_term_id == null || String(admission_academic_term_id).trim() === '') {
+        return res.status(400).json({ error: 'admission_academic_term_id is required' });
+      }
+      const termId = parseInt(String(admission_academic_term_id), 10);
+      if (Number.isNaN(termId) || termId <= 0) {
+        return res.status(400).json({ error: 'Invalid academic term' });
+      }
+
+      const termCheck = await query(
+        'SELECT id, term_name, year FROM academic_terms WHERE id = $1 AND tenant_id = $2',
+        [termId, tenantId]
+      );
+      if (termCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Academic term not found' });
+      }
+
+      const existing = await queryStudentById(tenantId, id);
+      if (!existing) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const previousTermId = existing.admission_academic_term_id ?? null;
+      if (Number(previousTermId) === termId) {
+        return res.json(existing);
+      }
+
+      const result = await query(
+        `UPDATE students
+         SET admission_academic_term_id = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 AND tenant_id = $3
+         RETURNING *`,
+        [termId, id, tenantId]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const row = (await queryStudentById(tenantId, id)) || result.rows[0];
+      const term = termCheck.rows[0];
+      const termLabel = `${term.term_name || ''} ${term.year || ''}`.trim();
+
+      try {
+        const studentLabel = await resolveStudentLabel(tenantId, parseInt(id, 10));
+        const actor = await resolveActorFromRequest(req);
+        await writeAuditLog({
+          tenantId,
+          userId: req.user!.id,
+          userRole: req.user!.role,
+          action: 'STUDENT_ADMISSION_TERM_CORRECTED',
+          entityType: 'STUDENT',
+          entityId: parseInt(id, 10),
+          module: 'academics',
+          summary: withActor(
+            `Admission term corrected to ${termLabel || 'selected term'} — ${studentLabel}`,
+            actor
+          ),
+          details: {
+            previousAdmissionTermId: previousTermId,
+            newAdmissionTermId: termId,
+            termLabel,
+            reason: reason ? String(reason).slice(0, 500) : null,
+          },
+          beforeValues: existing,
+          afterValues: row,
+          ipAddress: getClientIp(req),
+          userAgent: req.get('user-agent') || null,
+        });
+      } catch (auditErr) {
+        console.error('[admission-term] audit log failed:', auditErr);
+      }
+
+      emitTenantDataChanged(tenantId, 'student', 'updated');
+
+      res.json(row);
+    } catch (error: any) {
+      console.error('Update student admission term error:', error);
+      const status = error?.status || 500;
+      res.status(status).json({ error: error?.message || 'Failed to update admission term' });
+    }
+  }
+);
+
 // Promote student
 router.post('/:id/promote', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
   try {

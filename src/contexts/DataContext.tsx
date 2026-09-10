@@ -242,6 +242,7 @@ interface DataContextType {
     status: 'active' | 'inactive',
     options?: { inactivationTermId?: number }
   ) => Promise<void>;
+  setStudentAdmissionTerm: (id: string, admissionTermId: number, reason?: string) => Promise<void>;
   applyPaymentLocally: (
     payment: Payment,
     amount: number,
@@ -829,6 +830,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     queryClient.setQueryData(studentsQueryKeys.detail(schoolId, id), mapped);
   };
 
+  const setStudentAdmissionTerm = async (id: string, admissionTermId: number, reason?: string) => {
+    await apiService.patch(`/students/${id}/admission-term`, {
+      admission_academic_term_id: admissionTermId,
+      reason,
+    });
+    const fresh = await apiService.get<Record<string, unknown>>(`/students/${id}`);
+    const mapped = mapStudent(fresh);
+    replaceStudentInCache(queryClient, schoolId, id, mapped);
+    queryClient.setQueryData(studentsQueryKeys.detail(schoolId, id), mapped);
+  };
+
   const applyPaymentLocally = (
     payment: Payment,
     amount: number,
@@ -1131,6 +1143,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addStudent,
       updateStudent,
       setStudentStatus,
+      setStudentAdmissionTerm,
       applyPaymentLocally,
       revertPaymentLocally,
       addTeacher,

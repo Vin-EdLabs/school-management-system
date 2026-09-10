@@ -616,14 +616,11 @@ self.addEventListener('fetch', (event) => {
 
   const isApiRequest = url.pathname.startsWith('/api/');
   if (isApiRequest) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) return response;
-          return offlineAssetResponse();
-        })
-        .catch(() => offlineAssetResponse())
-    );
+    // Always pass through whatever the server actually answered — including
+    // 401/403/404/500 — so the app's own error handling (e.g. session-expiry
+    // detection) can see the real status. Only synthesize the offline
+    // response when the network request itself fails (genuinely offline).
+    event.respondWith(fetch(event.request).catch(() => offlineAssetResponse()));
     return;
   }
 

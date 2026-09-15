@@ -149,6 +149,23 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'students.enrollment_status backfill'
   );
 
+  // --- students: soft delete (superadmin-recoverable, mirrors teachers) ---
+  await safe(
+    `ALTER TABLE students ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
+    'students.is_deleted'
+  );
+  await safe(`ALTER TABLE students ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`, 'students.deleted_at');
+  await safe(`ALTER TABLE students ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL`, 'students.deleted_by');
+  await safe(`ALTER TABLE students ADD COLUMN IF NOT EXISTS deletion_reason TEXT`, 'students.deletion_reason');
+  await safe(
+    `ALTER TABLE students ADD COLUMN IF NOT EXISTS pre_delete_enrollment_status VARCHAR(50)`,
+    'students.pre_delete_enrollment_status'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_students_is_deleted ON students (tenant_id, is_deleted)`,
+    'idx_students_is_deleted'
+  );
+
   // --- parent desk ---
   await safe(
     `ALTER TABLE parent_messages ADD COLUMN IF NOT EXISTS is_read_by_school BOOLEAN NOT NULL DEFAULT false`,

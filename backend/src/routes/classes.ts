@@ -412,10 +412,10 @@ router.delete('/:id', requireRole('super-admin', 'administrator'), async (req: A
     
     // Check if class has students
     const studentsCheck = await query(
-      'SELECT COUNT(*) as count FROM students WHERE class_assigned_id = $1 AND tenant_id = $2',
+      'SELECT COUNT(*) as count FROM students WHERE class_assigned_id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false',
       [id, tenantId]
     );
-    
+
     if (parseInt(studentsCheck.rows[0].count) > 0) {
       return res.status(400).json({ error: 'Cannot delete class with assigned students' });
     }
@@ -565,7 +565,7 @@ router.post('/:id/assign-students', requireRole('super-admin', 'administrator'),
     
     const maxSize = classCheck.rows[0].max_class_size;
     const currentCount = await query(
-      'SELECT COUNT(*) as count FROM students WHERE class_assigned_id = $1 AND tenant_id = $2',
+      'SELECT COUNT(*) as count FROM students WHERE class_assigned_id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false',
       [id, tenantId]
     );
     

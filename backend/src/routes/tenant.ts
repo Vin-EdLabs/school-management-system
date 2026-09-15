@@ -23,7 +23,7 @@ router.get('/public-stats', async (_req, res) => {
       payments,
     ] = await Promise.all([
       query(`SELECT COUNT(*)::int AS count FROM tenants WHERE is_active = true AND archived_at IS NULL`).catch(() => ({ rows: [{ count: 0 }] })),
-      query(`SELECT COUNT(*)::int AS count FROM students`).catch(() => ({ rows: [{ count: 0 }] })),
+      query(`SELECT COUNT(*)::int AS count FROM students WHERE COALESCE(is_deleted, false) = false`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM teachers WHERE ${TEACHER_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COUNT(*)::int AS count FROM other_staff WHERE ${OTHER_STAFF_COUNTABLE_WHERE_BARE}`).catch(() => ({ rows: [{ count: 0 }] })),
       query(`SELECT COALESCE(SUM(COALESCE(amount_paid, amount, 0)), 0)::numeric AS total FROM payments WHERE COALESCE(is_voided, false) = false`).catch(() => ({ rows: [{ total: 0 }] })),

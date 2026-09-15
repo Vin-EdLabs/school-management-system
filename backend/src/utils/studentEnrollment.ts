@@ -1,5 +1,6 @@
-/** SQL fragment: only currently enrolled active students (counted in totals). */
-export const ACTIVE_STUDENT_WHERE = "COALESCE(s.enrollment_status, 'active') = 'active'";
+/** SQL fragment: only currently enrolled active students (counted in totals). Excludes soft-deleted students immediately — a super admin later purging or restoring the record doesn't change this. */
+export const ACTIVE_STUDENT_WHERE =
+  "COALESCE(s.enrollment_status, 'active') = 'active' AND COALESCE(s.is_deleted, false) = false";
 
 export const ACTIVE_STUDENT_JOIN = `AND ${ACTIVE_STUDENT_WHERE}`;
 

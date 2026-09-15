@@ -235,7 +235,10 @@ interface DataContextType {
   loading: boolean;
   loadDomains: (domains: DataDomain[], options?: { silent?: boolean; force?: boolean }) => Promise<void>;
   refresh: (domains?: DataDomain[]) => Promise<void>;
-  addStudent: (student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
+  addStudent: (
+    student: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>,
+    options?: { confirmDuplicate?: boolean }
+  ) => Promise<{ id: string; studentId: string; admissionNumber: string } | void>;
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   setStudentStatus: (
     id: string,
@@ -243,6 +246,7 @@ interface DataContextType {
     options?: { inactivationTermId?: number }
   ) => Promise<void>;
   setStudentAdmissionTerm: (id: string, admissionTermId: number, reason?: string) => Promise<void>;
+  removeStudent: (id: string, password: string, reason?: string) => Promise<void>;
   applyPaymentLocally: (
     payment: Payment,
     amount: number,
@@ -747,7 +751,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [socket, isAuthenticated, loadDomains]);
 
   // Student functions
-  const addStudent = async (studentData: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>) => {
+  const addStudent = async (
+    studentData: Omit<Student, 'id' | 'studentId' | 'admissionNumber'>,
+    options?: { confirmDuplicate?: boolean }
+  ) => {
     markStudentMutation();
     const optimisticId = `optimistic-${Date.now()}`;
     const className =
@@ -769,6 +776,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const backendData = mapStudentToBackend(studentData);
+      if (options?.confirmDuplicate) backendData.confirm_duplicate = true;
       const result = await apiService.post<Record<string, unknown>>('/students', backendData);
       const newStudent = mapStudent(result);
       replaceStudentInCache(queryClient, schoolId, optimisticId, newStudent);
@@ -839,6 +847,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const mapped = mapStudent(fresh);
     replaceStudentInCache(queryClient, schoolId, id, mapped);
     queryClient.setQueryData(studentsQueryKeys.detail(schoolId, id), mapped);
+  };
+
+  const removeStudent = async (id: string, password: string, reason?: string) => {
+    await apiService.post(`/students/${id}/remove`, {
+      password,
+      ...(reason?.trim() ? { reason: reason.trim() } : {}),
+    });
+    removeStudentFromCache(queryClient, schoolId, id);
+    await refresh(['students']);
   };
 
   const applyPaymentLocally = (
@@ -1144,6 +1161,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateStudent,
       setStudentStatus,
       setStudentAdmissionTerm,
+      removeStudent,
       applyPaymentLocally,
       revertPaymentLocally,
       addTeacher,

@@ -29,6 +29,7 @@ import {
   normalizeDateOnly,
 } from '../constants/studentTermQueries.js';
 import { recalculateStudentTermFeeForActiveTerm } from '../services/ledgerFinanceService.js';
+import { removeStudent } from '../services/studentRemovalService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -215,9 +216,12 @@ const STUDENT_LIST_SELECT_LEGACY = `
 `;
 
 const STUDENT_STATUS_WHERE = `(
-  $2::text = 'all'
-  OR ($2::text = 'inactive' AND ${INACTIVE_ENROLLMENT_WHERE_S})
-  OR (COALESCE(s.enrollment_status, 'active') = $2)
+  COALESCE(s.is_deleted, false) = false
+  AND (
+    $2::text = 'all'
+    OR ($2::text = 'inactive' AND ${INACTIVE_ENROLLMENT_WHERE_S})
+    OR (COALESCE(s.enrollment_status, 'active') = $2)
+  )
 )`;
 
 async function resolveTermBoundsForId(
@@ -274,7 +278,7 @@ async function queryStudentsLeftInTerm(
     params.push(classId);
   }
 
-  const baseWhere = `s.tenant_id = $1 AND ${LEAVERS_TERM_WHERE_S}${classFilter}`;
+  const baseWhere = `s.tenant_id = $1 AND COALESCE(s.is_deleted, false) = false AND ${LEAVERS_TERM_WHERE_S}${classFilter}`;
 
   const result = await query(
     `SELECT s.id, s.tenant_id, s.first_name, s.last_name, s.gender, s.date_of_birth, s.nationality,
@@ -350,7 +354,7 @@ async function queryStudentById(tenantId: number, id: string): Promise<any | nul
     const result = await query(
       `SELECT ${STUDENT_SELECT_FIELDS}
        ${STUDENT_FROM_JOINS}
-       WHERE s.id = $1 AND s.tenant_id = $2`,
+       WHERE s.id = $1 AND s.tenant_id = $2 AND COALESCE(s.is_deleted, false) = false`,
       [id, tenantId]
     );
     return result.rows[0] || null;
@@ -561,6 +565,44 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     const enrollmentStatus = requestedStatus === 'pending' ? 'pending' : 'active';
     const admissionTermId = await getActiveAcademicTermId(tenantId);
 
+    if (!studentData.confirm_duplicate) {
+      const dupCheck = await query(
+        `SELECT s.id, s.first_name, s.last_name, s.student_id, s.admission_number, s.enrollment_status,
+                COALESCE(c.class_name, '') AS class_name
+         FROM students s
+         LEFT JOIN classes c ON c.id = s.class_assigned_id
+         WHERE s.tenant_id = $1
+           AND COALESCE(s.is_deleted, false) = false
+           AND LOWER(TRIM(s.first_name)) = LOWER(TRIM($2))
+           AND LOWER(TRIM(s.last_name)) = LOWER(TRIM($3))
+           AND s.date_of_birth IS NOT DISTINCT FROM $4::date
+           AND s.class_assigned_id IS NOT DISTINCT FROM $5::integer
+         LIMIT 5`,
+        [
+          tenantId,
+          studentData.first_name || '',
+          studentData.last_name || '',
+          studentData.date_of_birth || null,
+          studentData.class_assigned_id || null,
+        ]
+      );
+      if (dupCheck.rows.length > 0) {
+        return res.status(409).json({
+          code: 'DUPLICATE_STUDENT',
+          error: 'A student with the same name, date of birth, and class already exists.',
+          matches: dupCheck.rows.map((r) => ({
+            id: r.id,
+            firstName: r.first_name,
+            lastName: r.last_name,
+            studentId: r.student_id,
+            admissionNumber: r.admission_number,
+            enrollmentStatus: r.enrollment_status,
+            className: r.class_name || null,
+          })),
+        });
+      }
+    }
+
     let lastError: any;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { studentId, admissionNumber } = await nextStudentIdentifiers(tenantId, attempt);
@@ -630,6 +672,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
             admissionNumber,
             enrollmentStatus,
             classAssignedId: studentData.class_assigned_id || null,
+            duplicateOverride: !!studentData.confirm_duplicate,
           },
           afterValues: result.rows[0],
           ipAddress: getClientIp(req),
@@ -1543,6 +1586,77 @@ router.post('/:id/admission-letters/generate', requireRole('super-admin', 'admin
   } catch (error) {
     console.error('Generate admission letter error:', error);
     res.status(500).json({ error: 'Failed to generate admission letter' });
+  }
+});
+
+// Soft-remove a student — hidden from all school lists, recoverable only by super admin
+// Requires the acting admin's own account password, re-verified server-side, before the removal proceeds.
+router.post('/:id/remove', requireRole('super-admin', 'administrator'), async (req: AuthRequest, res) => {
+  try {
+    const tenantId = req.user!.tenantId!;
+    const studentId = parseInt(req.params.id, 10);
+    if (Number.isNaN(studentId)) return res.status(400).json({ error: 'Invalid student id' });
+    const reason = String(req.body?.reason || '').trim() || undefined;
+    const password = String(req.body?.password || '');
+    const actor = await resolveActorFromRequest(req);
+
+    const existing = await query(
+      `SELECT id, first_name, last_name, student_id FROM students WHERE id = $1 AND tenant_id = $2 AND COALESCE(is_deleted, false) = false`,
+      [studentId, tenantId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    const label = `${existing.rows[0].first_name} ${existing.rows[0].last_name}`;
+    const staffId = existing.rows[0].student_id;
+
+    if (!password.trim()) {
+      return res.status(400).json({ error: 'Password required to remove a student' });
+    }
+    const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.user!.id]);
+    const passwordValid =
+      userResult.rows.length > 0 && (await bcrypt.compare(password, userResult.rows[0].password_hash));
+    if (!passwordValid) {
+      await writeAuditLog({
+        tenantId,
+        userId: req.user!.id,
+        userRole: req.user!.role,
+        action: 'STUDENT_REMOVE_FAILED_AUTH',
+        entityType: 'STUDENT',
+        entityId: studentId,
+        module: 'academics',
+        status: 'failed',
+        summary: withActor(`Incorrect password entered while attempting to remove student — ${label} (${staffId})`, actor),
+        details: { studentId: staffId },
+        ipAddress: getClientIp(req),
+        userAgent: req.get('user-agent') || null,
+      });
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    await removeStudent(tenantId, studentId, req.user!.id, reason);
+
+    await writeAuditLog({
+      tenantId,
+      userId: req.user!.id,
+      userRole: req.user!.role,
+      action: 'SOFT_DELETE',
+      entityType: 'STUDENT',
+      entityId: studentId,
+      module: 'academics',
+      summary: withActor(`Student removed — ${label} (${staffId}); sent to the ScholarNerve team for recovery or deletion`, actor),
+      details: { reason, studentId: staffId, passwordVerified: true },
+      ipAddress: getClientIp(req),
+      userAgent: req.get('user-agent') || null,
+    });
+
+    emitTenantDataChanged(tenantId, 'student', 'deleted');
+    res.json({ message: 'Student removed from active lists. The ScholarNerve team can restore or permanently delete this record.' });
+  } catch (error: any) {
+    const status = error?.status || 500;
+    if (status !== 500) return res.status(status).json({ error: error.message });
+    console.error('Remove student error:', error);
+    res.status(500).json({ error: 'Failed to remove student' });
   }
 });
 

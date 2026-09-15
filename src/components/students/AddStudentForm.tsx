@@ -10,7 +10,17 @@ import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { uploadStudentPhotoInBackground } from '@/hooks/useStudentCache';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon } from 'lucide-react';
+import { Loader2, Save, UserPlus, Camera, X, GraduationCap as ScholarshipIcon, AlertTriangle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import { cn } from '@/lib/utils';
@@ -25,6 +35,16 @@ import { resolveApiOrigin } from '@/utils/mediaUrl';
 
 interface AddStudentFormProps {
   onSuccess?: (mode?: 'active' | 'pending') => void;
+}
+
+interface DuplicateStudentMatch {
+  id: number;
+  firstName: string;
+  lastName: string;
+  studentId: string;
+  admissionNumber: string;
+  enrollmentStatus: string;
+  className: string | null;
 }
 
 const API_BASE = resolveApiOrigin();
@@ -47,6 +67,10 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
   const [validationSummary, setValidationSummary] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    enrollmentStatus: 'active' | 'pending';
+    matches: DuplicateStudentMatch[];
+  } | null>(null);
 
   const matchingStudents = useMemo(() => {
     if (!siblingSearch.trim()) return [];
@@ -169,7 +193,7 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     setPhotoPreview(null);
   };
 
-  const submitStudent = async (enrollmentStatus: 'active' | 'pending') => {
+  const submitStudent = async (enrollmentStatus: 'active' | 'pending', force = false) => {
     if (isSubmitting) return;
 
     const requiresClass = enrollmentStatus === 'active';
@@ -182,11 +206,14 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
     const photoToUpload = passportPhoto;
     const photoPreviewUrl = photoPreview;
     try {
-      const created = await addStudent({
-        ...formData,
-        classAssignedId,
-        enrollmentStatus,
-      });
+      const created = await addStudent(
+        {
+          ...formData,
+          classAssignedId,
+          enrollmentStatus,
+        },
+        { confirmDuplicate: force }
+      );
 
       toast({
         title: enrollmentStatus === 'pending' ? 'Saved as pending' : 'Student Added Successfully',
@@ -237,9 +264,14 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
 
       if (onSuccess) onSuccess(enrollmentStatus);
     } catch (error) {
+      const apiError = error as Error & { code?: string; data?: { matches?: DuplicateStudentMatch[] } };
+      if (!force && apiError?.code === 'DUPLICATE_STUDENT') {
+        setDuplicatePrompt({ enrollmentStatus, matches: apiError.data?.matches || [] });
+        return;
+      }
       toast({
         title: "Error",
-        description: "Failed to add student. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to add student. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -552,11 +584,14 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
                   <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-1">Search & Link Internal Siblings</Label>
                   <div className="relative">
                     <Input
-                      type="text"
+                      type="search"
                       placeholder="Type sibling name or admission number..."
                       value={siblingSearch}
                       onChange={(e) => setSiblingSearch(e.target.value)}
                       className="h-12 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl pr-10"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore=""
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
                       <UserPlus className="w-4 h-4" />
@@ -880,6 +915,51 @@ const AddStudentForm: React.FC<AddStudentFormProps> = ({ onSuccess }) => {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!duplicatePrompt} onOpenChange={(v) => !v && setDuplicatePrompt(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Possible duplicate student
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  A student with the same name, date of birth, and class already exists. Add this student anyway?
+                </p>
+                <div className="space-y-2">
+                  {duplicatePrompt?.matches.map((m) => (
+                    <div
+                      key={m.id}
+                      className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 text-sm"
+                    >
+                      <p className="font-semibold text-slate-800 dark:text-slate-200">
+                        {m.firstName} {m.lastName}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        {m.studentId} · {m.admissionNumber} · {m.className || 'No class'} · {m.enrollmentStatus}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicatePrompt(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const status = duplicatePrompt?.enrollmentStatus || 'active';
+                setDuplicatePrompt(null);
+                void submitStudent(status, true);
+              }}
+            >
+              Add anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

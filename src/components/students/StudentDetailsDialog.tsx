@@ -22,6 +22,7 @@ import {
   Loader2,
   FileDown,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { enrollmentStatusLabel, isAlumniStudent, statusBadgeClass, normalizeEnrollmentStatus, guardianContactLinks } from './studentRegistryUtils';
 import { cn } from '@/lib/utils';
@@ -31,9 +32,12 @@ import { isActivePayment, paymentAmountValue } from '../../utils/feeCalculations
 import AdmissionLetterDocument, { type AdmissionLetterData } from './AdmissionLetterDocument';
 import { downloadAdmissionLetterPdfFromData } from './admissionLetterPdf';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { useSchool } from '@/contexts/SchoolContext';
 import { StudentBoardingTab } from '@/components/boarding/StudentBoardingTab';
 import { boardingService } from '@/services/boardingService';
+import StaffActionConfirmDialog from '@/components/common/StaffActionConfirmDialog';
 
 interface Student {
   id: string;
@@ -86,61 +90,36 @@ interface StudentDetailsDialogProps {
   totalFeesForStudent?: number;
 }
 
+interface StudentTransportInfo {
+  enrolled_at: string;
+  status: string;
+  route_name: string;
+  route_id: string;
+  time_of_day: string;
+  route_color: string;
+  stop_name: string;
+  stop_id: string;
+  latitude: string;
+  longitude: string;
+  plate_number: string | null;
+  vehicle_name: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+}
+
 const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, open, onClose, payments = [], totalFeesForStudent = 0 }) => {
   const { school } = useSchool();
-  if (!student) return null;
-
-  const alumni = isAlumniStudent(student);
-  const status = normalizeEnrollmentStatus(student.enrollmentStatus);
-
-  const studentPayments = payments.filter((p: any) => String(p.studentId) === String(student.id));
-  let runningPaid = 0;
-  const paymentsWithBalance = [...studentPayments]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map(p => {
-      if (isActivePayment(p)) {
-        runningPaid += paymentAmountValue(p);
-      }
-      return { ...p, remainingAfter: Math.max(0, totalFeesForStudent - runningPaid) };
-    })
-    .reverse();
-
-  const calculateAge = (dateOfBirth: string) => {
-    const today = new Date();
-    const birthDate = new Date(dateOfBirth);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-
-    return age;
-  };
-
-  interface StudentTransportInfo {
-    enrolled_at: string;
-    status: string;
-    route_name: string;
-    route_id: string;
-    time_of_day: string;
-    route_color: string;
-    stop_name: string;
-    stop_id: string;
-    latitude: string;
-    longitude: string;
-    plate_number: string | null;
-    vehicle_name: string | null;
-    driver_name: string | null;
-    driver_phone: string | null;
-  }
+  const { user } = useAuth();
+  const { removeStudent } = useData();
+  const canDelete = user?.role === 'super-admin' || user?.role === 'administrator';
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [deletePasswordError, setDeletePasswordError] = React.useState<string | null>(null);
 
   const [transportInfo, setTransportInfo] = React.useState<StudentTransportInfo | null>(null);
   const [loadingTransport, setLoadingTransport] = React.useState(false);
   const [showBoardingTab, setShowBoardingTab] = React.useState(false);
-
   const boardingModuleEnabled = Boolean(school?.boarding_enabled);
-
   const [admissionLetters, setAdmissionLetters] = React.useState<Array<{ id: number; version_number: number; reference_number: string | null; created_at: string }>>([]);
   const [loadingLetters, setLoadingLetters] = React.useState(false);
   const [generatingLetter, setGeneratingLetter] = React.useState(false);
@@ -188,6 +167,60 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
       setSelectedLetter(null);
     }
   }, [open, student?.id, boardingModuleEnabled]);
+
+  if (!student) return null;
+
+  const alumni = isAlumniStudent(student);
+  const status = normalizeEnrollmentStatus(student.enrollmentStatus);
+
+  const handleRemoveStudent = async (password?: string) => {
+    setDeletePasswordError(null);
+    setDeleting(true);
+    try {
+      await removeStudent(student.id, password || '');
+      toast({
+        title: 'Student removed',
+        description: `${student.firstName} ${student.lastName} was moved to the ScholarNerve team's recovery list.`,
+      });
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (e: unknown) {
+      const status = (e as { status?: number })?.status;
+      const message = e instanceof Error ? e.message : 'Could not remove student';
+      if (status === 401) {
+        setDeletePasswordError(message || 'Incorrect password');
+      } else {
+        toast({ title: 'Remove failed', description: message, variant: 'destructive' });
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const studentPayments = payments.filter((p: any) => String(p.studentId) === String(student.id));
+  let runningPaid = 0;
+  const paymentsWithBalance = [...studentPayments]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map(p => {
+      if (isActivePayment(p)) {
+        runningPaid += paymentAmountValue(p);
+      }
+      return { ...p, remainingAfter: Math.max(0, totalFeesForStudent - runningPaid) };
+    })
+    .reverse();
+
+  const calculateAge = (dateOfBirth: string) => {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+
+    return age;
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -821,10 +854,35 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({ student, op
           </Tabs>
         </DialogBody>
 
-        <DialogFooter className={detailDialogFooterClass}>
+        <DialogFooter className={cn(detailDialogFooterClass, 'sm:justify-between')}>
+          {canDelete ? (
+            <Button
+              variant="outline"
+              className="text-destructive border-destructive/40 hover:bg-destructive/10"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Remove student
+            </Button>
+          ) : <span />}
           <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
+
+      <StaffActionConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={(o) => {
+          setShowDeleteConfirm(o);
+          if (!o) setDeletePasswordError(null);
+        }}
+        action="soft"
+        staffType="student"
+        staffName={`${student.firstName} ${student.lastName}`}
+        staffId={student.studentId}
+        loading={deleting}
+        requirePassword
+        passwordError={deletePasswordError}
+        onConfirm={(password) => void handleRemoveStudent(password)}
+      />
     </Dialog>
   );
 };

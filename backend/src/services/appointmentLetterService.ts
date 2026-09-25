@@ -155,6 +155,7 @@ export async function buildLetterContent(tenantId: number, teacherId: number) {
       ? `Subject Teacher — ${subjects.join(', ')}`
       : 'Teacher';
   const department = deriveDepartment(teacher.class_name || '', subjects);
+  const employmentType = String(teacher.employment_type || '').trim() || 'Permanent';
 
   const rawOpening = config.bodyOpening?.trim() || DEFAULT_BODY_OPENING;
   const rawClosing = config.bodyClosing?.trim() || DEFAULT_BODY_CLOSING;
@@ -187,12 +188,12 @@ export async function buildLetterContent(tenantId: number, teacherId: number) {
     },
     positionTitle,
     department,
-    employmentType: 'Permanent',
+    employmentType,
     terms: {
       position: positionTitle,
       department,
       startDate: teacher.employment_date,
-      employmentType: 'Permanent',
+      employmentType,
       probationPeriod: config.probationPeriod || '',
       monthlySalary: Number(teacher.monthly_salary) || 0,
       workingHours: config.workingHours || '',

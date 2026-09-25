@@ -3,14 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Printer, Eye, FileText } from 'lucide-react';
+import { Download, Eye, FileText } from 'lucide-react';
 import { apiService } from '@/services/api';
 import { useSchool } from '@/contexts/SchoolContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import { toast } from '@/hooks/use-toast';
 import LazyTeacherAvatar from '../teachers/LazyTeacherAvatar';
-import AppointmentLetterDocument, { type AppointmentLetterData, printAppointmentLetter } from '../teachers/AppointmentLetterDocument';
+import AppointmentLetterDocument, { type AppointmentLetterData } from '../teachers/AppointmentLetterDocument';
+import { appointmentLetterFilename, downloadAppointmentLetterPdf } from '../teachers/appointmentLetterDownload';
 
 export type AppointmentLetterRow = {
   id: number;
@@ -40,10 +41,10 @@ const TeacherAppointmentLettersPanel: React.FC<Props> = ({ compact = false, teac
   const [teacher, setTeacher] = useState<TeacherInfo | null>(teacherProp ?? null);
   const [letters, setLetters] = useState<AppointmentLetterRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [previewLetter, setPreviewLetter] = useState<AppointmentLetterData | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoadingId, setPreviewLoadingId] = useState<number | null>(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
 
   const loadLetters = useCallback(async () => {
     setLoading(true);
@@ -78,28 +79,23 @@ const TeacherAppointmentLettersPanel: React.FC<Props> = ({ compact = false, teac
     return res.letter_content || null;
   };
 
-  const printLetter = async (letter: AppointmentLetterRow) => {
-    if (!teacher) return;
-    setDownloadingId(letter.id);
+  const downloadLetter = async (letter: AppointmentLetterRow) => {
+    setPdfLoadingId(letter.id);
     try {
-      const res = await apiService.get<{ letter_content?: AppointmentLetterData }>(
-        `/teachers/me/appointment-letters/${letter.id}/download`
-      );
-      if (res.letter_content) {
-        setPreviewLetter(res.letter_content);
-        setPreviewOpen(true);
-        setTimeout(() => { printAppointmentLetter(); }, 800);
+      const content = await fetchLetterContent(letter);
+      if (!content) {
+        toast({ title: 'Download unavailable', description: 'Could not load the letter.', variant: 'destructive' });
         return;
       }
-      toast({ title: 'Print unavailable', description: 'Could not load the letter.', variant: 'destructive' });
+      await downloadAppointmentLetterPdf(content, appointmentLetterFilename(content));
     } catch (e: unknown) {
       toast({
-        title: 'Print failed',
+        title: 'Download failed',
         description: e instanceof Error ? e.message : 'Try again later',
         variant: 'destructive',
       });
     } finally {
-      setDownloadingId(null);
+      setPdfLoadingId(null);
     }
   };
 
@@ -187,11 +183,11 @@ const TeacherAppointmentLettersPanel: React.FC<Props> = ({ compact = false, teac
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                disabled={downloadingId === letter.id}
-                onClick={() => void printLetter(letter)}
+                disabled={pdfLoadingId === letter.id}
+                onClick={() => void downloadLetter(letter)}
               >
-                <Printer className="h-4 w-4" />
-                {downloadingId === letter.id ? 'Loading…' : 'Print'}
+                <Download className="h-4 w-4" />
+                {pdfLoadingId === letter.id ? 'Preparing…' : 'Download PDF'}
               </Button>
             </div>
           </li>

@@ -17,6 +17,7 @@ import {
   type AppointmentLetterData,
 } from './AppointmentLetterDocument';
 import AppointmentLetterGeneratorDialog from './AppointmentLetterGeneratorDialog';
+import { appointmentLetterFilename, downloadAppointmentLetterPdf } from './appointmentLetterDownload';
 import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { resolveLogoUrl } from '../../services/tenantService';
@@ -60,6 +61,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   const [generating, setGenerating] = useState(false);
   const [letterPreview, setLetterPreview] = useState<AppointmentLetterData | null>(null);
   const [showLetterGenerator, setShowLetterGenerator] = useState(false);
+  const [letterActionId, setLetterActionId] = useState<number | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
   const [detaching, setDetaching] = useState(false);
@@ -174,6 +176,26 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
       });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleLetterDownload = async (letterId: number) => {
+    if (!teacher) return;
+    setLetterActionId(letterId);
+    try {
+      const res = await apiService.get<{ letter_content?: AppointmentLetterData }>(
+        `/teachers/${teacher.id}/appointment-letters/${letterId}/download`
+      );
+      if (!res.letter_content) throw new Error('Could not load this letter.');
+      await downloadAppointmentLetterPdf(res.letter_content, appointmentLetterFilename(res.letter_content));
+    } catch (e: unknown) {
+      toast({
+        title: 'Download failed',
+        description: e instanceof Error ? e.message : 'Try again',
+        variant: 'destructive',
+      });
+    } finally {
+      setLetterActionId(null);
     }
   };
 
@@ -401,8 +423,20 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                   {letters.length > 0 && (
                     <ul className="mt-3 text-sm space-y-1 break-words">
                       {letters.map((l) => (
-                        <li key={l.id}>
-                          v{l.version_number} — {formatDisplayDate(l.generated_at)} — {l.position_title}
+                        <li key={l.id} className="flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            v{l.version_number} — {formatDisplayDate(l.generated_at)} — {l.position_title}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 px-2 text-xs"
+                            disabled={letterActionId === l.id}
+                            onClick={() => void handleLetterDownload(l.id)}
+                          >
+                            {letterActionId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                            PDF
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -429,7 +463,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
         <AppointmentLetterGeneratorDialog
           open={showLetterGenerator}
           onClose={() => setShowLetterGenerator(false)}
-          teacherId={teacher.id}
+          teacherId={Number(teacher.id)}
           teacherStaffId={teacher.staffId}
           initialLetter={letterPreview}
           checklist={checklist}

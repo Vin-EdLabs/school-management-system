@@ -86,54 +86,67 @@ export function schoolInitialsFromName(name: string): string {
   return 'SC';
 }
 
-export function printAppointmentLetter(elementId: string = 'appointment-letter-print-area') {
+/** Clone the rendered letter into a standalone element that is safe to print / rasterize. */
+export function cloneLetterForOutput(elementId: string = 'appointment-letter-print-area'): HTMLElement | null {
   const el = document.getElementById(elementId);
-  if (!el) return;
+  if (!el) return null;
   const clone = el.cloneNode(true) as HTMLElement;
   clone.removeAttribute('id');
-  clone.querySelectorAll('.no-print, button, [type="button"], input, [contenteditable]').forEach(el => el.remove());
-  clone.querySelectorAll('.hidden').forEach(el => {
-    (el as HTMLElement).style.display = 'inline';
-    el.classList.remove('hidden');
+  clone.querySelectorAll('.no-print, button, [type="button"], input, [contenteditable]').forEach((n) => n.remove());
+  clone.querySelectorAll('.hidden').forEach((n) => {
+    (n as HTMLElement).style.display = 'inline';
+    n.classList.remove('hidden');
   });
-  clone.querySelectorAll('[style*="display: none"]').forEach(el => {
-    (el as HTMLElement).style.display = '';
+  clone.querySelectorAll('[style*="display: none"]').forEach((n) => {
+    (n as HTMLElement).style.display = '';
   });
+  clone.classList.remove('shadow-lg', 'rounded');
+  return clone;
+}
+
+export function printAppointmentLetter(elementId: string = 'appointment-letter-print-area') {
+  const clone = cloneLetterForOutput(elementId);
+  if (!clone) {
+    toast({ title: 'Nothing to print', description: 'The letter is not ready yet.', variant: 'destructive' });
+    return;
+  }
 
   const headStylesheets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
-    .map(el => el.outerHTML)
+    .map((n) => n.outerHTML)
     .join('\n');
 
-  openPrintPreview({
-    title: 'Appointment Letter',
-    html: `
+  const html = `<!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8" />
+        <base href="${window.location.origin}/" />
         <title>Appointment Letter</title>
         ${headStylesheets}
         <style>
-          @page { margin: 5mm; size: A4 portrait; }
-          @media print {
-            body, body * { visibility: visible !important; }
-            .no-print, .no-print *, button, button * { display: none !important; }
-            body {
-              margin: 0 !important; padding: 0 !important;
-              -webkit-print-color-adjust: exact; print-color-adjust: exact;
-            }
+          @page { margin: 8mm; size: A4 portrait; }
+          html, body {
+            margin: 0 !important; padding: 0 !important;
+            background: #fff !important; color: #000 !important;
+            font-family: 'Times New Roman', Times, serif; font-size: 13px;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
-          body {
-            font-family: 'Times New Roman', Times, serif;
-            color: #000; background: #fff; margin: 0; font-size: 13px;
+          .appointment-letter-doc {
+            max-width: none !important; width: 100% !important; margin: 0 !important;
+            box-shadow: none !important; box-sizing: border-box;
           }
+          .appointment-letter-doc tr, .appointment-letter-doc img { page-break-inside: avoid; }
+          .no-print, .no-print *, button { display: none !important; }
           table { width: 100%; border-collapse: collapse; }
-          td, th { padding: 6px; vertical-align: middle; }
         </style>
       </head>
-      <body>
-        ${clone.outerHTML}
-      </body>
-    </html>
-  `,
+      <body>${clone.outerHTML}</body>
+    </html>`;
+
+  openPrintPreview({
+    title: 'Appointment Letter',
+    html,
+    printDocumentHtml: html,
+    isFullDocument: true,
   });
 }
 
@@ -152,7 +165,7 @@ function PortalAccessBlock({ data }: { data: AppointmentLetterData }) {
   }
 
   return (
-    <div className="border-2 border-black p-4 mb-4 space-y-2">
+    <div className="pdf-avoid border-2 border-black p-4 mb-4 space-y-2">
       <p className="font-bold uppercase text-xs tracking-wider mb-2">Teacher Portal Access</p>
       {portal.instructions ? (
         <p className="text-xs text-slate-700 mb-2">{portal.instructions}</p>
@@ -219,6 +232,10 @@ const AppointmentLetterDocument: React.FC<Props> = ({ data, id = 'appointment-le
   const contactLine = [data.school.phone, data.school.email].filter(Boolean).join(' · ');
   const refDisplay = data.referenceNumber || 'Pending';
   const showLogo = logoSrc && !logoFailed;
+  const photoSrc = resolveLetterMediaUrl(data.teacher.photoUrl);
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const showPhoto = photoSrc && !photoFailed;
+  const teacherInitials = schoolInitialsFromName(data.teacher.fullName);
 
   const [letterDateDraft, setLetterDateDraft] = useState(data.letterDate || todayString());
   const [sigDateDraft, setSigDateDraft] = useState(signatureDateString());
@@ -230,6 +247,10 @@ const AppointmentLetterDocument: React.FC<Props> = ({ data, id = 'appointment-le
   const stampInputRef = useRef<HTMLInputElement>(null);
   const empSigInputRef = useRef<HTMLInputElement>(null);
   const isTeacher = userRole === 'teacher';
+
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [data.teacher.photoUrl]);
 
   useEffect(() => {
     setLetterDateDraft(data.letterDate || todayString());
@@ -283,7 +304,7 @@ const AppointmentLetterDocument: React.FC<Props> = ({ data, id = 'appointment-le
       <table className="w-full border-collapse">
         <tbody>
           <tr className="border-none">
-            <td className="w-20 align-middle border-none p-0">
+            <td className="w-20 align-top border-none p-0">
               <div className="w-20 h-20 border-2 border-black inline-flex items-center justify-center overflow-hidden bg-slate-100">
                 {showLogo ? (
                   <img
@@ -308,8 +329,20 @@ const AppointmentLetterDocument: React.FC<Props> = ({ data, id = 'appointment-le
                 <p className="text-xs text-slate-600">{contactLine}</p>
               ) : null}
             </td>
-            <td className="w-24 align-middle border-none text-right p-0">
-              <p className="text-[9px] text-slate-500 font-bold">Ref: {refDisplay}</p>
+            <td className="w-24 align-top border-none text-right p-0">
+              <div className="teacher-photo-box w-20 h-20 border-2 border-black inline-flex items-center justify-center overflow-hidden bg-slate-100">
+                {showPhoto ? (
+                  <img
+                    src={photoSrc!}
+                    alt={data.teacher.fullName}
+                    onError={() => setPhotoFailed(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-lg font-bold text-slate-400">{teacherInitials}</span>
+                )}
+              </div>
+              <p className="text-[9px] text-slate-500 font-bold mt-1">Ref: {refDisplay}</p>
             </td>
           </tr>
         </tbody>
@@ -391,7 +424,7 @@ const AppointmentLetterDocument: React.FC<Props> = ({ data, id = 'appointment-le
       ) : null}
 
       {/* Signatures Area */}
-      <div className="grid grid-cols-2 gap-8 mt-8 mb-4">
+      <div className="pdf-avoid grid grid-cols-2 gap-8 mt-8 mb-4">
         {/* EMPLOYER Signature */}
         <div className="flex flex-col items-center text-center text-xs">
           <div className="w-full border-t border-black pt-1 font-bold uppercase text-[10px] tracking-wider mb-2">

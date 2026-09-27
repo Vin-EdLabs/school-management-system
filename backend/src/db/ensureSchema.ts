@@ -93,6 +93,13 @@ export async function ensureSupplementalSchema(): Promise<void> {
     `ALTER TABLE classes ADD COLUMN IF NOT EXISTS is_final_class BOOLEAN NOT NULL DEFAULT false`,
     'classes.is_final_class'
   );
+  // Legacy installs still carry a NOT NULL `name` column predating `class_name`. Nothing writes
+  // to it anymore, so relax the constraint (and backfill any old NULLs) instead of blocking inserts.
+  await safe(
+    `UPDATE classes SET name = class_name WHERE name IS NULL AND class_name IS NOT NULL`,
+    'classes.name backfill'
+  );
+  await safe(`ALTER TABLE classes ALTER COLUMN name DROP NOT NULL`, 'classes.name drop not null');
 
   // --- students ---
   await safe(

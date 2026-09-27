@@ -261,6 +261,8 @@ const runMigrations = async () => {
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS max_class_size INTEGER DEFAULT 30`).catch(() => { });
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`).catch(() => { });
     await client.query(`UPDATE classes SET class_name = name WHERE class_name IS NULL AND name IS NOT NULL`).catch(() => { });
+    await client.query(`UPDATE classes SET name = class_name WHERE name IS NULL AND class_name IS NOT NULL`).catch(() => { });
+    await client.query(`ALTER TABLE classes ALTER COLUMN name DROP NOT NULL`).catch(() => { });
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS level_order INTEGER`).catch(() => { });
     await client.query(`ALTER TABLE classes ADD COLUMN IF NOT EXISTS is_final_class BOOLEAN NOT NULL DEFAULT false`).catch(() => { });
 

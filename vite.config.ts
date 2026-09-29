@@ -12,7 +12,6 @@ function isReactVendorModule(id: string): boolean {
     id.includes("@radix-ui") ||
     id.includes("react-router") ||
     id.includes("@tanstack/") ||
-    id.includes("recharts") ||
     id.includes("next-themes") ||
     id.includes("vaul") ||
     id.includes("sonner") ||
@@ -93,11 +92,20 @@ export default defineConfig(({ mode }) => ({
   build: {
     sourcemap: false,
     reportCompressedSize: false,
-    chunkSizeWarningLimit: 1200,
+    chunkSizeWarningLimit: 1400,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
+
+          if (
+            id.includes("recharts") ||
+            id.includes("/d3-") ||
+            id.includes("\\d3-") ||
+            id.includes("victory-vendor")
+          ) {
+            return "vendor-charts";
+          }
 
           if (isReactVendorModule(id)) {
             return "vendor-react";
@@ -109,13 +117,11 @@ export default defineConfig(({ mode }) => ({
 
           if (id.includes("firebase")) return "vendor-firebase";
 
-          if (
-            id.includes("jspdf") ||
-            id.includes("html2canvas") ||
-            id.includes("html2pdf") ||
-            id.includes("dom-to-image")
-          ) {
+          if (id.includes("jspdf") || id.includes("html2pdf")) {
             return "vendor-pdf";
+          }
+          if (id.includes("html2canvas") || id.includes("dom-to-image")) {
+            return "vendor-canvas";
           }
           if (id.includes("xlsx") || id.includes("jszip")) return "vendor-export";
         },

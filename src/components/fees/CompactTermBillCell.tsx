@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import BoardingFeeBreakdownDisplay, { boardingFeeBreakdownTotal } from './BoardingFeeBreakdownDisplay';
 import { prefetchFeeStructureItemsSummary } from '../../services/feeStructureItems';
-
-const TermBillBreakdown = lazy(() => import('./TermBillBreakdown'));
+import TermBillBreakdown from './TermBillBreakdown';
 
 type CompactTermBillCellProps = {
   total: number;

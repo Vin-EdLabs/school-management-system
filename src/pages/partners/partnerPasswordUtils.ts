@@ -1,3 +1,5 @@
+import { savePartnerLoginCredentials, PARTNER_LOGIN_REALM } from '@/services/partnerApi';
+
 export const PARTNER_MIN_PASSWORD = 6;
 
 /** Autocomplete tokens — isolate partner portal from school/parent logins in password managers. */
@@ -18,7 +20,6 @@ export function suggestPartnerPassword(length = 8): string {
 
 /** Save login to localStorage and browser password manager when available. */
 export async function persistPartnerLogin(identifier: string, password: string): Promise<void> {
-  const { savePartnerLoginCredentials, PARTNER_LOGIN_REALM } = await import('@/services/partnerApi');
   savePartnerLoginCredentials(identifier, password);
   try {
     if (typeof window !== 'undefined' && 'PasswordCredential' in window) {

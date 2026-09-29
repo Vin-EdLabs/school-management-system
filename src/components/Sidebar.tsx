@@ -65,6 +65,7 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
+import { chatService } from '../services/chatService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
 import {
   Sidebar,
@@ -602,7 +603,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         setPaymentSubmissionsPending(0);
       }
       if (hasAccess('messages')) {
-        const { chatService } = await import('../services/chatService');
         const c = await chatService.listChannels();
         messagesCount = Number(c?.total_unread ?? 0);
         setMessagesUnread(messagesCount);

@@ -1554,7 +1554,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
     // Build performance rows from subject scores
     const performanceRows = (termReport.subjects || []).map((subj: string) => {
-      const score = student.subjectScores?.[subj] || {};
+      const score = (student.subjectScores?.[subj] || {}) as any;
       return {
         subject: subj,
         classScore: score.classScore ?? null,
@@ -3101,7 +3101,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                       {/* Subject breakdown (screen only — not included in class table print) */}
                       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {termReport.subjects.map(subj => {
-                          const sAssignments = termReport.assignmentsBySubject[subj] || [];
+                          const sAssignments = (termReport.assignmentsBySubject?.[subj] || []) as Array<{ id: string | number; name: string; assignment_type: string; max_score: string | number }>;
                           return (
                             <div key={subj} className="border rounded-lg p-3 bg-gray-50">
                               <p className="font-semibold text-gray-800 text-sm mb-1">{subj}</p>

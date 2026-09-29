@@ -48,7 +48,7 @@ interface StatCardProps {
   subtext: string;
   trend?: { value: string; positive: boolean };
   progress?: number;
-  icon?: React.ComponentType<{ className?: string; size?: number }>;
+  icon?: React.ComponentType<{ className?: string; size?: number | string }>;
   accentColor?: 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'violet';
   delay?: number;
 }

@@ -542,7 +542,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     ? getHeadmasterMenuItems(hasAccess, user?.role, headmasterHasTeachingAccess(user))
     : null;
   const boardingEnabled = Boolean(school?.boarding_enabled);
-  const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role, boardingEnabled);
+  const menuItems = getMenuItems(hasAccess, user?.role, boardingEnabled);
 
   const sidebarSearchItems = useMemo((): SidebarSearchItem[] => {
     const sections: Array<[string, Array<{ id: string; label: string }>]> = isHeadmaster && headmasterMenu
@@ -555,7 +555,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         ]
       : isBoardingStaff
         ? [
-            ...(menuItems.boarding.length > 0 ? [['Boarding & Wellness', menuItems.boarding]] : []),
+            ...(menuItems.boarding.length > 0 ? [['Boarding & Wellness', menuItems.boarding] as [string, Array<{ id: string; label: string }>]] : []),
             ['System', menuItems.system],
           ]
       : [
@@ -565,7 +565,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           ['Financial Ops', menuItems.financial],
           ['Data Center', menuItems.records],
           ['Transport Management', menuItems.transport],
-          ...(menuItems.boarding.length > 0 ? [['Boarding', menuItems.boarding]] : []),
+          ...(menuItems.boarding.length > 0 ? [['Boarding', menuItems.boarding] as [string, Array<{ id: string; label: string }>]] : []),
           ['Announcements & parent desk', menuItems.announcements],
           ['Innovation', menuItems.ai],
           ['Configurations', menuItems.configurations],

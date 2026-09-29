@@ -77,7 +77,7 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
     try {
       const [data, school] = await Promise.all([
         apiService.get<Route[]>('/transport/routes'),
-        apiService.get<{ latitude: number; longitude: number; label: string; school_name: string } | null>('/transport/school-location'),
+        apiService.get<{ latitude: number; longitude: number; label: string; school_name: string; logo_url?: string } | null>('/transport/school-location'),
       ]);
       setRoutes(data);
       if (school) {

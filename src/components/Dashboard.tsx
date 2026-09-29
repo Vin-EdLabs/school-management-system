@@ -3,32 +3,33 @@ import React, { useState, useMemo, useEffect } from 'react';
 import SidebarWrapper from './SidebarWrapper';
 import DashboardHome from './dashboard/DashboardHome';
 import AdministratorDashboard from './dashboard/AdministratorDashboard';
-import FinancialDashboard from './dashboard/FinancialDashboard';
-import StudentsModule from './students/StudentsModule';
-import TeachersModule from './teachers/TeachersModule';
-import OtherStaffModule from './staff/OtherStaffModule';
+import { BrandedLoading } from '@/components/common/BrandedLoading';
+const FinancialDashboard = React.lazy(() => import('./dashboard/FinancialDashboard'));
+const StudentsModule = React.lazy(() => import('./students/StudentsModule'));
+const TeachersModule = React.lazy(() => import('./teachers/TeachersModule'));
+const OtherStaffModule = React.lazy(() => import('./staff/OtherStaffModule'));
 import ClassesModule from './classes/ClassesModule';
 import CalendarModule from './CalendarModule';
-import FeesModule from './fees/FeesModule';
+const FeesModule = React.lazy(() => import('./fees/FeesModule'));
 import DailyFeesModule from './daily-fees/DailyFeesModule';
 import IncomeModule from './income/IncomeModule';
 import ExpensesModule from './expenses/ExpensesModule';
-import PayrollModule from './payroll/PayrollModule';
-import AdvancedReports from './reports/AdvancedReports';
-import AcademicReports from './reports/AcademicReports';
-import SettingsModule from './settings/SettingsModule';
-import UsersModule from './users/UsersModule';
-import AuditModule from './audit/AuditModule';
+const PayrollModule = React.lazy(() => import('./payroll/PayrollModule'));
+const AdvancedReports = React.lazy(() => import('./reports/AdvancedReports'));
+const AcademicReports = React.lazy(() => import('./reports/AcademicReports'));
+const SettingsModule = React.lazy(() => import('./settings/SettingsModule'));
+const UsersModule = React.lazy(() => import('./users/UsersModule'));
+const AuditModule = React.lazy(() => import('./audit/AuditModule'));
 import PrintFeeStatusModule from './fees/PrintFeeStatusModule';
 import TransactionsPage from './finance/TransactionsPage';
 import CashBankModule from './finance/CashBankModule';
 import PaymentAccountsModule from './configurations/PaymentAccountsModule';
-import BillingModule from './billing/BillingModule';
+const BillingModule = React.lazy(() => import('./billing/BillingModule'));
 import AppointmentLetterSettings from './configurations/AppointmentLetterSettings';
 import AdmissionLetterSettings from './configurations/AdmissionLetterSettings';
 import IdCardSettings from './configurations/IdCardSettings';
 import GradeConfigurationSettings from './settings/GradeConfigurationSettings';
-import IdCardsModule from './id-cards/IdCardsModule';
+const IdCardsModule = React.lazy(() => import('./id-cards/IdCardsModule'));
 import LostCardsModule from './lost-cards/LostCardsModule';
 import ManualAdjustmentsReport from './finance/ManualAdjustmentsReport';
 import PaymentSubmissionsModule from './finance/PaymentSubmissionsModule';
@@ -40,22 +41,22 @@ import TeacherDashboard from './teacher/TeacherDashboard';
 import ViewAllClasses from './classes/ViewAllClasses';
 import TeacherClassesModule from './teacher/TeacherClassesModule';
 import AttendanceModule from './teacher/AttendanceModule';
-import GradesModule from './teacher/GradesModule';
+const GradesModule = React.lazy(() => import('./teacher/GradesModule'));
 import TeacherProfileModule from './teacher/TeacherProfileModule';
 import TeacherAppointmentLettersModule from './teacher/TeacherAppointmentLettersModule';
 import TeacherPaymentHistoryModule from './teacher/TeacherPaymentHistoryModule';
-import TeacherQuizModule from './teacher/TeacherQuizModule';
-import AiChatModule from './ai/AiChatModule';
+const TeacherQuizModule = React.lazy(() => import('./teacher/TeacherQuizModule'));
+const AiChatModule = React.lazy(() => import('./ai/AiChatModule'));
 import RecordsModule from './records/RecordsModule';
 import SubjectsModule from './subjects/SubjectsModule';
 import SupportModule from './support/SupportModule';
 import TransportOverview from './transport/TransportOverview';
-import TransportMap from './transport/TransportMap';
+const TransportMap = React.lazy(() => import('./transport/TransportMap'));
 import TransportRoutes from './transport/TransportRoutes';
 import TransportVehicles from './transport/TransportVehicles';
 import TransportDrivers from './transport/TransportDrivers';
 import TransportStudents from './transport/TransportStudents';
-import BoardingModule from './boarding/BoardingModule';
+const BoardingModule = React.lazy(() => import('./boarding/BoardingModule'));
 import BoardingOverview from './boarding/BoardingOverview';
 import BoardingDormitories from './boarding/BoardingDormitories';
 import BoardingBoarders from './boarding/BoardingBoarders';
@@ -69,20 +70,20 @@ import BoardingPrintHouseList from './boarding/BoardingPrintHouseList';
 import PushNotificationsModule from './notifications/PushNotificationsModule';
 import ParentDeskAdminModule from './notifications/ParentDeskAdminModule';
 import ParentAccountsModule from './parent/ParentAccountsModule';
-import BulkPrintIdCards from './id-cards/BulkPrintIdCards';
-import InvoicesModule from './invoices/InvoicesModule';
+const BulkPrintIdCards = React.lazy(() => import('./id-cards/BulkPrintIdCards'));
+const InvoicesModule = React.lazy(() => import('./invoices/InvoicesModule'));
 import EndOfYearWizard from './academic/EndOfYearWizard';
 import BirthdayModule from './birthday/BirthdayModule';
-import CheckinDashboard from './checkins/CheckinDashboard';
+const CheckinDashboard = React.lazy(() => import('./checkins/CheckinDashboard'));
 import StaffCheckinPanel from './checkins/StaffCheckinPanel';
 import CheckinSettings from './checkins/CheckinSettings';
 import StaffAttendanceSettings from './configurations/StaffAttendanceSettings';
-import StaffAttendanceDashboard from './staffAttendance/StaffAttendanceDashboard';
+const StaffAttendanceDashboard = React.lazy(() => import('./staffAttendance/StaffAttendanceDashboard'));
 import MyAttendanceHistory from './staffAttendance/MyAttendanceHistory';
 import ComplaintsDashboard from './complaints/ComplaintsDashboard';
 import MyComplaintsPage from './complaints/MyComplaintsPage';
-import WebsiteManagementModule from './website/WebsiteManagementModule';
-import ChatModule from './chat/ChatModule';
+const WebsiteManagementModule = React.lazy(() => import('./website/WebsiteManagementModule'));
+const ChatModule = React.lazy(() => import('./chat/ChatModule'));
 import { isHeadmasterRole } from '../utils/headmasterPortal';
 import HeadmasterDashboard from './headmaster/HeadmasterDashboard';
 import AllStaffView from './staff/AllStaffView';
@@ -575,7 +576,15 @@ const DashboardContent = () => {
                     activeModule === 'messages' ? 'flex min-h-0 flex-1 flex-col' : undefined
                   }
                 >
-                  {renderActiveModule()}
+                  <React.Suspense
+                    fallback={
+                      <div className="flex h-64 items-center justify-center">
+                        <BrandedLoading label="Loading module..." active />
+                      </div>
+                    }
+                  >
+                    {renderActiveModule()}
+                  </React.Suspense>
                 </div>
               </TermReadOnlyShell>
             </div>

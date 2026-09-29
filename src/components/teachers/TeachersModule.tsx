@@ -10,7 +10,7 @@ const TeachersModule = () => {
   const [activeTab, setActiveTab] = useState('view-all');
 
   return (
-    <div className="min-h-full p-4 pb-8 sm:p-6 sm:pb-10">
+    <div className="min-h-full p-3.5 pb-6 sm:p-4 md:p-5 sm:pb-8">
       <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-green-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/20">

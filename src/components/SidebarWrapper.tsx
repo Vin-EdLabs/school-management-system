@@ -28,7 +28,7 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
   }, [activeModule]);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider style={{ '--sidebar-width': '15rem' } as React.CSSProperties}>
       <MobileChatShellProvider setMobileChatOpen={setMobileChatOpen}>
       <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC] bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.14),transparent_30%),radial-gradient(circle_at_top_right,rgba(20,108,67,0.10),transparent_28%)] dark:bg-slate-950/80 dark:bg-none">
         <AppSidebar
@@ -44,9 +44,9 @@ const SidebarWrapper: React.FC<SidebarWrapperProps> = ({
               mobileChatOpen && 'max-lg:hidden'
             )}
           >
-            <div className="flex h-full min-h-[3.25rem] sm:min-h-0 items-center gap-2 sm:gap-4 px-3 sm:px-4 md:px-8">
-              <SidebarTrigger className="h-10 w-10 shrink-0 rounded-xl border border-slate-200/80 bg-white/90 text-slate-700 shadow-sm transition-all hover:scale-105 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 touch-manipulation dark:h-9 dark:w-9 dark:rounded-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" />
-              <div className="hidden h-6 w-px bg-slate-200/80 dark:bg-slate-800 sm:block" />
+            <div className="flex h-full min-h-[3.25rem] sm:min-h-0 items-center gap-2 sm:gap-3 px-3 sm:px-4 md:px-5 lg:px-6">
+              <SidebarTrigger className="h-9 w-9 shrink-0 rounded-xl border border-slate-200/80 bg-white/90 text-slate-700 shadow-sm transition-all hover:scale-105 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 touch-manipulation dark:h-9 dark:w-9 dark:rounded-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700" />
+              <div className="hidden h-5 w-px bg-slate-200/80 dark:bg-slate-800 sm:block" />
               <MainHeader
                 activeModule={activeModule}
                 setActiveModule={setActiveModule}

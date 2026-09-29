@@ -927,125 +927,125 @@ export const TransportMap: React.FC = () => {
 
         {/* Map canvas */}
         <div className={cn('flex-1 min-h-[320px] lg:min-h-0 relative bg-slate-200', fullMapView && 'min-h-0 h-full')}>
-          {/* Full map — compact floating controls */}
-          {fullMapView && (
-            <div className="absolute top-4 right-4 z-[1001] flex items-center gap-2 pointer-events-none">
-              {!buildMode && (
-                <>
-                  <Select value={selectedRouteId} onValueChange={handleRouteSelect}>
-                    <SelectTrigger className="pointer-events-auto w-40 h-9 rounded-xl bg-white/95 backdrop-blur-md border-white/80 shadow-lg text-sm">
-                      <SelectValue placeholder="All routes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All routes</SelectItem>
-                      {routes.map(r => (
-                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={mapStyle} onValueChange={v => setMapStyle(v as TransportMapStyle)}>
-                    <SelectTrigger className="pointer-events-auto w-32 h-9 rounded-xl bg-white/95 backdrop-blur-md border-white/80 shadow-lg text-sm">
-                      <Layers className="h-3.5 w-3.5 mr-1 text-violet-500" />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(TRANSPORT_MAP_TILES) as TransportMapStyle[]).map(key => (
-                        <SelectItem key={key} value={key}>{TRANSPORT_MAP_TILES[key].label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                variant="primaryAction"
-                className="pointer-events-auto h-9 rounded-xl shadow-lg gap-1.5"
-                onClick={() => setFullMapView(false)}
-              >
-                <Minimize2 className="h-4 w-4" />
-                Exit full map
-              </Button>
-            </div>
-          )}
-
-          {/* Search overlay */}
-          <div className={cn(
-            'absolute top-4 left-4 z-[1000] pointer-events-none',
-            fullMapView ? 'right-4 sm:right-[22rem] lg:right-[26rem]' : 'right-4 max-w-lg'
-          )}>
-            <div className="pointer-events-auto rounded-2xl bg-white/95 backdrop-blur-md border border-white/80 shadow-2xl shadow-slate-900/10 overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
-                <Search className="h-4 w-4 text-violet-500 shrink-0" />
-                <Input
-                  value={searchQuery}
-                  onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
-                  onFocus={() => setSearchOpen(true)}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder={buildMode ? 'Search places — Tema, Wamfie, Accra…' : 'Search places or routes — Accra, Tema, driver, stop…'}
-                  className="border-0 shadow-none focus-visible:ring-0 h-9 bg-transparent text-sm"
-                />
-                {buildMode && placeSearchLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
-              </div>
-              {searchOpen && searchQuery.trim() && (
-                <div>
-                  {/* Place results (if any) shown first */}
-                  {placeSearchResults.length > 0 ? (
-                    <ul className="max-h-48 overflow-y-auto py-1">
-                      {placeSearchResults.map(r => (
-                        <li key={r.place_id}>
-                          <button
-                            type="button"
-                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
-                            onClick={() => handlePickPlaceResult(r)}
-                          >
-                            <MapPin className="h-3.5 w-3.5 text-violet-500 shrink-0 mt-0.5" />
-                            <span className="text-slate-700 line-clamp-2">{r.display_name}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : placeSearchLoading ? null : (
-                    <></>
-                  )}
-
-                  {/* Route matches shown next */}
-                  {matchingRoutes.length > 0 ? (
-                    <ul className="max-h-48 overflow-y-auto py-1">
-                      {matchingRoutes.map(r => (
-                        <li key={r.id}>
-                          <button
-                            type="button"
-                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
-                            onClick={() => handlePickRouteFromSearch(r)}
-                          >
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ background: r.color || '#3b82f6' }} />
-                            <span className="min-w-0 flex-1">
-                              <span className="font-semibold text-slate-800 block truncate">{r.name}</span>
-                              <span className="text-slate-500 block truncate">
-                                {[r.driver_name, r.vehicle_name].filter(Boolean).join(' · ') || 'Unassigned'}
-                                {r.stops?.length ? ` · ${r.stops.length} stops` : ''}
-                                {(() => {
-                                  const d = getRouteDistance(r);
-                                  return d ? ` · ${formatDistance(d.totalKm)}` : '';
-                                })()}
-                              </span>
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    // If neither places nor routes found, show a helpful message
-                    <p className="px-3 py-2.5 text-xs text-slate-400">No places or routes match your search</p>
-                  )}
+          {/* Top floating bar: Search overlay on left, Controls on right */}
+          <div className="absolute top-4 left-4 right-4 z-[1000] pointer-events-none flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            {/* Search overlay */}
+            <div className="pointer-events-none w-full sm:max-w-xs md:max-w-sm lg:max-w-md">
+              <div className="pointer-events-auto rounded-2xl bg-white/95 backdrop-blur-md border border-white/80 shadow-2xl shadow-slate-900/10 overflow-hidden">
+                <div className={cn("flex items-center gap-2 px-3 py-2", searchOpen && searchQuery.trim() && "border-b border-slate-100")}>
+                  <Search className="h-4 w-4 text-violet-500 shrink-0" />
+                  <Input
+                    value={searchQuery}
+                    onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                    onFocus={() => setSearchOpen(true)}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder={buildMode ? 'Search places — Tema, Wamfie, Accra…' : 'Search places or routes — Accra, Tema, driver, stop…'}
+                    className="border-0 shadow-none focus-visible:ring-0 h-9 bg-transparent text-sm"
+                  />
+                  {buildMode && placeSearchLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400 shrink-0" />}
                 </div>
+                {searchOpen && searchQuery.trim() && (
+                  <div>
+                    {/* Place results (if any) shown first */}
+                    {placeSearchResults.length > 0 ? (
+                      <ul className="max-h-48 overflow-y-auto py-1">
+                        {placeSearchResults.map(r => (
+                          <li key={r.place_id}>
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
+                              onClick={() => handlePickPlaceResult(r)}
+                            >
+                              <MapPin className="h-3.5 w-3.5 text-violet-500 shrink-0 mt-0.5" />
+                              <span className="text-slate-700 line-clamp-2">{r.display_name}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : placeSearchLoading ? null : (
+                      <></>
+                    )}
+
+                    {/* Route matches shown next */}
+                    {matchingRoutes.length > 0 ? (
+                      <ul className="max-h-48 overflow-y-auto py-1">
+                        {matchingRoutes.map(r => (
+                          <li key={r.id}>
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2.5 text-xs hover:bg-violet-50 flex items-start gap-2 transition-colors"
+                              onClick={() => handlePickRouteFromSearch(r)}
+                            >
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0 mt-1" style={{ background: r.color || '#3b82f6' }} />
+                              <span className="min-w-0 flex-1">
+                                <span className="font-semibold text-slate-800 block truncate">{r.name}</span>
+                                <span className="text-slate-500 block truncate">
+                                  {[r.driver_name, r.vehicle_name].filter(Boolean).join(' · ') || 'Unassigned'}
+                                  {r.stops?.length ? ` · ${r.stops.length} stops` : ''}
+                                  {(() => {
+                                    const d = getRouteDistance(r);
+                                    return d ? ` · ${formatDistance(d.totalKm)}` : '';
+                                  })()}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      // If neither places nor routes found, show a helpful message
+                      <p className="px-3 py-2.5 text-xs text-slate-400">No places or routes match your search</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              {buildMode && mapFocus.mode === 'place' && (
+                <p className="pointer-events-none mt-2 text-center text-[11px] font-medium text-slate-600 bg-white/90 backdrop-blur rounded-full px-3 py-1 shadow-sm border border-slate-200/80">
+                  Searched location — add stop or click the map
+                </p>
               )}
             </div>
-            {buildMode && mapFocus.mode === 'place' && (
-              <p className="pointer-events-none mt-2 text-center text-[11px] font-medium text-slate-600 bg-white/90 backdrop-blur rounded-full px-3 py-1 shadow-sm border border-slate-200/80">
-                Searched location — add stop or click the map
-              </p>
+
+            {/* Full map — compact floating controls on right */}
+            {fullMapView && (
+              <div className="pointer-events-auto flex items-center gap-2 shrink-0 flex-wrap">
+                {!buildMode && (
+                  <>
+                    <Select value={selectedRouteId} onValueChange={handleRouteSelect}>
+                      <SelectTrigger className="w-36 sm:w-40 h-9 rounded-xl bg-white/95 backdrop-blur-md border-white/80 shadow-lg text-sm">
+                        <SelectValue placeholder="All routes" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[2000]">
+                        <SelectItem value="all">All routes</SelectItem>
+                        {routes.map(r => (
+                          <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={mapStyle} onValueChange={v => setMapStyle(v as TransportMapStyle)}>
+                      <SelectTrigger className="w-28 sm:w-32 h-9 rounded-xl bg-white/95 backdrop-blur-md border-white/80 shadow-lg text-sm">
+                        <Layers className="h-3.5 w-3.5 mr-1 text-violet-500 shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[2000]">
+                        {(Object.keys(TRANSPORT_MAP_TILES) as TransportMapStyle[]).map(key => (
+                          <SelectItem key={key} value={key}>{TRANSPORT_MAP_TILES[key].label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primaryAction"
+                  className="h-9 rounded-xl shadow-lg gap-1.5 whitespace-nowrap"
+                  onClick={() => setFullMapView(false)}
+                >
+                  <Minimize2 className="h-4 w-4" />
+                  Exit full map
+                </Button>
+              </div>
             )}
           </div>
 

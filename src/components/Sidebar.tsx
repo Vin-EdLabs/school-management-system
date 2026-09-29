@@ -65,6 +65,7 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { resolveLogoUrl } from '../services/tenantService';
+import { chatService } from '../services/chatService';
 import { headmasterHasTeachingAccess, isHeadmasterRole } from '../utils/headmasterPortal';
 import {
   Sidebar,
@@ -306,12 +307,12 @@ const MenuSection: React.FC<{
   if (items.length === 0) return null;
 
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-3 mb-2 opacity-80 group-data-[collapsible=icon]:hidden">
+    <SidebarGroup className="py-0.5 px-1">
+      <SidebarGroupLabel className="text-[10px] font-bold text-sidebar-foreground/50 uppercase tracking-[0.2em] px-2.5 mb-1 opacity-80 group-data-[collapsible=icon]:hidden">
         {label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu className="space-y-1">
+        <SidebarMenu className="space-y-0.5">
           {items.map((item) => {
             const unread = itemCounts?.[item.id] ?? 0;
             return (
@@ -335,7 +336,7 @@ const MenuSection: React.FC<{
                   }}
                   tooltip={item.label}
                   className={cn(
-                    "readonly-allowed relative rounded-xl mx-auto w-[calc(100%-12px)] h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
+                    "readonly-allowed relative rounded-xl w-full px-2.5 h-10 text-emerald-50/72 transition-all duration-300 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mx-0 dark:h-9 dark:text-sidebar-foreground/70",
                     activeModule === item.id
                       ? headmasterAccent
                         ? "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-400/25 ring-1 ring-white/15 before:absolute before:left-1 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/80 dark:bg-amber-600 dark:bg-none dark:text-white dark:shadow-amber-500/20 dark:before:hidden"
@@ -351,8 +352,8 @@ const MenuSection: React.FC<{
                       </span>
                     )}
                   </span>
-                  <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-3 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                    <span className="truncate">{item.label}</span>
+                  <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden ml-1.5 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                    <span className="whitespace-nowrap" title={item.label}>{item.label}</span>
                     {unread > 0 && (
                       <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0 text-[10px] font-bold leading-5 text-destructive-foreground">
                         {unread > 99 ? '99+' : unread}
@@ -443,9 +444,9 @@ const CollapsibleMenuSection: React.FC<{
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
-      <SidebarGroup className="py-1">
+      <SidebarGroup className="py-0.5 px-1">
         <SidebarGroupLabel className={cn(
-          "text-[10px] font-bold uppercase tracking-[0.2em] px-3 mb-1.5 opacity-80 cursor-pointer flex items-center justify-between w-full select-none",
+          "text-[10px] font-bold uppercase tracking-[0.2em] px-2.5 mb-1 opacity-80 cursor-pointer flex items-center justify-between w-full select-none",
           isWellness ? "text-teal-100/90 dark:text-teal-200/90" : "text-sidebar-foreground/50"
         )} asChild>
           <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:text-white transition-colors">
@@ -487,7 +488,7 @@ const CollapsibleMenuSection: React.FC<{
                       }}
                       tooltip={item.label}
                       className={cn(
-                        "readonly-allowed relative rounded-lg w-full h-8.5 text-xs transition-all duration-200 dark:h-8",
+                        "readonly-allowed relative rounded-lg w-full px-2.5 h-8.5 text-xs transition-all duration-200 dark:h-8",
                         isWellness ? "text-teal-50/90 dark:text-sidebar-foreground/85" : "text-emerald-50/70 dark:text-sidebar-foreground/60",
                         isActive
                           ? isWellness
@@ -501,8 +502,8 @@ const CollapsibleMenuSection: React.FC<{
                       <span className="relative inline-flex shrink-0">
                         <item.icon className="h-[1rem] w-[1rem] opacity-85" />
                       </span>
-                      <span className="font-semibold group-data-[collapsible=icon]:hidden ml-2 flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                        <span className="truncate">{item.label}</span>
+                      <span className="font-semibold group-data-[collapsible=icon]:hidden ml-1.5 flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                        <span className="whitespace-nowrap" title={item.label}>{item.label}</span>
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -542,7 +543,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
     ? getHeadmasterMenuItems(hasAccess, user?.role, headmasterHasTeachingAccess(user))
     : null;
   const boardingEnabled = Boolean(school?.boarding_enabled);
-  const menuItems = headmasterMenu ?? getMenuItems(hasAccess, user?.role, boardingEnabled);
+  const menuItems = getMenuItems(hasAccess, user?.role, boardingEnabled);
 
   const sidebarSearchItems = useMemo((): SidebarSearchItem[] => {
     const sections: Array<[string, Array<{ id: string; label: string }>]> = isHeadmaster && headmasterMenu
@@ -555,7 +556,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         ]
       : isBoardingStaff
         ? [
-            ...(menuItems.boarding.length > 0 ? [['Boarding & Wellness', menuItems.boarding]] : []),
+            ...(menuItems.boarding.length > 0 ? [['Boarding & Wellness', menuItems.boarding] as [string, Array<{ id: string; label: string }>]] : []),
             ['System', menuItems.system],
           ]
       : [
@@ -565,7 +566,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
           ['Financial Ops', menuItems.financial],
           ['Data Center', menuItems.records],
           ['Transport Management', menuItems.transport],
-          ...(menuItems.boarding.length > 0 ? [['Boarding', menuItems.boarding]] : []),
+          ...(menuItems.boarding.length > 0 ? [['Boarding', menuItems.boarding] as [string, Array<{ id: string; label: string }>]] : []),
           ['Announcements & parent desk', menuItems.announcements],
           ['Innovation', menuItems.ai],
           ['Configurations', menuItems.configurations],
@@ -602,7 +603,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ activeModule, setActiveM
         setPaymentSubmissionsPending(0);
       }
       if (hasAccess('messages')) {
-        const { chatService } = await import('../services/chatService');
         const c = await chatService.listChannels();
         messagesCount = Number(c?.total_unread ?? 0);
         setMessagesUnread(messagesCount);

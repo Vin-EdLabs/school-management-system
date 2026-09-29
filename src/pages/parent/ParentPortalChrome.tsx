@@ -17,11 +17,12 @@ export type ParentAppNotification = {
   serverId?: number;
   title: string;
   message: string;
-  at: string;
+  url?: string;
+  at: string | number;
   read: boolean;
 };
 
-function formatNotifTime(iso: string) {
+function formatNotifTime(iso: string | number) {
   const d = new Date(iso);
   const diffMs = Date.now() - d.getTime();
   const mins = Math.floor(diffMs / 60_000);

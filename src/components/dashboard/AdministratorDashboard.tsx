@@ -395,20 +395,20 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
   const dailyPaymentsToday = Number(dailyToday?.total ?? 0);
 
   const kpiItems = [
-    { label: 'Active Students', value: totalStudents, sub: `${maleStudents}M · ${femaleStudents}F`, icon: Users, border: 'border-l-emerald-600 dark:border-l-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading },
-    { label: 'Total Staff', value: totalStaff, sub: `${totalTeachers} teachers · ${totalOtherStaff} other`, sub2: `${maleStaff}M · ${femaleStaff}F`, icon: Briefcase, border: 'border-l-indigo-600 dark:border-l-indigo-400', iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400', loading: overviewLoading },
-    { label: 'Classes', value: activeClasses, sub: 'Academic setup', icon: GraduationCap, border: 'border-l-amber-500', iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', loading: overviewLoading },
-    { label: 'Term Fee Health', value: formatGhsCompact(totalOwing), valueTitle: formatGhs(totalOwing), sub: `${feeCounts.owing} owing`, icon: DollarSign, border: 'border-l-emerald-600 dark:border-l-emerald-500', iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading, progress: collectionPct, isCurrency: true },
+    { label: 'Active Students', value: totalStudents, sub: `${maleStudents}M · ${femaleStudents}F`, icon: Users, iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading },
+    { label: 'Total Staff', value: totalStaff, sub: `${totalTeachers} teachers · ${totalOtherStaff} other`, sub2: `${maleStaff}M · ${femaleStaff}F`, icon: Briefcase, iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400', loading: overviewLoading },
+    { label: 'Classes', value: activeClasses, sub: 'Academic setup', icon: GraduationCap, iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', loading: overviewLoading },
+    { label: 'Term Fee Health', value: formatGhsCompact(totalOwing), valueTitle: formatGhs(totalOwing), sub: `${feeCounts.owing} owing`, icon: DollarSign, iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', loading: overviewLoading, progress: collectionPct, isCurrency: true },
     hasDailyFees
-      ? { label: 'Daily Collections Today', value: formatGhsCompact(dailyCollectedToday), valueTitle: formatGhs(dailyCollectedToday), sub: `${dailyPaymentsToday} payments today`, icon: CalendarCheck, border: 'border-l-violet-600 dark:border-l-violet-400', iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400', loading: dailyTodayLoading, isCurrency: true }
-      : { label: 'Attendance Rate', value: attendanceToday != null ? `${attendanceToday}%` : '—', sub: attendanceToday != null ? "Today's attendance" : 'Not marked yet', icon: CalendarCheck, border: 'border-l-violet-600 dark:border-l-violet-400', iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400', loading: attendanceLoading },
+      ? { label: 'Daily Collections Today', value: formatGhsCompact(dailyCollectedToday), valueTitle: formatGhs(dailyCollectedToday), sub: `${dailyPaymentsToday} payments today`, icon: CalendarCheck, iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400', loading: dailyTodayLoading, isCurrency: true }
+      : { label: 'Attendance Rate', value: attendanceToday != null ? `${attendanceToday}%` : '—', sub: attendanceToday != null ? "Today's attendance" : 'Not marked yet', icon: CalendarCheck, iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400', loading: attendanceLoading },
   ];
 
   return (
     <div className="min-h-full bg-[#FAFAFA] dark:bg-background">
       <div className="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6">
         {/* Hero */}
-        <div className={cn(surfaceCard, 'border-l-4 border-l-emerald-600 p-5 dark:border-l-emerald-500 md:p-6')}>
+        <div className={cn(surfaceCard, 'p-5 md:p-6')}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-[28px]">
@@ -469,7 +469,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
           {kpiItems.map((k) => (
             <div
               key={k.label}
-              className={cn(surfaceCard, 'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 hover:-translate-y-0.5 md:min-w-0', k.border)}
+              className={cn(surfaceCard, 'min-w-[200px] flex-shrink-0 snap-start p-4 hover:-translate-y-0.5 md:min-w-0')}
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground leading-tight">{k.label}</p>
@@ -695,7 +695,7 @@ const AdministratorDashboard = ({ onNavigate }: Props) => {
               </div>
             </Card>
 
-            <Card className={cn(surfaceCard, 'border-l-4 border-l-red-500 p-5')}>
+            <Card className={cn(surfaceCard, 'p-5')}>
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-500" />
                 <h3 className="text-sm font-semibold text-foreground">Fees Due</h3>

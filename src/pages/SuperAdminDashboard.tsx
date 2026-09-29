@@ -79,6 +79,7 @@ import {
   MessageCircle,
   UserPlus,
   UserCheck,
+  Search,
   Globe,
   FileText,
   Download,
@@ -322,7 +323,7 @@ function schoolResetDisplayName(school: { name: string; settings_school_name?: s
 function SuperAdminBecomeUserButton({ onOpen }: { onOpen: () => void }) {
   const { isMobile, setOpenMobile } = useSidebar();
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
       <SidebarMenuButton
         onClick={() => {
           if (isMobile) {
@@ -332,10 +333,11 @@ function SuperAdminBecomeUserButton({ onOpen }: { onOpen: () => void }) {
             onOpen();
           }
         }}
-        className="rounded-xl mx-2 text-amber-600/90 hover:text-amber-700 hover:bg-amber-500/10 transition-colors"
+        tooltip="Become a User"
+        className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-amber-600/90 hover:text-amber-700 hover:bg-amber-500/10 transition-colors"
       >
-        <UserRoundSearch className="h-4 w-4" />
-        <span>Become a User</span>
+        <UserRoundSearch className="h-4 w-4 shrink-0" />
+        <span className="group-data-[collapsible=icon]:hidden">Become a User</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -1592,16 +1594,19 @@ const SuperAdminDashboard = () => {
       <ImpersonationProvider returnModule="super-admin">
         <ImpersonationShell>
           <div className={darkMode ? 'dark' : ''}>
-            <SidebarProvider>
-        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
-          <SidebarHeader className="border-b border-slate-200/80 dark:border-slate-800 px-6 py-6">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="w-12 h-12 rounded-[1.25rem] flex items-center justify-center shrink-0 overflow-hidden bg-gradient-to-br from-indigo-600 to-blue-700 shadow-lg shadow-indigo-500/20 border border-white/10">
-                <GraduationCap className="w-6 h-6 text-white" />
+            <SidebarProvider style={{ '--sidebar-width': '15rem' } as React.CSSProperties}>
+        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl overflow-x-hidden">
+          <SidebarHeader className="border-b border-white/10 px-4 py-4 mb-2 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-3 group-data-[collapsible=icon]:mb-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1 group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:justify-center">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden bg-gradient-to-br from-indigo-500 to-blue-600 shadow-md shadow-indigo-500/20 border border-white/10 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:rounded-lg">
+                <GraduationCap className="w-5 h-5 text-white group-data-[collapsible=icon]:w-4 group-data-[collapsible=icon]:h-4" />
               </div>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <h1 className="font-black text-slate-900 dark:text-white truncate text-lg tracking-tight font-outfit">SCHOLARNERVE</h1>
-                <p className="text-[10px] font-bold text-slate-500/60 truncate uppercase tracking-widest">Super Admin Core</p>
+              <div className="min-w-0 flex-1 overflow-visible group-data-[collapsible=icon]:hidden group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0 transition-all duration-300">
+                <h1 className="font-extrabold text-white text-[1.125rem] tracking-tight font-jakarta whitespace-nowrap leading-tight">ScholarNerve</h1>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)] shrink-0" />
+                  <p className="text-[10px] font-semibold text-emerald-200/80 uppercase tracking-widest whitespace-nowrap leading-none">Super Admin Core</p>
+                </div>
               </div>
             </div>
           </SidebarHeader>
@@ -1610,40 +1615,41 @@ const SuperAdminDashboard = () => {
             items={sidebarSearchItems}
             activeId={section}
             onSelect={(id) => setSection(id as Section)}
-            className="px-2"
+            className="px-3 pt-1 pb-2"
           />
 
-          <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-y-auto scrollbar-hide">
+          <SidebarContent className="px-2 py-4 gap-6 flex flex-col overflow-x-hidden overflow-y-auto scrollbar-hide group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2 group-data-[collapsible=icon]:gap-2">
             <SidebarGroup>
-              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3">Overview</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3 group-data-[collapsible=icon]:hidden">Overview</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="space-y-0.5">
+                <SidebarMenu className="space-y-0.5 overflow-x-hidden">
                   {mainItems.map(({ id, label, icon: Icon }) => (
-                    <SidebarMenuItem key={id}>
+                    <SidebarMenuItem key={id} className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                       <SidebarMenuButton
                         isActive={section === id}
                         onClick={() => setSection(id)}
-                        className="rounded-xl mx-2 text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
+                        tooltip={label}
+                        className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
                       >
                         <Icon className="h-4 w-4 shrink-0 opacity-90" />
-                        <span className="font-medium">{label}</span>
+                        <span className="font-medium group-data-[collapsible=icon]:hidden">{label}</span>
                         {id === 'registrations' && registrations.filter((r) => r.status === 'pending').length > 0 && (
-                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs group-data-[collapsible=icon]:hidden">
                             {registrations.filter((r) => r.status === 'pending').length}
                           </Badge>
                         )}
                         {id === 'contact-inquiries' && platformInquiries.filter((r) => r.status === 'pending').length > 0 && (
-                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs group-data-[collapsible=icon]:hidden">
                             {platformInquiries.filter((r) => r.status === 'pending').length}
                           </Badge>
                         )}
                         {id === 'support-chat' && supportInboxUnread > 0 && (
-                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs group-data-[collapsible=icon]:hidden">
                             {supportInboxUnread > 99 ? '99+' : supportInboxUnread}
                           </Badge>
                         )}
                         {id === 'school-websites' && websiteEnablePending > 0 && (
-                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs">
+                          <Badge variant="destructive" className="ml-auto h-5 px-1.5 text-xs group-data-[collapsible=icon]:hidden">
                             {websiteEnablePending > 99 ? '99+' : websiteEnablePending}
                           </Badge>
                         )}
@@ -1655,18 +1661,19 @@ const SuperAdminDashboard = () => {
             </SidebarGroup>
 
             <SidebarGroup>
-              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3">System</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-[11px] font-semibold text-sidebar-foreground/50 uppercase tracking-widest px-3 group-data-[collapsible=icon]:hidden">System</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="space-y-0.5">
+                <SidebarMenu className="space-y-0.5 overflow-x-hidden">
                   {systemItems.map(({ id, label, icon: Icon }) => (
-                    <SidebarMenuItem key={id}>
+                    <SidebarMenuItem key={id} className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                       <SidebarMenuButton
                         isActive={section === id}
                         onClick={() => setSection(id)}
-                        className="rounded-xl mx-2 text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
+                        tooltip={label}
+                        className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-sidebar-foreground/70 data-[active=true]:bg-sidebar-primary/20 data-[active=true]:text-sidebar-primary data-[active=true]:font-bold hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
                       >
                         <Icon className="h-4 w-4 shrink-0 opacity-90" />
-                        <span className="font-medium">{label}</span>
+                        <span className="font-medium group-data-[collapsible=icon]:hidden">{label}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
@@ -1674,43 +1681,51 @@ const SuperAdminDashboard = () => {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <SidebarSeparator className="bg-slate-200 dark:bg-slate-700 mx-2" />
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-2">
-            <SidebarMenu>
+          <SidebarFooter className="border-t border-white/10 p-2 overflow-x-hidden group-data-[collapsible=icon]:p-1">
+            <SidebarMenu className="group-data-[collapsible=icon]:items-center overflow-x-hidden">
               {isPlatformSuperAdmin && (
                 <SuperAdminBecomeUserButton onOpen={() => setBecomeUserOpen(true)} />
               )}
-              <SidebarMenuItem>
+              <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
                 <SidebarMenuButton
                   onClick={() => window.open('/', '_blank')}
-                  className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                  tooltip="Visit Site"
+                  className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 >
-                  <Globe className="h-4 w-4" />
-                  <span>Visit Site</span>
+                  <Globe className="h-4 w-4 shrink-0" />
+                  <span className="group-data-[collapsible=icon]:hidden">Visit Site</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => navigate('/select-school')} className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-                  <ArrowRight className="h-4 w-4" />
-                  <span>Switch to School</span>
+              <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                <SidebarMenuButton
+                  onClick={() => navigate('/select-school')}
+                  tooltip="Switch to School"
+                  className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                >
+                  <ArrowRight className="h-4 w-4 shrink-0" />
+                  <span className="group-data-[collapsible=icon]:hidden">Switch to School</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={logout} className="rounded-xl mx-2 text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                  <LogOut className="h-4 w-4" />
-                  <span>Logout</span>
+              <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
+                <SidebarMenuButton
+                  onClick={logout}
+                  tooltip="Logout"
+                  className="rounded-xl mx-2 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!w-9 group-data-[collapsible=icon]:!h-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center text-sidebar-foreground/60 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                >
+                  <LogOut className="h-4 w-4 shrink-0" />
+                  <span className="group-data-[collapsible=icon]:hidden">Logout</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <div className="px-4 py-3 border-t border-sidebar-border">
-              <p className="text-[11px] text-sidebar-foreground/40 text-center uppercase tracking-widest font-bold">Powered by SCHOLARNERVE</p>
+            <div className="px-4 py-3 border-t border-sidebar-border group-data-[collapsible=icon]:hidden">
+              <p className="text-[11px] text-sidebar-foreground/50 text-center tracking-wider font-semibold">Powered by ScholarNerve</p>
             </div>
           </SidebarFooter>
         </Sidebar>
 
-        <main className="flex-1 flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950">
+        <main className="flex-1 flex flex-col min-h-screen min-w-0 bg-slate-50 dark:bg-slate-950 overflow-x-hidden">
           <header className="sticky top-0 z-10 h-16 border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl flex items-center gap-4 px-6 shadow-sm dark:shadow-slate-900/50">
             <SidebarTrigger className="-ml-1 h-9 w-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300" />
             <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
@@ -1780,7 +1795,7 @@ const SuperAdminDashboard = () => {
             </div>
           </header>
 
-          <div className="flex-1 p-6 overflow-auto">
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden min-w-0">
             {section === 'schools' && (
               <div className="space-y-8 animate-in fade-in duration-700">
                 {/* Dashboard Stats Overview */}
@@ -1960,33 +1975,34 @@ const SuperAdminDashboard = () => {
                           )}
                           onClick={() => void openSchoolDetail(school)}
                         >
-                          <CardContent className="p-0">
-                            <div className="flex flex-col sm:flex-row items-center gap-6 p-6">
+                          <CardContent className="p-5 flex flex-col justify-between gap-4 h-full">
+                            {/* Top Section: Logo + Name + Status + Metadata */}
+                            <div className="flex items-start gap-4">
                               {/* Logo & ID Badge */}
                               <div className="relative shrink-0">
                                 <div 
-                                  className="w-20 h-20 rounded-[1.5rem] flex items-center justify-center overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 shadow-inner group-hover:scale-105 transition-transform duration-500"
+                                  className="w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200/80 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 shadow-sm group-hover:scale-105 transition-transform duration-300"
                                 >
                                   {school.logo_url ? (
-                                    <img src={resolveLogoUrl(school.logo_url)!} alt="" className="w-full h-full object-contain p-2" />
+                                    <img src={resolveLogoUrl(school.logo_url)!} alt="" className="w-full h-full object-contain p-1.5" />
                                   ) : (
-                                    <Building2 className="w-10 h-10 text-slate-300 dark:text-slate-600" />
+                                    <Building2 className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                                   )}
                                 </div>
-                                <div className="absolute -bottom-2 -right-2 bg-slate-900 dark:bg-white text-white dark:!text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg border-2 border-white dark:border-slate-900 shadow-lg">
+                                <div className="absolute -bottom-1.5 -right-1.5 bg-slate-900 dark:bg-white text-white dark:!text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-white dark:border-slate-900 shadow">
                                   #{school.id}
                                 </div>
                               </div>
 
                               {/* Info Content */}
-                              <div className="flex-1 min-w-0 text-center sm:text-left space-y-2">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                  <h4 className="font-black text-xl text-slate-900 dark:text-white font-outfit tracking-tight truncate">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <h4 className="font-extrabold text-lg sm:text-xl text-slate-900 dark:text-white font-jakarta tracking-tight leading-snug break-words">
                                     {school.name}
                                   </h4>
                                   <Badge 
                                     className={cn(
-                                      "w-fit mx-auto sm:mx-0 font-black text-[10px] uppercase tracking-wider px-2 py-0.5",
+                                      "shrink-0 font-bold text-[10px] uppercase tracking-wider px-2 py-0.5",
                                       school.archived_at
                                         ? 'bg-slate-500/10 text-slate-600 border border-slate-500/20 shadow-none'
                                         : school.is_active
@@ -1997,39 +2013,54 @@ const SuperAdminDashboard = () => {
                                     {school.archived_at ? 'Archived' : school.is_active ? 'Active' : 'Suspended'}
                                   </Badge>
                                 </div>
-                                <div className="flex flex-wrap justify-center sm:justify-start items-center gap-3 text-slate-600 dark:text-slate-300">
-                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                                    <Globe className="w-3 h-3 text-indigo-500" />
-                                    {school.slug || 'no-slug'}
+
+                                {/* Metadata chips */}
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                  <div className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                                    <Globe className="w-3 h-3 text-indigo-500 shrink-0" />
+                                    <span>{school.slug || 'no-slug'}</span>
                                   </div>
-                                  <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                                    {school.subscription_status || 'active'}
+                                  <div className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                                    <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+                                    <span>{school.subscription_status || 'active'}</span>
                                   </div>
                                   {school.created_at && (
-                                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                                    <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                       Since {new Date(school.created_at).toLocaleDateString()}
                                     </div>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-indigo-600 dark:text-indigo-300 font-semibold uppercase tracking-wider">Click card for full details</p>
                               </div>
+                            </div>
 
-                              {/* Action Group */}
-                              <div className="grid grid-cols-2 gap-2 w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
+                            {/* Bottom Row: Full Details Hint & Action Buttons */}
+                            <div 
+                              className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold uppercase tracking-wider">
+                                Click card for full details
+                              </p>
+
+                              <div className="flex items-center gap-1.5 flex-wrap ml-auto">
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   onClick={() => void openEditSchool(school)}
                                   disabled={editFormLoading}
-                                  className="h-10 rounded-xl border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-widest text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                                  className="h-8 px-2.5 rounded-lg border-slate-200 dark:border-slate-700 font-bold text-[10px] uppercase tracking-wider text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                                 >
-                                  <Pencil className="w-3.5 h-3.5 mr-2" />
+                                  <Pencil className="w-3 h-3 mr-1" />
                                   Edit
                                 </Button>
 
-                                <Button variant="outline" size="sm" onClick={() => setResetSchool(school)} className="h-10 rounded-xl border-emerald-200/80 dark:border-emerald-900/40 font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
-                                  <KeyRound className="w-3.5 h-3.5 mr-2" />
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => setResetSchool(school)} 
+                                  className="h-8 px-2.5 rounded-lg border-emerald-200/80 dark:border-emerald-900/40 font-bold text-[10px] uppercase tracking-wider hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
+                                >
+                                  <KeyRound className="w-3 h-3 mr-1" />
                                   Access
                                 </Button>
 
@@ -2038,9 +2069,9 @@ const SuperAdminDashboard = () => {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => void handleRestoreSchool(school)}
-                                    className="h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-emerald-600 hover:bg-emerald-500/10"
+                                    className="h-8 px-2.5 rounded-lg font-bold text-[10px] uppercase tracking-wider text-emerald-600 hover:bg-emerald-500/10"
                                   >
-                                    <ArchiveRestore className="w-3.5 h-3.5 mr-2" />
+                                    <ArchiveRestore className="w-3 h-3 mr-1" />
                                     Restore
                                   </Button>
                                 ) : (
@@ -2050,27 +2081,32 @@ const SuperAdminDashboard = () => {
                                       variant="ghost"
                                       onClick={() => toggleActive(school)}
                                       className={cn(
-                                        'h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest',
+                                        'h-8 px-2.5 rounded-lg font-bold text-[10px] uppercase tracking-wider',
                                         school.is_active ? 'text-amber-600 hover:bg-amber-500/10' : 'text-emerald-500 hover:bg-emerald-500/10'
                                       )}
                                     >
-                                      {school.is_active ? <PowerOff className="w-3.5 h-3.5 mr-2" /> : <Power className="w-3.5 h-3.5 mr-2" />}
+                                      {school.is_active ? <PowerOff className="w-3 h-3 mr-1" /> : <Power className="w-3 h-3 mr-1" />}
                                       {school.is_active ? 'Suspend' : 'Activate'}
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="ghost"
                                       onClick={() => setArchiveTarget(school)}
-                                      className="h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-500/10"
+                                      className="h-8 px-2.5 rounded-lg font-bold text-[10px] uppercase tracking-wider text-red-500 hover:bg-red-500/10"
                                     >
-                                      <Archive className="w-3.5 h-3.5 mr-2" />
+                                      <Archive className="w-3 h-3 mr-1" />
                                       Archive
                                     </Button>
                                   </>
                                 )}
                                 
-                                <Button size="sm" onClick={() => openSchool(school)} disabled={!!school.archived_at} className="h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:!text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 dark:hover:bg-slate-100 shadow-lg shadow-slate-900/10 dark:shadow-white/10 transition-all disabled:opacity-40">
-                                  <ArrowRight className="w-3.5 h-3.5 mr-2" />
+                                <Button 
+                                  size="sm" 
+                                  onClick={() => openSchool(school)} 
+                                  disabled={!!school.archived_at} 
+                                  className="h-8 px-3 rounded-lg bg-slate-900 dark:bg-white text-white dark:!text-slate-900 font-black text-[10px] uppercase tracking-widest hover:opacity-90 dark:hover:bg-slate-100 shadow transition-all disabled:opacity-40"
+                                >
+                                  <ArrowRight className="w-3 h-3 mr-1" />
                                   Launch
                                 </Button>
                               </div>
@@ -2447,7 +2483,7 @@ const SuperAdminDashboard = () => {
               <div className="space-y-6 animate-in fade-in duration-700">
                 <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
                   <div className="absolute right-0 top-0 h-56 w-56 translate-x-1/3 -translate-y-1/3 rounded-full bg-emerald-500/20 blur-3xl" />
-                  <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                       <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                         <ShieldCheck className="h-3.5 w-3.5" />
@@ -2458,7 +2494,7 @@ const SuperAdminDashboard = () => {
                         Search a school, select a user, then review every captured action in a chronological timeline with finance actions highlighted.
                       </p>
                     </div>
-                    <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[520px]">
+                    <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-[460px] shrink-0">
                       <Input
                         value={trackerSchoolSearch}
                         onChange={(e) => setTrackerSchoolSearch(e.target.value)}
@@ -2501,8 +2537,8 @@ const SuperAdminDashboard = () => {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 xl:grid-cols-[360px_1fr]">
-                  <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)] min-w-0">
+                  <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50 min-w-0 overflow-hidden">
                     <CardHeader>
                       <CardTitle className="font-outfit text-lg font-black">Users</CardTitle>
                       <p className="text-xs font-medium text-slate-500">
@@ -2553,9 +2589,9 @@ const SuperAdminDashboard = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50">
+                  <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/50 min-w-0 overflow-hidden">
                     <CardHeader className="space-y-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between min-w-0">
                         <div>
                           <CardTitle className="font-outfit text-lg font-black">Activity Timeline</CardTitle>
                           <p className="text-xs font-medium text-slate-500">
@@ -2612,37 +2648,57 @@ const SuperAdminDashboard = () => {
                                 {logs.map((log) => {
                                   const finance = isFinanceAudit(log);
                                   return (
-                                    <div key={log.id} className={cn('relative rounded-2xl border bg-white p-4 shadow-sm dark:bg-slate-950/40', finance ? 'border-emerald-500/30' : 'border-slate-200 dark:border-slate-800')}>
+                                    <div key={log.id} className={cn('relative rounded-2xl border bg-white p-4 sm:p-5 shadow-sm dark:bg-slate-950/40 min-w-0 overflow-hidden', finance ? 'border-emerald-500/30' : 'border-slate-200 dark:border-slate-800')}>
                                       <span className={cn('absolute -left-[1.15rem] top-5 h-3 w-3 rounded-full ring-4', finance ? 'bg-emerald-500 ring-emerald-500/15' : 'bg-slate-300 ring-slate-100 dark:bg-slate-600 dark:ring-slate-900')} />
-                                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                        <div className="min-w-0 flex-1">
-                                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                                            <Badge className={cn('border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest shadow-none', moduleTone(log.module, log.action, log.entity_type))}>
-                                              {log.module || 'general'}
+                                      
+                                      {/* Header row: Module badge, Time, and IP address */}
+                                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <Badge className={cn('border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest shadow-none', moduleTone(log.module, log.action, log.entity_type))}>
+                                            {log.module || 'general'}
+                                          </Badge>
+                                          {finance && (
+                                            <Badge className="border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 shadow-none">
+                                              Finance Priority
                                             </Badge>
-                                            {finance && (
-                                              <Badge className="border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 shadow-none">
-                                                Finance Priority
-                                              </Badge>
-                                            )}
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{new Date(log.created_at).toLocaleTimeString()}</span>
-                                          </div>
-                                          <h4 className="font-black text-slate-900 dark:text-white">{log.summary || log.action}</h4>
-                                          <p className="mt-1 text-xs font-medium text-slate-500">
-                                            {log.action.replace(/_/g, ' ')} · {log.entity_label || log.summary?.split(' — ').slice(1).join(' — ') || (log.entity_type || 'record').replace(/_/g, ' ')}
-                                          </p>
-                                          {(log.before_values || log.after_values) && (
-                                            <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                                              <pre className="max-h-32 overflow-auto rounded-xl bg-red-500/5 p-3 text-[10px] text-red-700 dark:text-red-300">{JSON.stringify(log.before_values || {}, null, 2)}</pre>
-                                              <pre className="max-h-32 overflow-auto rounded-xl bg-emerald-500/5 p-3 text-[10px] text-emerald-700 dark:text-emerald-300">{JSON.stringify(log.after_values || {}, null, 2)}</pre>
-                                            </div>
                                           )}
+                                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                            {new Date(log.created_at).toLocaleTimeString()}
+                                          </span>
                                         </div>
-                                        <div className="min-w-[150px] text-xs font-medium text-slate-500 lg:text-right">
-                                          {log.ip_address && <p>IP: <span className="font-mono">{log.ip_address}</span></p>}
-                                          {log.user_agent && <p className="mt-1 line-clamp-2">Device: {log.user_agent}</p>}
-                                        </div>
+
+                                        {log.ip_address && (
+                                          <span className="inline-flex items-center text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                                            IP: {log.ip_address}
+                                          </span>
+                                        )}
                                       </div>
+
+                                      {/* Main event info - Full Width, NEVER squished! */}
+                                      <div className="space-y-1">
+                                        <h4 className="font-extrabold text-base text-slate-900 dark:text-white leading-snug break-words">
+                                          {log.summary || log.action}
+                                        </h4>
+                                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 break-words">
+                                          {log.action.replace(/_/g, ' ')} · {log.entity_label || log.summary?.split(' — ').slice(1).join(' — ') || (log.entity_type || 'record').replace(/_/g, ' ')}
+                                        </p>
+                                      </div>
+
+                                      {/* JSON Before/After Diffs (if present) */}
+                                      {(log.before_values || log.after_values) && (
+                                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                          <pre className="max-h-32 overflow-auto rounded-xl bg-red-500/5 p-3 text-[10px] text-red-700 dark:text-red-300">{JSON.stringify(log.before_values || {}, null, 2)}</pre>
+                                          <pre className="max-h-32 overflow-auto rounded-xl bg-emerald-500/5 p-3 text-[10px] text-emerald-700 dark:text-emerald-300">{JSON.stringify(log.after_values || {}, null, 2)}</pre>
+                                        </div>
+                                      )}
+
+                                      {/* Device metadata at bottom - clean, muted, truncate with full title on hover */}
+                                      {log.user_agent && (
+                                        <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 min-w-0 overflow-hidden">
+                                          <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">Device:</span>
+                                          <span className="truncate min-w-0 flex-1" title={log.user_agent}>{log.user_agent}</span>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -2661,34 +2717,40 @@ const SuperAdminDashboard = () => {
               <div className="space-y-6 animate-in fade-in duration-700">
                 <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
                   <div className="absolute right-0 top-0 h-56 w-56 translate-x-1/3 -translate-y-1/3 rounded-full bg-slate-900/5 blur-3xl dark:bg-slate-50/10" />
-                  <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                         <UserCheck className="h-3.5 w-3.5" />
                         Active Sessions Overview
                       </div>
-                      <h3 className="font-outfit text-3xl font-black tracking-tight text-slate-900 dark:text-white">Online Users</h3>
-                      <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+                      <h3 className="font-jakarta text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">Online Users</h3>
+                      <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                         See staff/admin/teacher/finance sessions currently connected across the entire platform. Parent portal logins are excluded.
                       </p>
                     </div>
-                    <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[560px]">
-                      <Input
-                        value={onlineSearch}
-                        onChange={(e) => setOnlineSearch(e.target.value)}
-                        placeholder="Search by name, username, role, or school..."
-                        className="h-11 rounded-xl border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
-                      />
-                      <div className="flex items-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-                        <span className="text-slate-500">Updated:</span>
-                        <span>{onlineLastUpdated ? new Date(onlineLastUpdated).toLocaleTimeString() : 'Never'}</span>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto shrink-0">
+                      <div className="relative w-full sm:w-64 md:w-72">
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          value={onlineSearch}
+                          onChange={(e) => setOnlineSearch(e.target.value)}
+                          placeholder="Search name, role, school..."
+                          className="h-11 rounded-xl border-slate-200 bg-white pl-10 pr-4 text-sm dark:border-slate-800 dark:bg-slate-950"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 whitespace-nowrap">
+                          <span className="text-slate-400 font-normal">Updated:</span>
+                          <span>{onlineLastUpdated ? new Date(onlineLastUpdated).toLocaleTimeString() : 'Never'}</span>
+                        </div>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => void loadOnlineSessions()}
-                          className="h-9 rounded-xl border-slate-200 dark:border-slate-700 text-[10px] uppercase tracking-widest"
+                          className="h-11 px-3.5 rounded-xl border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wider shrink-0 hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
-                          <RefreshCw className="mr-2 h-4 w-4" />
+                          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                           Refresh
                         </Button>
                       </div>
@@ -3617,7 +3679,7 @@ const SuperAdminDashboard = () => {
             )}
 
             {section === 'audit' && (
-              <div className="space-y-6 animate-in fade-in duration-700">
+              <div className="space-y-6 animate-in fade-in duration-700 min-w-0">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
                   <div>
                     <h3 className="text-2xl font-black text-slate-900 dark:text-white font-outfit tracking-tight">Global Audit Monitor</h3>
@@ -3625,28 +3687,38 @@ const SuperAdminDashboard = () => {
                       Starts with Super Admin portal and login activity. Turn the scope off to search all schools.
                     </p>
                   </div>
-                  <div className="grid w-full grid-cols-1 gap-3 md:w-auto md:grid-cols-3 xl:grid-cols-4">
-                    <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-900">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">Super Admin Portal</p>
-                      </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex h-10 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 whitespace-nowrap">Super Admin Portal</p>
                       <Switch
                         checked={auditSuperAdminOnly}
                         onCheckedChange={(v) => setAuditSuperAdminOnly(v)}
                         className="data-[state=checked]:!bg-emerald-500 data-[state=unchecked]:!bg-red-500"
                       />
                     </div>
-                    <Input
-                      value={auditFilters.search}
-                      onChange={(e) => setAuditFilters((f) => ({ ...f, search: e.target.value }))}
-                      placeholder="Search user, summary, details..."
-                      className="h-10 w-full md:w-64 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm"
-                    />
+                    <Button variant="outline" size="sm" onClick={() => loadAuditLogs()} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest px-4 gap-2 shadow-sm">
+                      <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                      Sync Logs
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                    <div className="relative col-span-1 sm:col-span-2">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        value={auditFilters.search}
+                        onChange={(e) => setAuditFilters((f) => ({ ...f, search: e.target.value }))}
+                        placeholder="Search user, summary, details..."
+                        className="h-10 w-full pl-9 rounded-xl border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 text-sm focus:bg-white transition-colors"
+                      />
+                    </div>
                     <select
                       value={auditFilters.tenantId}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, tenantId: e.target.value }))}
                       disabled={auditSuperAdminOnly}
-                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50"
                     >
                       <option value="">School: ALL</option>
                       {schools.map((school) => (
@@ -3657,7 +3729,7 @@ const SuperAdminDashboard = () => {
                       value={auditFilters.module}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, module: e.target.value }))}
                       disabled={auditSuperAdminOnly}
-                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50"
                     >
                       <option value="">Module: ALL</option>
                       <option value="finance">Finance</option>
@@ -3670,7 +3742,7 @@ const SuperAdminDashboard = () => {
                     <select
                       value={auditFilters.action}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, action: e.target.value }))}
-                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
                       <option value="">Action: ALL</option>
                       <option value="LOGIN">Login</option>
@@ -3687,27 +3759,27 @@ const SuperAdminDashboard = () => {
                     <select
                       value={auditFilters.status}
                       onChange={(e) => setAuditFilters((f) => ({ ...f, status: e.target.value }))}
-                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-900 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
                       <option value="">Status: ALL</option>
                       <option value="success">SUCCESS</option>
                       <option value="failed">FAILED</option>
                     </select>
-                    <Input
-                      type="date"
-                      value={auditFilters.startDate}
-                      onChange={(e) => setAuditFilters((f) => ({ ...f, startDate: e.target.value }))}
-                      className="h-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm"
-                    />
-                    <Input
-                      type="date"
-                      value={auditFilters.endDate}
-                      onChange={(e) => setAuditFilters((f) => ({ ...f, endDate: e.target.value }))}
-                      className="h-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm"
-                    />
-                    <Button variant="outline" size="sm" onClick={() => loadAuditLogs()} className="h-10 rounded-xl border-slate-200 dark:border-slate-800 font-bold text-[10px] uppercase tracking-widest px-6">
-                      Sync Logs
-                    </Button>
+                    <div className="col-span-1 sm:col-span-2 xl:col-span-2 flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={auditFilters.startDate}
+                        onChange={(e) => setAuditFilters((f) => ({ ...f, startDate: e.target.value }))}
+                        className="h-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs flex-1"
+                      />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">to</span>
+                      <Input
+                        type="date"
+                        value={auditFilters.endDate}
+                        onChange={(e) => setAuditFilters((f) => ({ ...f, endDate: e.target.value }))}
+                        className="h-10 rounded-xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs flex-1"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -3721,14 +3793,14 @@ const SuperAdminDashboard = () => {
                   </Card>
                 ) : (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {[
                         { label: 'Total Events', value: auditLogs.length, color: 'text-slate-900 dark:text-white', bg: 'bg-slate-500/10' },
                         { label: 'Finance Events', value: auditLogs.filter(isFinanceAudit).length, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                         { label: 'Failed Events', value: auditLogs.filter((l) => l.status === 'failed' || l.action.includes('FAILED')).length, color: 'text-red-500', bg: 'bg-red-500/10' },
                         { label: 'Active Schools', value: new Set(auditLogs.map((l) => l.tenant_id).filter(Boolean)).size, color: 'text-blue-500', bg: 'bg-blue-500/10' },
                       ].map((stat) => (
-                        <Card key={stat.label} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                        <Card key={stat.label} className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm">
                           <CardContent className="p-5">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{stat.label}</p>
                             <p className={cn("mt-2 text-3xl font-black font-outfit", stat.color)}>{stat.value}</p>

@@ -10,6 +10,7 @@ import { useData } from '../../contexts/DataContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAudit } from '../../contexts/AuditContext';
 import { Search, Edit, Users, Eye, FileDown, FileSpreadsheet, ChevronDown, ChevronRight, Unlink } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import LazyTeacherAvatar from './LazyTeacherAvatar';
 import { teacherStatusBadge } from './TeacherStatusModals';
 import type { Teacher } from '../../contexts/DataContext';
@@ -141,86 +142,91 @@ const ViewAllTeachers = () => {
     return (
       <React.Fragment key={teacher.id}>
         <TableRow className={`hover:bg-muted/40 ${dimmed ? 'opacity-70' : ''}`}>
-          <TableCell className="w-8 max-w-8 px-1 pl-3 pr-0">
+          <TableCell className="w-7 max-w-7 px-0.5 pl-2 pr-0">
             <Checkbox
               checked={selected.has(teacher.id)}
               onCheckedChange={() => toggleSelect(teacher.id)}
               aria-label={`Select ${teacher.fullName}`}
             />
           </TableCell>
-          <TableCell className="w-7 max-w-7 px-0 pr-0">
+          <TableCell className="w-5 max-w-5 px-0">
             {!isAssistant && hasAssistants ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 p-0"
+                className="h-6 w-6 p-0"
                 onClick={() => toggleExpanded(teacher.id)}
                 title={expanded ? 'Collapse assistants' : 'Show assistants'}
               >
-                {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </Button>
             ) : null}
           </TableCell>
-          <TableCell>
+          <TableCell className="w-10 px-0.5 text-center">
             <LazyTeacherAvatar
               teacherId={teacher.id}
               fullName={teacher.fullName}
               hasPassportPhoto={teacher.hasPassportPhoto}
+              className={isAssistant ? 'h-7 w-7 mx-auto' : 'h-8 w-8 mx-auto'}
             />
           </TableCell>
-          <TableCell>
-            <div className={isAssistant ? 'pl-6 border-l-2 border-emerald-200 dark:border-emerald-800' : ''}>
-              <div className="font-medium flex flex-wrap items-center gap-2">
-                {teacher.fullName}
+          <TableCell className="py-2 px-2">
+            <div className={cn(isAssistant && 'pl-3 border-l-2 border-emerald-400 dark:border-emerald-600 ml-0.5')}>
+              <div className="font-medium text-foreground flex items-center gap-1.5 leading-snug text-sm whitespace-nowrap">
+                <span>{teacher.fullName}</span>
                 {isAssistant ? (
-                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                  <Badge variant="outline" className="text-[9px] uppercase tracking-wide px-1 py-0 shrink-0 border-emerald-300 text-emerald-700 bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:bg-emerald-950/40">
                     Assistant
                   </Badge>
                 ) : null}
               </div>
-              <div className="text-sm text-muted-foreground">{teacher.gender}</div>
+              <div className="text-xs text-muted-foreground whitespace-nowrap">{teacher.gender}</div>
             </div>
           </TableCell>
-          <TableCell>
-            <span className="font-mono">{teacher.staffId}</span>
+          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+            <span className="font-mono text-xs">{teacher.staffId}</span>
           </TableCell>
-          <TableCell>
+          <TableCell className="py-2 px-1.5 whitespace-nowrap">
             {teacher.position ? (
-              <Badge variant="secondary" className="text-xs">{teacher.position}</Badge>
+              <Badge variant="secondary" className="text-xs font-normal">{teacher.position}</Badge>
             ) : (
-              <span className="text-muted-foreground text-sm">—</span>
+              <span className="text-muted-foreground text-xs">—</span>
             )}
           </TableCell>
-          <TableCell>
-            <div className="text-sm">
-              <div>{teacher.phoneNumber}</div>
-              <div className="text-muted-foreground">{teacher.email}</div>
+          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+            {teacher.monthlySalary > 0 ? (
+              <span className="font-mono text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                GHS {teacher.monthlySalary.toLocaleString()}
+              </span>
+            ) : (
+              <span className="text-muted-foreground text-xs">—</span>
+            )}
+          </TableCell>
+          <TableCell className="py-2 px-2 whitespace-nowrap">
+            <div className="text-xs leading-snug">
+              <div className="font-medium text-foreground">{teacher.phoneNumber || '—'}</div>
+              {teacher.email ? (
+                <div className="text-muted-foreground">{teacher.email}</div>
+              ) : null}
             </div>
           </TableCell>
-          <TableCell>
+          <TableCell className="py-2 px-1.5 whitespace-nowrap">
             {teacher.classAssigned ? (
-              <Badge variant="outline">{teacher.classAssigned}</Badge>
+              <Badge variant="outline" className="text-xs font-normal">{teacher.classAssigned}</Badge>
             ) : (
-              <span className="text-muted-foreground">No class</span>
+              <span className="text-muted-foreground text-xs">No class</span>
             )}
           </TableCell>
-          <TableCell>
+          <TableCell className="py-2 px-1.5 whitespace-nowrap">
             {badge ? (
               <Badge className={badge.className}>{badge.label}</Badge>
             ) : (
               <Badge className={getStatusColor(status)}>ACTIVE</Badge>
             )}
           </TableCell>
-          <TableCell className="pr-2">
-            {teacher.monthlySalary > 0 ? (
-              <span className="font-mono">GHS {teacher.monthlySalary.toLocaleString()}</span>
-            ) : (
-              <span className="text-muted-foreground">-</span>
-            )}
-          </TableCell>
-          <TableCell className="sticky right-0 z-10 w-[1%] pl-1 pr-2 bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">
-            <div className="flex justify-end items-center gap-0.5">
+          <TableCell className="py-2 pr-2.5 pl-0.5 text-right whitespace-nowrap">
+            <div className="flex justify-end items-center gap-1">
               {isAssistant ? (
                 <Button
                   size="sm"
@@ -366,47 +372,29 @@ const ViewAllTeachers = () => {
   return (
     <>
       <Card className="border-border bg-card shadow-sm">
-        <CardHeader className="border-b border-border/70 bg-muted/30">
-          <CardTitle className="flex items-center space-x-2">
-            <Users className="w-5 h-5" />
-            <span>All Teachers ({filteredTeachers.length})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {/* Search and Filters */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+        <CardHeader className="border-b border-border/70 bg-muted/30 py-3 px-3.5 sm:px-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="flex items-center space-x-2 shrink-0 text-base sm:text-lg">
+              <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <span>All Teachers ({filteredTeachers.length})</span>
+            </CardTitle>
+            <div className="relative w-full sm:w-72 md:w-80 lg:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, staff ID, or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-9 h-9 bg-background text-sm rounded-lg"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={exporting || filteredTeachers.length === 0}
-                onClick={() => void exportPdf()}
-              >
-                <FileDown className="h-4 w-4 mr-2" />
-                Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={exporting || filteredTeachers.length === 0}
-                onClick={() => void exportExcel()}
-              >
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
-              </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-3.5 px-2.5 sm:px-3.5">
+          {/* Filters and Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-wrap mb-3.5">
+            <div className="flex items-center gap-2 flex-wrap">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-32 sm:w-36 h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -416,7 +404,7 @@ const ViewAllTeachers = () => {
                 </SelectContent>
               </Select>
               <Select value={filterClass} onValueChange={setFilterClass}>
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-36 sm:w-44 h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Class" />
                 </SelectTrigger>
                 <SelectContent>
@@ -430,7 +418,7 @@ const ViewAllTeachers = () => {
                 </SelectContent>
               </Select>
               <Select value={genderFilter} onValueChange={setGenderFilter}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-24 sm:w-28 h-9 text-xs sm:text-sm">
                   <SelectValue placeholder="Gender" />
                 </SelectTrigger>
                 <SelectContent>
@@ -440,26 +428,50 @@ const ViewAllTeachers = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filteredTeachers.length === 0}
+                onClick={() => void exportPdf()}
+              >
+                <FileDown className="h-4 w-4" />
+                Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filteredTeachers.length === 0}
+                onClick={() => void exportExcel()}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
+            </div>
           </div>
 
           {/* Teachers Table */}
           <div className="rounded-md border border-border overflow-x-auto w-full bg-card">
             <Table className="w-full">
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8 max-w-8 px-1 pl-3 pr-0">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-7 max-w-7 px-0.5 pl-2 pr-0">
                     <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="Select all teachers" />
                   </TableHead>
-                  <TableHead className="w-7 max-w-7 px-0 pr-0" />
-                  <TableHead className="w-14 whitespace-nowrap">Photo</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-[150px]">Name</TableHead>
-                  <TableHead className="whitespace-nowrap">Staff ID</TableHead>
-                  <TableHead className="whitespace-nowrap">Position</TableHead>
-                  <TableHead className="whitespace-nowrap">Contact</TableHead>
-                  <TableHead className="whitespace-nowrap">Class Assigned</TableHead>
-                  <TableHead className="whitespace-nowrap">Status</TableHead>
-                  <TableHead className="whitespace-nowrap pr-2">Salary</TableHead>
-                  <TableHead className="sticky right-0 z-10 w-[1%] pl-1 pr-2 whitespace-nowrap bg-card/95 text-right backdrop-blur supports-[backdrop-filter]:bg-card/80">Actions</TableHead>
+                  <TableHead className="w-5 max-w-5 px-0" />
+                  <TableHead className="w-10 px-0.5 text-center whitespace-nowrap">Photo</TableHead>
+                  <TableHead className="whitespace-nowrap px-2">Name</TableHead>
+                  <TableHead className="whitespace-nowrap px-1.5">Staff ID</TableHead>
+                  <TableHead className="whitespace-nowrap px-1.5">Position</TableHead>
+                  <TableHead className="whitespace-nowrap px-1.5">Salary</TableHead>
+                  <TableHead className="whitespace-nowrap px-2">Contact</TableHead>
+                  <TableHead className="whitespace-nowrap px-1.5">Class Assigned</TableHead>
+                  <TableHead className="whitespace-nowrap px-1.5">Status</TableHead>
+                  <TableHead className="w-16 pr-2.5 pl-0.5 whitespace-nowrap text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

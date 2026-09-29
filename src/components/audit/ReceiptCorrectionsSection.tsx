@@ -285,15 +285,15 @@ const ReceiptCorrectionsSection = () => {
         <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>Date</TableHead>
-                <TableHead>Student</TableHead>
-                <TableHead>Original → New</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Amount change</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Reason</TableHead>
+              <TableRow className="border-b">
+                <TableHead className="w-8 px-2 py-2" />
+                <TableHead className="px-2 py-2 text-xs font-semibold w-24">Date</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold min-w-[110px] max-w-[150px]">Student</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold min-w-[120px] max-w-[160px]">Original → New</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold w-20">Type</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold min-w-[110px] max-w-[140px]">Amount change</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold min-w-[90px] max-w-[120px]">Balance</TableHead>
+                <TableHead className="px-2 py-2 text-xs font-semibold min-w-[120px] max-w-[160px]">Reason</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -317,36 +317,36 @@ const ReceiptCorrectionsSection = () => {
                   return (
                     <React.Fragment key={row.id}>
                       <TableRow
-                        className={cn('cursor-pointer hover:bg-muted/40', expanded && 'bg-muted/30')}
+                        className={cn('cursor-pointer hover:bg-muted/40 border-b border-border/60', expanded && 'bg-muted/30')}
                         onClick={() => setExpandedId(expanded ? null : row.id)}
                       >
-                        <TableCell className="px-2">
+                        <TableCell className="px-2 py-2">
                           {expanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs">
+                        <TableCell className="px-2 py-2 whitespace-nowrap text-xs">
                           {formatAuditDate(row.created_at)}
                         </TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="px-2 py-2 text-xs max-w-[150px] truncate" title={av.student_label || bv.student_label || bv.student_name || '—'}>
                           {av.student_label || bv.student_label || bv.student_name || '—'}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="px-2 py-2 font-mono text-xs max-w-[160px] truncate">
                           {bv.receipt_number || '—'} → {av.receipt_number || '—'}
                         </TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="px-2 py-2 text-xs whitespace-nowrap">
                           {formatCorrectionType(bv.correction_type || av.correction_type)}
                         </TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="px-2 py-2 text-xs">
                           {bv.amount_change_label ||
                             `${formatGhs(bv.amount)} → ${formatGhs(av.amount)}`}
                         </TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">
+                        <TableCell className="px-2 py-2 text-xs whitespace-nowrap">
                           {formatBalanceChange(bv, av)}
                         </TableCell>
-                        <TableCell className="max-w-[180px] truncate text-xs" title={row.correction_reason}>
+                        <TableCell className="px-2 py-2 max-w-[160px] truncate text-xs" title={row.correction_reason}>
                           {row.correction_reason}
                         </TableCell>
                       </TableRow>

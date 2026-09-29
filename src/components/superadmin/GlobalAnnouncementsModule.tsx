@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { fetchAnnouncementReaders } from '../../services/globalAnnouncementsApi';
 import { BrandedLoading } from '@/components/common/BrandedLoading';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -198,8 +199,7 @@ const GlobalAnnouncementsModule: React.FC<{ schools: SchoolOption[] }> = ({ scho
     setReadersModalId(id);
     setLoadingReaders(true);
     try {
-      // @ts-ignore
-      const r = await (await import('../../services/globalAnnouncementsApi')).fetchAnnouncementReaders(id);
+      const r = await fetchAnnouncementReaders(id);
       setReaders(r as any[]);
     } catch (err: unknown) {
       toast({ title: 'Failed to load readers', description: (err as Error).message, variant: 'destructive' });

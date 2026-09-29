@@ -35,6 +35,7 @@ import { apiService } from '../../services/api';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useSocket } from '../../contexts/SocketContext';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import {
   Users,
   UserPlus,
@@ -322,7 +323,7 @@ const UsersModule = () => {
   }, [users, searchTerm]);
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
+    <div className="p-4 md:p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -399,12 +400,12 @@ const UsersModule = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50 border-border">
-                    <TableHead className="font-semibold text-foreground">Name</TableHead>
-                    <TableHead className="font-semibold text-foreground">Login / Staff ID</TableHead>
-                    <TableHead className="font-semibold text-foreground">Role</TableHead>
-                    <TableHead className="font-semibold text-foreground">Email</TableHead>
-                    <TableHead className="font-semibold text-foreground">Status</TableHead>
-                    <TableHead className="font-semibold text-foreground text-right w-[140px]">Actions</TableHead>
+                    <TableHead className="font-semibold text-foreground px-3 py-2.5 min-w-[130px] text-xs">Name</TableHead>
+                    <TableHead className="font-semibold text-foreground px-3 py-2.5 w-[130px] text-xs">Login / Staff ID</TableHead>
+                    <TableHead className="font-semibold text-foreground px-2.5 py-2.5 w-[135px] text-xs">Role</TableHead>
+                    <TableHead className="font-semibold text-foreground px-3 py-2.5 min-w-[130px] text-xs">Email</TableHead>
+                    <TableHead className="font-semibold text-foreground px-2 py-2.5 w-[85px] text-xs">Status</TableHead>
+                    <TableHead className="font-semibold text-foreground text-right px-3 py-2.5 w-[160px] text-xs">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -412,44 +413,45 @@ const UsersModule = () => {
                     const RoleIcon = roleIcons[u.role] || UserCheck;
                     return (
                       <TableRow key={u.id} className={!u.is_active ? 'opacity-65 hover:bg-muted/30 border-border' : 'hover:bg-muted/30 border-border'}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                        <TableCell className="px-3 py-2.5">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                               <RoleIcon className="w-4 h-4 text-muted-foreground" />
                             </div>
-                            <div>
-                              <p className="font-medium text-foreground">{displayName(u)}</p>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground text-xs sm:text-sm truncate" title={displayName(u)}>{displayName(u)}</p>
                               {u.is_primary_admin && (
-                                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Primary Admin</span>
+                                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold block">Primary Admin</span>
                               )}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm text-foreground/80">{u.username}</span>
+                        <TableCell className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-semibold text-foreground/80">{u.username}</span>
                             {(u.role === 'teacher' || u.role === 'staff' || u.role === 'headmaster') && u.staff_id && (
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-6 w-6 p-0"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                                 onClick={() => {
                                   navigator.clipboard.writeText(u.username);
                                   toast({ title: 'Copied', description: 'Login ID copied' });
                                 }}
+                                title="Copy login ID"
                               >
                                 <Copy className="w-3.5 h-3.5" />
                               </Button>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-2.5 py-2.5">
                           {!u.is_primary_admin && (u.role === 'administrator' || u.role === 'finance') ? (
                             <Select
                               value={u.role}
                               onValueChange={(role) => updateUser(u, { role })}
                             >
-                              <SelectTrigger className="h-9 min-w-[145px]">
+                              <SelectTrigger className="h-8 w-32 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -462,7 +464,7 @@ const UsersModule = () => {
                               value={u.role}
                               onValueChange={(role) => updateUser(u, { role })}
                             >
-                              <SelectTrigger className="h-9 min-w-[145px]">
+                              <SelectTrigger className="h-8 w-32 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -471,28 +473,29 @@ const UsersModule = () => {
                               </SelectContent>
                             </Select>
                           ) : (
-                            <Badge variant="outline" className={roleColors[u.role] || 'bg-slate-100 text-slate-700'}>
+                            <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 whitespace-nowrap", roleColors[u.role] || 'bg-slate-100 text-slate-700')}>
                               {roleLabels[u.role] || u.role}
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
+                        <TableCell className="px-3 py-2.5 text-muted-foreground text-xs max-w-[180px] truncate" title={u.email?.trim() || undefined}>
                           {u.email?.trim() ? u.email.trim() : '—'}
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={u.is_active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border bg-muted text-muted-foreground'}>
+                        <TableCell className="px-2 py-2.5">
+                          <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 whitespace-nowrap", u.is_active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-border bg-muted text-muted-foreground')}>
                             {u.is_active ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                        <TableCell className="px-3 py-2 text-right">
+                          <div className="flex justify-end items-center gap-1.5">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => openResetDialog(u)}
-                              className="border-border hover:bg-muted"
+                              className="h-7 px-2 text-xs rounded-lg border-border hover:bg-muted"
+                              title="Reset password"
                             >
-                              <KeyRound className="w-4 h-4 mr-1.5" />
+                              <KeyRound className="w-3.5 h-3.5 mr-1" />
                               Reset
                             </Button>
                             <Button
@@ -500,6 +503,7 @@ const UsersModule = () => {
                               variant={u.is_active ? 'destructive' : 'outline'}
                               disabled={u.is_primary_admin}
                               onClick={() => updateUser(u, { isActive: !u.is_active })}
+                              className="h-7 px-2 text-xs rounded-lg"
                               title={u.is_primary_admin ? 'Primary admin cannot be deactivated' : undefined}
                             >
                               {u.is_active ? 'Deactivate' : 'Activate'}

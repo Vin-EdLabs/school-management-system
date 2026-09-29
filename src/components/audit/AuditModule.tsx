@@ -110,6 +110,14 @@ function badgeForAction(action: string, status?: string | null) {
   return 'border-border bg-muted/50 text-foreground';
 }
 
+function formatAuditWhen(isoString: string) {
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return { datePart: isoString, timePart: '' };
+  const datePart = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return { datePart, timePart };
+}
+
 const AuditModule = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrator' || user?.role === 'super-admin';
@@ -399,22 +407,22 @@ const AuditModule = () => {
           <div className="max-h-[min(70vh,640px)] overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                <TableRow>
-                  <TableHead className="w-[160px]">When</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Module</TableHead>
-                  <TableHead className="min-w-[200px]">Summary</TableHead>
-                  <TableHead className="w-[120px] max-w-[120px]">IP</TableHead>
-                  <TableHead className="w-[90px]">Status</TableHead>
+                <TableRow className="border-b">
+                  <TableHead className="px-2.5 py-2.5 w-[100px] text-xs font-semibold">When</TableHead>
+                  <TableHead className="px-2 py-2.5 w-[130px] text-xs font-semibold">Action</TableHead>
+                  <TableHead className="px-2.5 py-2.5 min-w-[120px] max-w-[160px] text-xs font-semibold">User</TableHead>
+                  <TableHead className="px-2 py-2.5 w-[80px] text-xs font-semibold">Module</TableHead>
+                  <TableHead className="px-2.5 py-2.5 min-w-[140px] max-w-[240px] text-xs font-semibold">Summary</TableHead>
+                  <TableHead className="px-2 py-2.5 w-[100px] text-xs font-semibold">IP</TableHead>
+                  <TableHead className="px-2 py-2.5 w-[75px] text-xs font-semibold text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={6}>
-                        <Skeleton className="h-9 w-full" />
+                      <TableCell colSpan={7} className="p-2.5">
+                        <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
                   ))
@@ -425,54 +433,75 @@ const AuditModule = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      className="cursor-pointer transition-colors hover:bg-muted/50"
-                      onClick={() => setDetail(r)}
-                    >
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {new Date(r.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn('font-mono text-[11px]', badgeForAction(r.action, r.status))}>
-                          {r.action}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="font-medium">{r.user_full_name || r.username || '—'}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {[
-                            r.acting_as_name ? `viewing as ${r.acting_as_name}` : null,
-                            r.username && r.user_full_name && r.user_full_name !== r.username ? `@${r.username}` : null,
-                            r.user_role || null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs capitalize text-muted-foreground">{r.module || '—'}</TableCell>
-                      <TableCell className="max-w-md truncate text-sm" title={r.summary || undefined}>
-                        {r.summary || '—'}
-                      </TableCell>
-                      <TableCell className="max-w-[120px] truncate font-mono text-[11px] text-muted-foreground" title={r.ip_address || undefined}>
-                        {r.ip_address || '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[11px]',
-                            (r.status || 'success') === 'failed'
-                              ? 'border-red-500/30 text-red-700 dark:text-red-300'
-                              : 'border-emerald-500/30 text-emerald-800 dark:text-emerald-200'
-                          )}
-                        >
-                          {r.status || 'success'}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  rows.map((r) => {
+                    const { datePart, timePart } = formatAuditWhen(r.created_at);
+                    return (
+                      <TableRow
+                        key={r.id}
+                        className="cursor-pointer transition-colors hover:bg-muted/50 border-b border-border/60"
+                        onClick={() => setDetail(r)}
+                      >
+                        <TableCell className="px-2.5 py-2 whitespace-nowrap">
+                          <div className="leading-tight">
+                            <span className="text-xs font-medium text-foreground block">{datePart}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono block">{timePart}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-2 py-2">
+                          <Badge
+                            variant="outline"
+                            className={cn('font-mono text-[10px] px-1.5 py-0.5 max-w-[125px] truncate block', badgeForAction(r.action, r.status))}
+                            title={r.action}
+                          >
+                            {r.action}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="px-2.5 py-2 max-w-[160px]">
+                          <div className="font-medium text-xs text-foreground truncate" title={r.user_full_name || r.username || '—'}>
+                            {r.user_full_name || r.username || '—'}
+                          </div>
+                          <div
+                            className="text-[10px] text-muted-foreground truncate"
+                            title={[
+                              r.acting_as_name ? `viewing as ${r.acting_as_name}` : null,
+                              r.username && r.user_full_name && r.user_full_name !== r.username ? `@${r.username}` : null,
+                              r.user_role || null,
+                            ].filter(Boolean).join(' · ')}
+                          >
+                            {[
+                              r.acting_as_name ? `viewing as ${r.acting_as_name}` : null,
+                              r.username && r.user_full_name && r.user_full_name !== r.username ? `@${r.username}` : null,
+                              r.user_role || null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-2 py-2 text-xs capitalize text-muted-foreground whitespace-nowrap">
+                          {r.module || '—'}
+                        </TableCell>
+                        <TableCell className="px-2.5 py-2 max-w-[240px] truncate text-xs text-foreground" title={r.summary || undefined}>
+                          {r.summary || '—'}
+                        </TableCell>
+                        <TableCell className="px-2 py-2 max-w-[100px] truncate font-mono text-[11px] text-muted-foreground" title={r.ip_address || undefined}>
+                          {r.ip_address || '—'}
+                        </TableCell>
+                        <TableCell className="px-2 py-2 text-center">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 capitalize whitespace-nowrap',
+                              (r.status || 'success') === 'failed'
+                                ? 'border-red-500/30 text-red-700 dark:text-red-300'
+                                : 'border-emerald-500/30 text-emerald-800 dark:text-emerald-200'
+                            )}
+                          >
+                            {r.status || 'success'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

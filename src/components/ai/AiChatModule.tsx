@@ -1,150 +1,108 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { toast } from '@/hooks/use-toast';
-import { Bot, Send, User, Receipt, Sparkles, MessageCircle, Clock, Trash2, Command, Zap, ArrowUp, Mic, FileText, BarChart3, TrendingUp, Calculator, ShieldAlert } from 'lucide-react';
+import {
+  Bot,
+  Sparkles,
+  Zap,
+  Brain,
+  MessageSquare,
+  FileText,
+  BarChart3,
+  Calculator,
+  ShieldAlert,
+  Compass,
+  Bus,
+  CheckCircle2,
+  Lock,
+  Layers,
+  Cpu,
+} from 'lucide-react';
 import { cn } from "@/lib/utils";
-import ReceiptPrinter from '../common/ReceiptPrinter';
-import { useChatPersistence } from '../../hooks/useChatPersistence';
-import { AIProcessor } from '../../utils/aiProcessor';
-import A4ReportPrinter from '../reports/A4ReportPrinter';
 
-interface ChatMessage {
-  id: string;
-  type: 'user' | 'ai';
-  content: string;
-  timestamp: Date;
-  action?: 'receipt' | 'payment' | 'info' | 'balance' | 'stats' | 'search' | 'list' | 'report';
-  data?: any;
-  isTyping?: boolean;
-}
-
-interface QuickCommand {
-  id: string;
-  icon: string;
-  title: string;
-  description: string;
-  template: string;
-  category: string;
-}
-
-const quickCommands: QuickCommand[] = [
+const UPCOMING_CAPABILITIES = [
   {
-    id: 'record-payment',
-    icon: '💰',
-    title: 'Record Payment',
-    description: 'Record payment for student',
-    template: 'Record payment ₵[AMOUNT] for student [ID]',
-    category: 'Payments'
+    icon: Calculator,
+    title: 'Autonomous Fee Reconciliation',
+    description: 'Natural language payment logging, automated receipt generation, and intelligent fee recovery alerts.',
+    badge: 'Finance Core',
+    color: 'from-emerald-500/20 to-teal-500/10 text-emerald-500 border-emerald-500/20',
   },
   {
-    id: 'check-balance',
-    icon: '💳',
-    title: 'Check Balance',
-    description: 'Check student balance',
-    template: 'Check balance for student [ID]',
-    category: 'Balances'
+    icon: Brain,
+    title: 'Predictive Academic Diagnostics',
+    description: 'Intelligent analysis tracking student grade trajectories to alert teachers of performance dips before major exams.',
+    badge: 'Academics',
+    color: 'from-violet-500/20 to-purple-500/10 text-violet-500 border-violet-500/20',
   },
   {
-    id: 'show-receipt',
-    icon: '📄',
-    title: 'Show Receipt',
-    description: 'Show latest receipt',
-    template: 'Show receipt for student [ID]',
-    category: 'Receipts'
+    icon: FileText,
+    title: 'Instant Terminal Report Remarks',
+    description: 'Auto-craft personalized, comprehensive student remarks aligned with Ghanaian (GES) and international curricula.',
+    badge: 'Reporting',
+    color: 'from-blue-500/20 to-indigo-500/10 text-blue-500 border-blue-500/20',
   },
   {
-    id: 'students-owing',
-    icon: '⚠️',
-    title: 'Students Owing',
-    description: 'List students with debt',
-    template: 'Which students owe money?',
-    category: 'Reports'
+    icon: MessageSquare,
+    title: 'Automated Parent Communications',
+    description: 'Multilingual SMS and messaging to answer common parent inquiries, send term dates, and deliver fee reminders.',
+    badge: 'Communication',
+    color: 'from-amber-500/20 to-orange-500/10 text-amber-500 border-amber-500/20',
   },
   {
-    id: 'all-students',
-    icon: '👥',
-    title: 'All Students',
-    description: 'List all students',
-    template: 'List all students',
-    category: 'Students'
+    icon: Bus,
+    title: 'Dynamic Fleet & Transport AI',
+    description: 'Real-time GPS route balancing, student pickup sequence optimization, and vehicle maintenance forecasting.',
+    badge: 'Logistics',
+    color: 'from-rose-500/20 to-pink-500/10 text-rose-500 border-rose-500/20',
   },
   {
-    id: 'general-report',
-    icon: '📊',
-    title: 'General Report',
-    description: 'Complete financial report',
-    template: 'Generate general report for current term',
-    category: 'Reports'
+    icon: BarChart3,
+    title: 'Executive Financial Auditing',
+    description: 'Natural language queries to audit monthly income, verify bank deposits, and highlight financial anomalies.',
+    badge: 'Compliance',
+    color: 'from-cyan-500/20 to-blue-500/10 text-cyan-500 border-cyan-500/20',
   },
-  {
-    id: 'income-summary',
-    icon: '💹',
-    title: 'Income Summary',
-    description: 'Total income breakdown',
-    template: 'Show income summary',
-    category: 'Reports'
-  },
-  {
-    id: 'expenses-summary',
-    icon: '💸',
-    title: 'Expenses Summary',
-    description: 'Total expenses breakdown',
-    template: 'Show expenses summary',
-    category: 'Reports'
-  }
 ];
 
-const TypingMessage = () => (
-  <div className="flex justify-start mb-4">
-    <div className="max-w-[80%] bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-4 shadow-sm">
-      <div className="flex items-start space-x-3">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-          <Bot className="w-4 h-4 text-white" />
-        </div>
-        <div className="flex items-center space-x-1 pt-1">
-          <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-          </div>
-          <span className="text-sm text-gray-600 ml-2">AI is thinking...</span>
-        </div>
-      </div>
-    </div>
-  </div>
-);
+const DEVELOPMENT_MILESTONES = [
+  {
+    quarter: 'Phase 1 • Q3 2026',
+    title: 'Financial & Ledger Copilot',
+    status: 'In Development',
+    progress: 85,
+    summary: 'Natural language fee queries, instant receipt verification, and automated debt reconciliation.',
+  },
+  {
+    quarter: 'Phase 2 • Q4 2026',
+    title: 'Academic Diagnostics & Remarks',
+    status: 'Planned',
+    progress: 40,
+    summary: 'Automated teacher report card remark generation and student exam trajectory forecasts.',
+  },
+  {
+    quarter: 'Phase 3 • Q1 2027',
+    title: 'Parent Messaging & Voice Assistant',
+    status: 'Planned',
+    progress: 15,
+    summary: 'Automated WhatsApp parent alerts, voice attendance logging, and autonomous bus dispatching.',
+  },
+];
 
-const AiChatModule = () => {
-  const { user, hasAccess } = useAuth();
-  const { students, teachers, payments, feeStructures, addPayment, classes, income, expenses } = useData();
-  const { messages, addMessage, clearMessages } = useChatPersistence();
-  const [inputValue, setInputValue] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showReceipt, setShowReceipt] = useState(false);
-  const [receiptData, setReceiptData] = useState(null);
-  const [showCommands, setShowCommands] = useState(true);
-  const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
-  const [showA4Report, setShowA4Report] = useState(false);
-  const [reportData, setReportData] = useState(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+export const AiChatModule: React.FC = () => {
+  const { hasAccess } = useAuth();
 
   if (!hasAccess('ai-assistant')) {
     return (
-      <div className="flex items-center justify-center h-full bg-background/50 backdrop-blur-md">
-        <div className="max-w-md mx-auto text-center bg-card rounded-3xl p-10 shadow-2xl border border-border/50">
-          <div className="w-20 h-20 mx-auto mb-6 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500 shadow-inner border border-red-500/20">
-            <ShieldAlert className="w-10 h-10" />
+      <div className="flex items-center justify-center min-h-[500px] p-6">
+        <div className="max-w-md w-full text-center bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-200 dark:border-slate-800">
+          <div className="w-16 h-16 mx-auto mb-5 bg-rose-50 dark:bg-rose-950/50 rounded-2xl flex items-center justify-center text-rose-500 shadow-inner border border-rose-200 dark:border-rose-900">
+            <ShieldAlert className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-black text-foreground mb-3 tracking-tight">Access Restricted</h2>
-          <p className="text-muted-foreground font-medium leading-relaxed">
-            Only authorized administrator and finance roles can access the AI infrastructure.
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Access Restricted</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Only authorized administrator and finance leadership accounts have access to the AI intelligence preview.
           </p>
         </div>
       </div>
@@ -152,95 +110,170 @@ const AiChatModule = () => {
   }
 
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center bg-background p-4 overflow-x-hidden overflow-y-auto relative">
-      {/* Background Neural Decorations */}
-      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-600/10 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '2s' }} />
-      <div className="absolute top-[40%] left-[30%] w-[20%] h-[20%] bg-indigo-500/5 rounded-full blur-[80px]" />
+    <div className="min-h-full w-full bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 lg:p-8 space-y-8 relative overflow-hidden">
+      {/* Background Ambient Glows */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 dark:bg-indigo-500/15 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse" />
+      <div className="absolute top-1/3 right-10 w-96 h-96 bg-violet-500/10 dark:bg-violet-500/15 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse" style={{ animationDelay: '2s' }} />
+      <div className="absolute bottom-10 left-10 w-96 h-96 bg-emerald-500/10 dark:bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      <div className="max-w-4xl w-full text-center space-y-2 md:space-y-4 relative z-10 animate-in fade-in zoom-in duration-700">
-        {/* Animated Icon Container */}
-        <div className="relative inline-block group">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl blur-2xl opacity-30 group-hover:opacity-50 transition-opacity duration-700" />
-          <div className="relative w-16 h-16 bg-slate-900 dark:bg-slate-800 border border-white/10 rounded-2xl flex items-center justify-center shadow-xl transform group-hover:scale-105 group-hover:rotate-3 transition-all duration-500 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/20 via-transparent to-purple-600/20" />
-            <Bot className="w-8 h-8 text-white drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
-          </div>
-          
-          <div className="absolute -top-2 -right-3 px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[7px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-orange-500/20 flex items-center gap-1 animate-bounce ring-4 ring-background">
-            <Zap className="w-2 h-2 fill-white" />
-            Beta
-          </div>
+      {/* Hero Showcase Banner */}
+      <div className="relative rounded-3xl overflow-hidden border border-indigo-200/60 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-950 via-slate-900 to-violet-950 text-white shadow-2xl p-6 sm:p-8 lg:p-10">
+        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          <Bot className="w-64 h-64 text-indigo-400" />
         </div>
 
-        {/* Text Content */}
-        <div className="space-y-2">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-2 py-0.5 border border-indigo-500/30 text-indigo-400 bg-indigo-500/10 rounded-full font-bold uppercase tracking-widest text-[7px] backdrop-blur-md">
-              <Sparkles className="w-2 h-2" />
-              <span>Next Gen AI</span>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tighter text-foreground leading-[1.1] font-outfit">
-              Intelligence is <br />
-              <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">Coming Soon</span>
-            </h1>
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-semibold backdrop-blur-md">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-300 animate-spin" style={{ animationDuration: '8s' }} />
+            <span>ScholarNerve AI Copilot • Under Active Development</span>
           </div>
-          
-          <p className="text-xs md:text-sm text-muted-foreground font-medium max-w-lg mx-auto leading-relaxed">
-            We're engineering a smarter way to manage your school. 
-            Predictive insights are being finalized.
+
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-[1.15]">
+            Next-Gen School Intelligence <br />
+            <span className="bg-gradient-to-r from-blue-300 via-indigo-200 to-purple-300 bg-clip-text text-transparent">
+              Coming in a Future Update
+            </span>
+          </h1>
+
+          <p className="text-sm sm:text-base text-indigo-100/80 leading-relaxed max-w-2xl font-normal">
+            We are engineering an autonomous artificial intelligence engine built specifically for institutional school operations.
+            From natural language fee reconciliation to predictive academic insights, the AI assistant will simplify repetitive administrative tasks when launched.
           </p>
-        </div>
 
-        {/* Feature Grid Mockup */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
-          {[
-            { icon: <MessageCircle className="w-4 h-4" />, title: "NLP Actions", desc: "Speak to your data. Record payments by typing naturally.", color: "text-blue-400", bg: "bg-blue-500/10" },
-            { icon: <BarChart3 className="w-4 h-4" />, title: "Smart Reports", desc: "Instant financial audits and performance analysis.", color: "text-purple-400", bg: "bg-purple-500/10" },
-            { icon: <Calculator className="w-4 h-4" />, title: "AI Ledger", desc: "Automatic debt tracking and fee alerts.", color: "text-emerald-400", bg: "bg-emerald-500/10" }
-          ].map((feature, i) => (
-            <div key={i} className="p-5 bg-card/40 backdrop-blur-2xl rounded-3xl border border-border/50 hover:border-indigo-500/50 transition-all duration-500 group relative overflow-hidden shadow-sm">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/5 to-transparent rounded-full -mr-12 -mt-12 blur-2xl" />
-              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3 shadow-inner border border-white/5", feature.bg, feature.color)}>
-                {feature.icon}
-              </div>
-              <h3 className="font-bold text-foreground text-sm mb-1">{feature.title}</h3>
-              <p className="text-[10px] text-muted-foreground font-medium leading-relaxed opacity-80">{feature.desc}</p>
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-semibold backdrop-blur-md">
+              <Cpu className="w-4 h-4 text-indigo-300" />
+              <span>Institutional Model Training in Progress</span>
             </div>
-          ))}
-        </div>
-
-        {/* Progress Bar Mockup */}
-        <div className="pt-2 space-y-3 max-w-xl mx-auto">
-          <div className="flex justify-between items-end">
-            <div className="text-left">
-              <p className="text-indigo-400 font-black uppercase tracking-widest text-[8px]">Neural Engine Training</p>
-              <p className="text-foreground font-bold text-xs">Optimization Phase: Luminous Core v4.2</p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-xs font-medium backdrop-blur-md">
+              <Lock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Bank-Grade School Data Encryption</span>
             </div>
-            <div className="text-right">
-              <span className="text-xl font-black text-indigo-400 font-outfit">74%</span>
-            </div>
-          </div>
-          <div className="h-4 w-full bg-muted/50 rounded-full overflow-hidden p-1 border border-border shadow-inner">
-            <div 
-              className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 rounded-full relative shadow-[0_0_15px_rgba(99,102,241,0.2)] w-[74%]"
-            >
-              <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.2)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
-            </div>
-          </div>
-          <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground/60 font-medium italic">
-            <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
-            Ensuring accuracy for financial processing...
           </div>
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-      `}} />
+      {/* Core Upcoming Capabilities */}
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+            <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              Upcoming Capabilities
+            </h2>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            A preview of the automated workflows being engineered for school leadership, bursars, and teachers.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {UPCOMING_CAPABILITIES.map((cap, i) => {
+            const Icon = cap.icon;
+            return (
+              <Card
+                key={i}
+                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-500/40 shadow-sm hover:shadow-md transition-all duration-300 group"
+              >
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border bg-gradient-to-br shadow-inner", cap.color)}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-semibold">
+                      {cap.badge}
+                    </Badge>
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      {cap.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                      {cap.description}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Launch Roadmap & Phasing */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+              <Compass className="w-4 h-4 text-indigo-500" />
+              Development Roadmap
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+              Phased architecture ensuring strict data privacy, curriculum alignment, and high accuracy.
+            </p>
+          </div>
+
+          <Badge variant="outline" className="self-start sm:self-auto text-xs px-3 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 font-semibold">
+            Feature Rollout Schedule
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {DEVELOPMENT_MILESTONES.map((m, idx) => (
+            <div
+              key={idx}
+              className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3 relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                  {m.quarter}
+                </span>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {m.progress}%
+                </span>
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                  {m.title}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  {m.summary}
+                </p>
+              </div>
+
+              {/* Progress track */}
+              <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-violet-600 rounded-full"
+                  style={{ width: `${m.progress}%` }}
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                <span className={cn("w-1.5 h-1.5 rounded-full", m.progress > 80 ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
+                <span>Status: {m.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Info Notice Banner */}
+      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/80 via-violet-50/80 to-purple-50/80 dark:from-indigo-950/30 dark:via-slate-900 dark:to-purple-950/30 p-5 flex items-center gap-3.5 shadow-sm">
+        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-400">
+          <CheckCircle2 className="w-5 h-5" />
+        </div>
+        <div className="space-y-0.5">
+          <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
+            Zero Configuration Required by School Staff
+          </h4>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            When this module is officially released, it will automatically connect to your school's existing students, fee records, and attendance data without requiring manual setup.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

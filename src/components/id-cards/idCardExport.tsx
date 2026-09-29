@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import type { CardEntityType, IDCardColors, IDCardData } from '@/types/idCard';
 import { CARD_HEIGHT_PX, CARD_WIDTH_PX } from '@/types/idCard';
 import { resolveLogoUrl } from '@/services/tenantService';
+import { apiService } from '@/services/api';
 import { formatIdCardAcademicYear } from '@/utils/idCardAcademicYear';
 import { resolveIdCardVerifyUrl } from '@/utils/idCardVerifyUrl';
 import StudentCardFront, { StudentCardBack } from './StudentCardFront';
@@ -292,7 +293,6 @@ export function useCardLoader(
     if (!entityType || !entityId) return;
     setLoading(true);
     try {
-      const { apiService } = await import('@/services/api');
       const path =
         entityType === 'STUDENT'
           ? `/id-cards/student/${entityId}`
@@ -371,7 +371,6 @@ export async function fetchCardExportPayload(
   entityId: number,
   staffType?: string
 ): Promise<CardExportPayload> {
-  const { apiService } = await import('@/services/api');
   const path =
     entityType === 'STUDENT'
       ? `/id-cards/student/${entityId}`

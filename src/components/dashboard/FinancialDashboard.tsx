@@ -557,7 +557,7 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
         )}
 
         {/* Hero */}
-        <div className={cn(surfaceCard, 'border-l-4 border-l-emerald-600 p-5 dark:border-l-emerald-500 md:p-6')}>
+        <div className={cn(surfaceCard, 'p-5 md:p-6')}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-[28px]">
@@ -648,7 +648,7 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
         <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible xl:grid-cols-7">
           {financialLoading
             ? Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className={cn(surfaceCard, 'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 md:min-w-0')}>
+                <div key={i} className={cn(surfaceCard, 'min-w-[200px] flex-shrink-0 snap-start p-4 md:min-w-0')}>
                   <Skeleton className="h-4 w-24" />
                   <Skeleton className="mt-2 h-7 w-28" />
                   <Skeleton className="mt-2 h-3 w-20" />
@@ -661,8 +661,7 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
                     key={k.key}
                     className={cn(
                       surfaceCard,
-                      'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 hover:-translate-y-0.5 md:min-w-0',
-                      styles.border
+                      'min-w-[200px] flex-shrink-0 snap-start p-4 hover:-translate-y-0.5 md:min-w-0'
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -1049,7 +1048,7 @@ const FinancialDashboard = ({ onNavigate }: FinancialDashboardProps) => {
               />
             ) : null}
 
-            <Card className={cn(surfaceCard, 'border-l-4 border-l-red-500 p-5')}>
+            <Card className={cn(surfaceCard, 'p-5')}>
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-500" />
                 <h3 className="text-sm font-semibold text-foreground">Outstanding Fees</h3>

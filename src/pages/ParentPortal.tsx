@@ -45,6 +45,7 @@ import { exitParentImpersonation, restoreAdminSession, prepareReturnToAdminDashb
 import ImpersonationTransitionOverlay from '@/components/impersonation/ImpersonationTransitionOverlay';
 import { useNavigate } from 'react-router-dom';
 import {
+  ParentAppNotification,
   ParentNotificationsPanel,
   ParentPortalBackground,
   ParentPortalDesktopNav,
@@ -52,6 +53,7 @@ import {
   ParentPortalMobileNav,
   ParentPortalTopChrome,
 } from '@/pages/parent/ParentPortalChrome';
+import InvoiceDocument from '@/components/invoices/InvoiceDocument';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiService } from '@/services/api';
@@ -328,15 +330,6 @@ interface LinkedAccount {
 
 type Tab = 'overview' | 'grades' | 'position' | 'finance' | 'attendance' | 'desk' | 'boarding';
 type FinanceSubTab = 'balance' | 'make-payment';
-type ParentAppNotification = {
-  id: string;
-  serverId?: number;
-  title: string;
-  message: string;
-  url?: string;
-  at: number;
-  read: boolean;
-};
 
 function isFinanceStatementNotification(n: Pick<ParentAppNotification, 'url' | 'title'>): boolean {
   return isFinanceStatementNotificationUrl(n.url) || /finance statement/i.test(n.title);
@@ -813,13 +806,23 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
           applyPostExitTenantContext(merged as Record<string, unknown>, restored.backup);
           applySession(restored.token, merged as Record<string, unknown>);
           prepareReturnToAdminDashboard(restored.backup);
-          navigate(resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup), {
+          const dest = resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup);
+          if (dest.startsWith('http')) {
+            window.location.href = dest;
+            return;
+          }
+          navigate(dest, {
             replace: true,
           });
         } catch {
           clearImpersonationTransition();
           const backup = readAdminBackup();
-          navigate(resolvePostImpersonationPath(backup?.user ?? {}, backup), { replace: true });
+          const fallbackDest = resolvePostImpersonationPath(backup?.user ?? {}, backup);
+          if (fallbackDest.startsWith('http')) {
+            window.location.href = fallbackDest;
+            return;
+          }
+          navigate(fallbackDest, { replace: true });
         }
       })();
       return;
@@ -928,7 +931,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
       const tab = activeTab;
       const prefetch: Promise<unknown>[] = [
-        parentFetch('/parent/me', {}, authToken) as Promise<StudentInfo>,
+        parentFetch('/parent/me', {}, authToken) as unknown as Promise<StudentInfo>,
         parentFetch('/parent/finance', {}, authToken).catch(() => null),
         parentFetch('/parent/birthdays', {}, authToken).catch(() => null),
         parentFetch('/parent/admission-letters', {}, authToken).catch(() => []),
@@ -1144,7 +1147,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     setImpersonationBootstrapping(true);
     void (async () => {
       try {
-        const me = (await parentFetch('/parent/me', {}, storedToken)) as StudentInfo;
+        const me = (await parentFetch('/parent/me', {}, storedToken)) as unknown as StudentInfo;
         if (cancelled) return;
         const info = { ...me, must_change_password: false } as StudentInfo;
         setToken(storedToken);
@@ -1192,7 +1195,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
 
     void (async () => {
       try {
-        const me = (await parentFetch('/parent/me', {}, storedToken)) as StudentInfo;
+        const me = (await parentFetch('/parent/me', {}, storedToken)) as unknown as StudentInfo;
         if (cancelled) return;
         if (!studentBelongsToTenant(me, tenantId)) {
           throw new Error('Session belongs to a different school');
@@ -1244,7 +1247,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
     let cancelled = false;
     void (async () => {
       try {
-        const me = await parentFetch('/parent/me', {}, token) as StudentInfo;
+        const me = (await parentFetch('/parent/me', {}, token)) as unknown as StudentInfo;
         if (cancelled) return;
         if (!studentBelongsToTenant(me, tenantId)) {
           throw new Error('Session belongs to a different school');
@@ -3150,7 +3153,7 @@ const ParentPortal: React.FC<ParentPortalProps> = ({ tenantId, schoolName, schoo
                 resolveMediaUrl={resolveMediaUrl}
                 logoUrl={schoolLogoUrl ?? student?.school_logo_url}
                 outstandingAmount={finance?.outstanding}
-                schoolName={student?.school_name || student?.schoolName}
+                schoolName={student?.school_name || (student as any)?.schoolName}
                 onOnlinePaymentSuccess={handleOnlinePaymentSuccess}
               />
             ) : financeSubTab === 'make-payment' ? null : showTabLoading ? (

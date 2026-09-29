@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
 import { Search, Users, Eye, Pencil, FileDown, FileSpreadsheet } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { OtherStaffRecord } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 import OtherStaffProfileDialog from './OtherStaffProfileDialog';
@@ -191,97 +192,109 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
   return (
     <>
       <Card className="border-border bg-card shadow-sm">
-        <CardHeader className="border-b border-border/70 bg-muted/30">
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            <span>
-              All Other Staff ({countedInView}
-              {filtered.length !== countedInView ? (
-                <span className="text-muted-foreground font-normal"> · {filtered.length} listed</span>
-              ) : null}
-              )
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <CardHeader className="border-b border-border/70 bg-muted/30 py-3 px-3.5 sm:px-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="flex items-center space-x-2 shrink-0 text-base sm:text-lg">
+              <Users className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+              <span>
+                All Other Staff ({countedInView}
+                {filtered.length !== countedInView ? (
+                  <span className="text-muted-foreground font-normal text-sm"> · {filtered.length} listed</span>
+                ) : null}
+                )
+              </span>
+            </CardTitle>
+            <div className="relative w-full sm:w-72 md:w-80 lg:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search by name, staff ID, or position..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
+                className="pl-9 h-9 bg-background text-sm rounded-lg"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-            <Select value={positionFilter} onValueChange={setPositionFilter}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Position" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All positions</SelectItem>
-                {positions.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="Department" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All departments</SelectItem>
-                {departments.map((d) => (
-                  <SelectItem key={d} value={d}>{d}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="all">All</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={genderFilter} onValueChange={setGenderFilter}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="male">Male</SelectItem>
-                <SelectItem value="female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-            <label
-              className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-              title="Include non-counted staff in export"
-            >
-              <Checkbox
-                className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
-                checked={includeNonCounted}
-                onCheckedChange={(v) => setIncludeNonCounted(v === true)}
-              />
-              Non-counted
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={exporting || filtered.length === 0}
-              onClick={() => void exportPdf()}
-            >
-              <FileDown className="h-4 w-4 mr-2" />
-              Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={exporting || filtered.length === 0}
-              onClick={() => void exportExcel()}
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
-            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-3.5 px-2.5 sm:px-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-wrap mb-3.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={positionFilter} onValueChange={setPositionFilter}>
+                <SelectTrigger className="w-32 sm:w-36 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Position" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All positions</SelectItem>
+                  {positions.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger className="w-32 sm:w-36 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All departments</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-28 sm:w-32 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={genderFilter} onValueChange={setGenderFilter}>
+                <SelectTrigger className="w-24 sm:w-28 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                </SelectContent>
+              </Select>
+              <label
+                className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer select-none"
+                title="Include non-counted staff in export"
+              >
+                <Checkbox
+                  className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
+                  checked={includeNonCounted}
+                  onCheckedChange={(v) => setIncludeNonCounted(v === true)}
+                />
+                Non-counted
+              </label>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filtered.length === 0}
+                onClick={() => void exportPdf()}
+              >
+                <FileDown className="h-4 w-4" />
+                Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filtered.length === 0}
+                onClick={() => void exportExcel()}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
             </div>
           </div>
 
@@ -291,20 +304,20 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
             <div className="rounded-md border border-border overflow-x-auto w-full bg-card">
               <Table className="w-full">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-7 max-w-7 px-0.5 pl-2 pr-0">
                       <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAll} aria-label="Select all staff" />
                     </TableHead>
-                    <TableHead className="w-12 whitespace-nowrap">Photo</TableHead>
-                    <TableHead className="min-w-[180px] whitespace-nowrap">Name</TableHead>
-                    <TableHead className="whitespace-nowrap">Staff ID</TableHead>
-                    <TableHead className="whitespace-nowrap">Contact</TableHead>
-                    <TableHead className="whitespace-nowrap">Position</TableHead>
-                    <TableHead className="whitespace-nowrap">Department</TableHead>
-                    <TableHead className="whitespace-nowrap">Type</TableHead>
-                    <TableHead className="whitespace-nowrap">Status</TableHead>
-                    <TableHead className="whitespace-nowrap">Salary</TableHead>
-                    <TableHead className="text-right min-w-[5.5rem] whitespace-nowrap">Actions</TableHead>
+                    <TableHead className="w-10 px-0.5 text-center whitespace-nowrap">Photo</TableHead>
+                    <TableHead className="whitespace-nowrap px-2">Name</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Staff ID</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Position</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Salary</TableHead>
+                    <TableHead className="whitespace-nowrap px-2">Contact</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Department</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Type</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Status</TableHead>
+                    <TableHead className="w-16 pr-2.5 pl-0.5 whitespace-nowrap text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -324,77 +337,108 @@ const ViewAllOtherStaff: React.FC<Props> = ({ refreshKey = 0 }) => {
                           className={`hover:bg-muted/40 cursor-pointer ${!active ? 'opacity-70' : ''} ${!counted ? 'opacity-60' : ''}`}
                           onClick={() => openProfile(s)}
                         >
-                          <TableCell className="py-2 w-10" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="w-7 max-w-7 px-0.5 pl-2 pr-0" onClick={(e) => e.stopPropagation()}>
                             <Checkbox
                               checked={selected.has(s.id)}
                               onCheckedChange={() => toggleSelect(s.id)}
                               aria-label={`Select ${s.full_name}`}
                             />
                           </TableCell>
-                          <TableCell className="py-2 w-12">
+                          <TableCell className="w-10 px-0.5 text-center">
                             <StaffPhotoLightbox
                               src={s.passport_photo_url}
                               name={s.full_name}
-                              size="sm"
+                              size="xs"
+                              className="mx-auto"
                             />
                           </TableCell>
-                          <TableCell className="py-2">
-                            <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
-                              {s.full_name}
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
+                            <div className="font-medium text-foreground text-sm flex items-center gap-1.5 leading-snug">
+                              <span>{s.full_name}</span>
                               {!counted ? (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                                <Badge variant="outline" className="text-[9px] uppercase tracking-wide px-1 py-0 font-normal">
                                   Not Counted
                                 </Badge>
                               ) : null}
                             </div>
                             <div className="text-xs text-muted-foreground">{s.gender || '—'}</div>
                           </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-sm">{s.staff_id}</span>
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            <span className="font-mono text-xs">{s.staff_id}</span>
                           </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <div>{s.phone_number || '—'}</div>
-                              <div className="text-muted-foreground">{s.email || ''}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{s.position || '—'}</TableCell>
-                          <TableCell>{s.department || '—'}</TableCell>
-                          <TableCell>{s.employment_type || '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={active ? 'text-emerald-600 border-emerald-500/30' : ''}>
-                              {s.employment_status || 'active'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {s.monthly_salary != null && Number(s.monthly_salary) > 0 ? (
-                              <span className="font-mono">GHS {Number(s.monthly_salary).toLocaleString()}</span>
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            {s.position ? (
+                              <Badge variant="secondary" className="text-xs font-normal">{s.position}</Badge>
                             ) : (
-                              <span className="text-muted-foreground">—</span>
+                              <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-end gap-2">
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            {s.monthly_salary != null && Number(s.monthly_salary) > 0 ? (
+                              <span className="font-mono text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                                GHS {Number(s.monthly_salary).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 px-2 whitespace-nowrap">
+                            <div className="text-xs leading-snug">
+                              <div className="font-medium text-foreground">{s.phone_number || '—'}</div>
+                              {s.email ? (
+                                <div className="text-muted-foreground">{s.email}</div>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            {s.department ? (
+                              <span className="text-xs text-muted-foreground">{s.department}</span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            {s.employment_type ? (
+                              <Badge variant="outline" className="text-xs font-normal">{s.employment_type}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-xs font-normal',
+                                active
+                                  ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/50 dark:text-green-300'
+                                  : 'bg-muted text-muted-foreground'
+                              )}
+                            >
+                              {(s.employment_status || 'active').toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2 pr-2.5 pl-0.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-end items-center gap-1">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-9 w-9 p-0"
+                                className="h-7 w-7 p-0"
                                 title="View profile"
                                 onClick={() => openProfile(s)}
                               >
-                                <Eye className="w-4 h-4" />
+                                <Eye className="w-3.5 h-3.5" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-9 w-9 p-0"
+                                className="h-7 w-7 p-0"
                                 title="Edit"
                                 onClick={() => {
                                   setEditStaff(s);
                                   setEditOpen(true);
                                 }}
                               >
-                                <Pencil className="w-4 h-4" />
+                                <Pencil className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           </TableCell>

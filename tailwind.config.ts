@@ -31,6 +31,8 @@ export default {
 			fontFamily: {
 				sans: ['Inter', 'sans-serif'],
 				outfit: ['Outfit', 'sans-serif'],
+				jakarta: ['"Plus Jakarta Sans"', 'sans-serif'],
+				display: ['"Bricolage Grotesque"', 'sans-serif'],
 			},
 			colors: {
 				border: 'hsl(var(--border))',

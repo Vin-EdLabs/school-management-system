@@ -1,10 +1,9 @@
+import '../env.js';
 import pg from 'pg';
-import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { applyPendingSqlFileMigrations } from './fileMigrations.js';
 import { ensureSupplementalSchema } from './ensureSchema.js';
 
-dotenv.config();
 
 const { Pool } = pg;
 

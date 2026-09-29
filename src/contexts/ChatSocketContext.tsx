@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { resolveSocketBaseUrl, SOCKET_IO_OPTIONS } from '@/utils/socketUrl';
-import type { ChatMessage } from '@/services/chatService';
+import { chatService, type ChatMessage } from '@/services/chatService';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiService } from '@/services/api';
 
@@ -194,7 +194,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
 
   const markRead = useCallback((channelId: number) => {
     socketRef.current?.emit('mark_read', { channel_id: channelId });
-    void import('@/services/chatService').then(({ chatService }) => chatService.markRead(channelId));
+    void chatService.markRead(channelId);
   }, []);
 
   const typingStart = useCallback((channelId: number) => {

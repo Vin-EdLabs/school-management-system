@@ -1,7 +1,26 @@
 import { apiService } from '../services/api';
-import { getTenantSchoolUrl } from './tenantHost';
+import { getTenantSchoolUrl, detectTenantSlugFromHost } from './tenantHost';
 import { isSchoolTenantView, isSuperAdminRoute } from './schoolAdminView';
 import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
+
+export function getPlatformAdminUrl(): string {
+  if (typeof window === 'undefined') return PLATFORM_ADMIN_PATH;
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname.toLowerCase();
+  const port = window.location.port ? `:${window.location.port}` : '';
+
+  if (hostname.includes('localhost') || hostname === '127.0.0.1' || hostname === '::1') {
+    return `${protocol}//localhost${port}${PLATFORM_ADMIN_PATH}`;
+  }
+  if (hostname.endsWith('.lvh.me') || hostname === 'lvh.me') {
+    return `${protocol}//lvh.me${port}${PLATFORM_ADMIN_PATH}`;
+  }
+  if (hostname.endsWith('.onrender.com')) {
+    const baseDomain = hostname.replace(/^[a-z0-9-]+\./, '');
+    return `${protocol}//${baseDomain}${PLATFORM_ADMIN_PATH}`;
+  }
+  return `${protocol}//scholarnerve.com${PLATFORM_ADMIN_PATH}`;
+}
 
 export const ADMIN_BACKUP_KEY = 'impersonation_admin_backup';
 export const IMPERSONATION_META_KEY = 'impersonation_meta';
@@ -376,27 +395,36 @@ export function prepareReturnToAdminDashboard(backup: AdminBackup | null) {
   return returnModule;
 }
 
-/** Where to send the admin after exiting impersonation (never apex `/` for super-admin). */
+/** Where to send the admin after exiting impersonation. */
 export function resolvePostImpersonationPath(
-  user: Record<string, unknown>,
+  _user: Record<string, unknown>,
   backup: AdminBackup | null
 ): string {
-  const role = String(user.role || '').toLowerCase();
-  if (role === 'super-admin' || backup?.startedFromSuperAdmin || backup?.returnModule === 'super-admin') {
+  // If impersonation was explicitly started from the Super Admin platform dashboard:
+  if (backup?.startedFromSuperAdmin || backup?.returnModule === 'super-admin') {
+    if (typeof window !== 'undefined' && detectTenantSlugFromHost()) {
+      return getPlatformAdminUrl();
+    }
     return PLATFORM_ADMIN_PATH;
   }
+
+  // If impersonation was started from inside a school portal (even if the user is a super-admin):
+  if (typeof window !== 'undefined' && detectTenantSlugFromHost()) {
+    return '/';
+  }
+
   const schoolPath = getTenantSchoolUrl(backup?.schoolSlug ?? null, backup?.schoolId ?? undefined);
   return schoolPath || '/';
 }
 
-export function applyPostExitTenantContext(user: Record<string, unknown>, backup: AdminBackup | null) {
-  const role = String(user.role || '').toLowerCase();
-  if (role === 'super-admin') {
+export function applyPostExitTenantContext(_user: Record<string, unknown>, backup: AdminBackup | null) {
+  if (backup?.startedFromSuperAdmin || backup?.returnModule === 'super-admin') {
     apiService.clearTenantContext();
     return;
   }
   if (backup?.schoolId) {
     apiService.setTenantContext(backup.schoolId);
+    localStorage.setItem('currentSchoolId', String(backup.schoolId));
   }
 }
 

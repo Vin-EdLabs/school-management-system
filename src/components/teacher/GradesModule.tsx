@@ -285,7 +285,11 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   const [showReleaseConfirm, setShowReleaseConfirm] = useState(false);
   const [remarksHydratedStudentId, setRemarksHydratedStudentId] = useState<number | null>(null);
   const [remarksDirty, setRemarksDirty] = useState(false);
-  const markRemarksDirty = useCallback(() => setRemarksDirty(true), []);
+  const remarksEditVersionRef = useRef(0);
+  const markRemarksDirty = useCallback(() => {
+    remarksEditVersionRef.current += 1;
+    setRemarksDirty(true);
+  }, []);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { openPrintPreview } = usePrintPreview();
@@ -925,6 +929,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     setHeadmasterRemarkDraft(report.headmasterRemarks?.[studentId] || '');
     setRemarksHydratedStudentId(studentId);
     setRemarksDirty(false);
+    remarksEditVersionRef.current = 0;
   }, [classPromotedTo, promotedOverrides, classReopeningDate]);
 
   const applyReopeningDateToAll = useCallback(async (date: string) => {
@@ -932,6 +937,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     const trimmed = date.trim();
     if (!trimmed) return;
 
+    const saveVersion = remarksEditVersionRef.current;
     setReopeningApplyStatus('saving');
     try {
       const updatedRemarks: Record<number, string> = {
@@ -971,8 +977,10 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
         const nextReport: TermReport = { ...termReport, teacherRemarks: updatedRemarks };
         setClassReopeningDate(trimmed);
         setTermReport(nextReport);
-        setRemarksDirty(false);
-        setAutoSaveStatus('saved');
+        if (remarksEditVersionRef.current === saveVersion) {
+          setRemarksDirty(false);
+          setAutoSaveStatus('saved');
+        }
       }
       setReopeningApplyStatus('saved');
       window.setTimeout(() => setReopeningApplyStatus('idle'), 2000);
@@ -1118,10 +1126,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       setTermReport(nextReport);
 
       if (selectedReportStudentId) {
-        applyStudentReportFields(selectedReportStudentId, nextReport, {
-          classPromotedTo: newDefault,
-          promotedOverrides: keptOverrides,
-        });
+        setPromotedToDraft(keptOverrides[selectedReportStudentId] ?? newDefault);
       }
 
       setRemarksDirty(false);
@@ -1151,6 +1156,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     options?: { silent?: boolean; skipBulk?: boolean }
   ): Promise<Record<number, string> | null> => {
     if (!selectedClassId || !termReport) return null;
+    const saveVersion = remarksEditVersionRef.current;
 
     const resolvedPromotedTo =
       targetStudentId === selectedReportStudentId
@@ -1192,12 +1198,9 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
           },
         };
         setTermReport(nextReport);
-        if (targetStudentId === selectedReportStudentId) {
-          const studentIds = nextReport.students.map((s) => s.studentId);
-          const promotedState = derivePromotedToState(nextReport.teacherRemarks || {}, studentIds);
-          applyStudentReportFields(targetStudentId, nextReport, promotedState);
+        if (remarksEditVersionRef.current === saveVersion) {
+          setRemarksDirty(false);
         }
-        setRemarksDirty(false);
         if (!options?.silent) toast({ title: 'Saved', description: 'Report card details saved.' });
         return normalizeTeacherRemarks(nextReport.teacherRemarks);
       } catch (e: any) {
@@ -1285,11 +1288,9 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
       setPromotedOverrides(promotedState.promotedOverrides);
       setTermReport(nextReport);
 
-      if (targetStudentId === selectedReportStudentId) {
-        applyStudentReportFields(targetStudentId, nextReport, promotedState);
+      if (remarksEditVersionRef.current === saveVersion) {
+        setRemarksDirty(false);
       }
-
-      setRemarksDirty(false);
       if (!options?.silent) {
         toast({ title: 'Saved', description: 'Report card details saved.' });
       }
@@ -1310,7 +1311,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
     attendanceDraft, attendanceOutOfDraft, classPromotedTo, promotedOverrides,
     reopeningDateDraft, headmasterRemarkDraft, promotedToDraft, selectedReportStudentId,
     classReopeningDate,
-    mergeFreshRemarksForStudent, applyStudentReportFields, buildArchiveSignaturesPayload,
+    mergeFreshRemarksForStudent, buildArchiveSignaturesPayload,
   ]);
 
   const saveAllStudentsRemarksBeforeRelease = useCallback(async () => {
@@ -1509,19 +1510,31 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
   };
 
   const switchToReportStudent = async (studentId: number) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     setSelectedReportStudentId(studentId);
-    setRemarksHydratedStudentId(null);
     if (!termReport) return;
     const studentIds = termReport.students.map((s) => s.studentId);
-    const withFresh = await mergeFreshRemarksForStudent(studentId, termReport);
-    const promotedState = derivePromotedToState(withFresh.teacherRemarks || {}, studentIds);
-    const reopeningState = deriveReopeningDateState(withFresh.teacherRemarks || {}, studentIds);
-    setClassPromotedTo(promotedState.classPromotedTo);
-    setPromotedOverrides(promotedState.promotedOverrides);
-    setClassReopeningDate(reopeningState.classReopeningDate);
-    setTermReport(withFresh);
-    applyStudentReportFields(studentId, withFresh, promotedState);
+    const initialPromotedState = derivePromotedToState(termReport.teacherRemarks || {}, studentIds);
+    applyStudentReportFields(studentId, termReport, initialPromotedState);
     setAutoSaveStatus('idle');
+
+    try {
+      const withFresh = await mergeFreshRemarksForStudent(studentId, termReport);
+      const promotedState = derivePromotedToState(withFresh.teacherRemarks || {}, studentIds);
+      const reopeningState = deriveReopeningDateState(withFresh.teacherRemarks || {}, studentIds);
+      setClassPromotedTo(promotedState.classPromotedTo);
+      setPromotedOverrides(promotedState.promotedOverrides);
+      setClassReopeningDate(reopeningState.classReopeningDate);
+      setTermReport(withFresh);
+      if (remarksEditVersionRef.current === 0) {
+        applyStudentReportFields(studentId, withFresh, promotedState);
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const handleSelectReportStudent = (studentId: number) => {
@@ -1541,7 +1554,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
 
     // Build performance rows from subject scores
     const performanceRows = (termReport.subjects || []).map((subj: string) => {
-      const score = student.subjectScores?.[subj] || {};
+      const score = (student.subjectScores?.[subj] || {}) as any;
       return {
         subject: subj,
         classScore: score.classScore ?? null,
@@ -2726,6 +2739,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                                     type="text" 
                                     value={attendanceDraft} 
                                     onChange={(e) => { setAttendanceDraft(e.target.value); markRemarksDirty(); }}
+                                    readOnly={!canEditClassTeacherReport}
                                     placeholder="Present days"
                                     className="border-b border-black font-bold pl-2 bg-transparent focus:outline-none w-16 no-print text-center"
                                   />
@@ -3087,7 +3101,7 @@ const GradesModule = ({ schoolWideReadOnly = false }: { schoolWideReadOnly?: boo
                       {/* Subject breakdown (screen only — not included in class table print) */}
                       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {termReport.subjects.map(subj => {
-                          const sAssignments = termReport.assignmentsBySubject[subj] || [];
+                          const sAssignments = (termReport.assignmentsBySubject?.[subj] || []) as Array<{ id: string | number; name: string; assignment_type: string; max_score: string | number }>;
                           return (
                             <div key={subj} className="border rounded-lg p-3 bg-gray-50">
                               <p className="font-semibold text-gray-800 text-sm mb-1">{subj}</p>

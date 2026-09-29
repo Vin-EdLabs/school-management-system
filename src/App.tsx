@@ -20,19 +20,15 @@ import VerifyCardPage from "./pages/VerifyCardPage";
 import PublicCheckinPage from "./pages/PublicCheckinPage";
 import NotFound from "./pages/NotFound";
 import SchoolSelector from "./pages/SchoolSelector";
-import LandingPage from "./pages/LandingPage";
-import FeaturesPage from "./pages/landing/FeaturesPage";
-import PricingPage from "./pages/landing/PricingPage";
-import AboutPage from "./pages/landing/AboutPage";
-import PartnersPage from "./pages/landing/PartnersPage";
-import ContactPage from "./pages/landing/ContactPage";
-import PublicLandingSwitch from "./pages/PublicLandingSwitch";
-import RegisterSchool from "./pages/RegisterSchool";
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
-import { ParentPortalRoute } from "./pages/ParentPortal";
+const LandingPage = React.lazy(() => import("./pages/LandingPage"));
+const FeaturesPage = React.lazy(() => import("./pages/landing/FeaturesPage"));
+const PricingPage = React.lazy(() => import("./pages/landing/PricingPage"));
+const AboutPage = React.lazy(() => import("./pages/landing/AboutPage"));
+const PartnersPage = React.lazy(() => import("./pages/landing/PartnersPage"));
+const ContactPage = React.lazy(() => import("./pages/landing/ContactPage"));
+const PublicLandingSwitch = React.lazy(() => import("./pages/PublicLandingSwitch"));
 import { detectTenantSlugFromHost, getSubdomainUrl, normalizeLegacyPathOnSubdomain } from "./utils/tenantHost";
 import { isPartnersHost } from "./utils/partnersHost";
-import PartnerPortalApp from "./pages/partners/PartnerPortalApp";
 import {
   buildLegacyRedirectUrl,
   DEFAULT_WEBSITE_URL_SUFFIX,
@@ -41,9 +37,14 @@ import {
   parseLegacySchoolWebsiteHost,
   parsePublicWebsiteHost,
 } from "./utils/schoolWebsiteHost";
-import SchoolWebsiteApp from "./pages/school-website/SchoolWebsiteApp";
 import { PLATFORM_ADMIN_PATH } from '@/constants/platformAdminRoute';
 import { NetworkStatusBanner } from "@/components/ui/NetworkStatusBanner";
+
+const SuperAdminDashboard = React.lazy(() => import("./pages/SuperAdminDashboard"));
+const ParentPortalRoute = React.lazy(() => import("./pages/ParentPortal").then((m) => ({ default: m.ParentPortalRoute })));
+const PartnerPortalApp = React.lazy(() => import("./pages/partners/PartnerPortalApp"));
+const SchoolWebsiteApp = React.lazy(() => import("./pages/school-website/SchoolWebsiteApp"));
+const RegisterSchool = React.lazy(() => import("./pages/RegisterSchool"));
 import { BrandedLoadingScreen, isSplashGone } from "@/components/common/BrandedLoading";
 import { PARENT_IMPERSONATE_HANDOFF_KEY, STAFF_IMPERSONATE_HANDOFF_KEY } from "@/utils/impersonationHelpers";
 import ImpersonationTransitionGate from "@/components/impersonation/ImpersonationTransitionGate";
@@ -419,9 +420,11 @@ const App = () => {
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <Routes>
-                <Route path="/*" element={<PartnerPortalApp />} />
-              </Routes>
+              <React.Suspense fallback={<BrandedLoadingScreen label="Loading Partner Portal..." />}>
+                <Routes>
+                  <Route path="/*" element={<PartnerPortalApp />} />
+                </Routes>
+              </React.Suspense>
             </TooltipProvider>
           </BrowserRouter>
         </ThemeProvider>
@@ -447,6 +450,7 @@ const App = () => {
               <Sonner />
               <SubdomainPathNormalizer />
               <SchoolWebsiteCanonicalRedirect />
+              <React.Suspense fallback={<BrandedLoadingScreen label="Loading page..." />}>
                 {websiteSlug ? (
                   <Routes>
                     <Route path="/*" element={<SchoolWebsiteApp slug={websiteSlug} />} />
@@ -491,6 +495,7 @@ const App = () => {
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 )}
+              </React.Suspense>
             </TooltipProvider>
             </TeacherNotificationProvider>
             </ChatSocketProvider>

@@ -4,7 +4,8 @@ import {
   Download, DollarSign, TrendingUp, 
   Users, ChevronDown, FileText,
   ArrowUpRight, ArrowDownRight, UserCheck, 
-  Wallet, GraduationCap, Clock, AlertCircle, RefreshCw
+  Wallet, GraduationCap, Clock, AlertCircle, RefreshCw,
+  Receipt, Landmark
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -47,7 +48,8 @@ interface StatCardProps {
   subtext: string;
   trend?: { value: string; positive: boolean };
   progress?: number;
-  glowColor?: 'emerald' | 'red' | 'gold' | 'blue';
+  icon?: React.ComponentType<{ className?: string; size?: number | string }>;
+  accentColor?: 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'violet';
   delay?: number;
 }
 
@@ -84,72 +86,165 @@ const AnimatedNumber = ({ value, prefix = "", duration = 1000 }: { value: number
   return <span className="report-number-font">{prefix}{displayValue.toLocaleString()}</span>;
 };
 
-const StatCard = ({ label, value, subtext, trend, progress, glowColor = 'blue', delay = 0 }: StatCardProps) => {
+const StatCard = ({
+  label,
+  value,
+  subtext,
+  trend,
+  progress,
+  icon: Icon,
+  accentColor = 'blue',
+  delay = 0,
+}: StatCardProps) => {
   const numericValue = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
   const prefix = value.includes('GHS') ? 'GHS ' : '';
 
+  const accentStyles = {
+    amber: {
+      iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 dark:bg-amber-500/15',
+      progressFill: 'from-amber-500 to-amber-400',
+      borderHover: 'hover:border-amber-400/50',
+    },
+    emerald: {
+      iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 dark:bg-emerald-500/15',
+      progressFill: 'from-emerald-500 to-emerald-400',
+      borderHover: 'hover:border-emerald-400/50',
+    },
+    rose: {
+      iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 dark:bg-rose-500/15',
+      progressFill: 'from-rose-500 to-rose-400',
+      borderHover: 'hover:border-rose-400/50',
+    },
+    blue: {
+      iconBg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 dark:bg-blue-500/15',
+      progressFill: 'from-blue-500 to-blue-400',
+      borderHover: 'hover:border-blue-400/50',
+    },
+    indigo: {
+      iconBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 dark:bg-indigo-500/15',
+      progressFill: 'from-indigo-500 to-indigo-400',
+      borderHover: 'hover:border-indigo-400/50',
+    },
+    violet: {
+      iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 dark:bg-violet-500/15',
+      progressFill: 'from-violet-500 to-violet-400',
+      borderHover: 'hover:border-violet-400/50',
+    },
+  }[accentColor] || {
+    iconBg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+    progressFill: 'from-blue-500 to-blue-400',
+    borderHover: 'hover:border-blue-400/50',
+  };
+
   return (
     <div 
-      className={`luxury-card p-6 animate-entrance glow-${glowColor}`}
+      className={`group relative rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 ${accentStyles.borderHover} animate-entrance flex flex-col justify-between`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="flex justify-between items-start mb-4">
-        <span className="stat-label">{label}</span>
-        {trend && (
-          <div className={`flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${trend.positive ? 'bg-emerald-500/10 text-[var(--report-accent-emerald)]' : 'bg-red-500/10 text-[var(--report-accent-red)]'}`}>
-            {trend.positive ? <ArrowUpRight size={12} className="mr-1" /> : <ArrowDownRight size={12} className="mr-1" />}
-            {trend.value}
-          </div>
-        )}
-      </div>
-      <div className="stat-value mb-2 report-number-font flex items-baseline">
-        {isNaN(numericValue) ? (
-          value
-        ) : (
-          <AnimatedNumber value={numericValue} prefix={prefix} duration={1500} />
-        )}
-      </div>
-      <div className="text-[10px] text-[var(--report-text-secondary)] font-medium uppercase tracking-wider">
-        {subtext}
-      </div>
-      {progress !== undefined && (
-        <div className="mt-4">
-          <div className="flex justify-between text-[10px] mb-1">
-            <span className="text-[var(--report-text-secondary)]">Progress</span>
-            <span className="font-bold stat-progress-pct">{Math.round(progress)}%</span>
-          </div>
-          <div className="progress-bar-container">
-            <div 
-              className="progress-bar-fill" 
-              style={{ 
-                width: `${Math.min(100, Math.max(0, progress))}%`,
-                background: glowColor === 'red' ? 'linear-gradient(90deg, #ef4444, #f87171)' : 
-                            glowColor === 'gold' ? 'linear-gradient(90deg, #d4af37, #fbbf24)' : 
-                            'linear-gradient(90deg, #10b981, #34d399)'
-              }} 
-              id={`progress-${label.replace(/\s+/g, '-').toLowerCase()}`}
-            />
-          </div>
+      <div>
+        {/* Header: Full label with Icon - never clipped */}
+        <div className="flex items-center gap-2.5 mb-2.5">
+          {Icon && (
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${accentStyles.iconBg}`}>
+              <Icon size={18} />
+            </div>
+          )}
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            {label}
+          </span>
         </div>
-      )}
+
+        {/* Main Metric Value */}
+        <div className="my-1 flex items-baseline">
+          <span className="text-2xl lg:text-[26px] font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums">
+            {isNaN(numericValue) ? (
+              value
+            ) : (
+              <AnimatedNumber value={numericValue} prefix={prefix} duration={1200} />
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Footer / Subtext & Trend Badge */}
+      <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
+        {progress !== undefined ? (
+          <div>
+            <div className="flex justify-between items-center text-xs mb-1.5">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">{subtext}</span>
+              <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">{Math.round(progress)}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full bg-gradient-to-r ${accentStyles.progressFill} transition-all duration-1000`}
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {trend && (
+              <div
+                className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                  trend.positive
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20'
+                }`}
+              >
+                {trend.positive ? <ArrowUpRight size={12} className="shrink-0" /> : <ArrowDownRight size={12} className="shrink-0" />}
+                <span>{trend.value}</span>
+              </div>
+            )}
+            <span className="text-slate-500 dark:text-slate-400 font-normal">
+              {subtext}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-const MiniStatCard = ({ label, value, icon: Icon, delay = 0 }: { label: string; value: string; icon: any; delay?: number }) => (
-  <div 
-    className="luxury-card p-4 flex items-center space-x-4 animate-entrance"
-    style={{ animationDelay: `${delay}ms` }}
-  >
-    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-[var(--report-accent-blue)] dark:bg-blue-500/10">
-      <Icon size={20} />
+const MiniStatCard = ({
+  label,
+  value,
+  icon: Icon,
+  accent = 'blue',
+  delay = 0,
+}: {
+  label: string;
+  value: string;
+  icon: any;
+  accent?: 'blue' | 'indigo' | 'emerald' | 'amber' | 'violet';
+  delay?: number;
+}) => {
+  const accentStyles = {
+    blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/15',
+    indigo: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/15',
+    emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/15',
+    amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/15',
+    violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/15',
+  }[accent] || 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/15';
+
+  return (
+    <div 
+      className="group rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all duration-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 animate-entrance flex flex-col justify-between"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+          {label}
+        </span>
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${accentStyles}`}>
+          <Icon size={16} />
+        </div>
+      </div>
+      <div className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 tabular-nums whitespace-nowrap">
+        {value}
+      </div>
     </div>
-    <div>
-      <div className="stat-label text-[10px]">{label}</div>
-      <div className="text-lg font-bold report-number-font">{value}</div>
-    </div>
-  </div>
-);
+  );
+};
 
 const AdvancedReports = () => {
   const { theme } = useTheme();
@@ -605,7 +700,9 @@ const AdvancedReports = () => {
             <GraduationCap className="text-white" size={32} />
           </div>
           <div>
-            <h1 className="text-3xl font-bold report-header-font tracking-tight">Financial reports <span className="text-[var(--report-accent-gold)]">&amp; analytics</span></h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Financial Reports &amp; Analytics
+            </h1>
             <p className="mt-0.5 text-sm text-[var(--report-text-secondary)]">
               {school?.name ? `${school.name} · ` : ''}
               <span className="font-semibold text-[var(--report-text-primary)]">{activeTerm}</span>
@@ -706,74 +803,91 @@ const AdvancedReports = () => {
         </div>
       </header>
 
-          {/* --- HERO STATS ROW --- */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6">
-        <StatCard 
-          label="Total Fees Expected"
-          value={`GHS ${financialSummary?.totalExpected || 0}`}
-          subtext="Projected revenue for term"
-          progress={financialSummary?.collectionRate || 0}
-          glowColor="gold"
-          delay={100}
-        />
-        <StatCard 
-          label="Fees Collected"
-          value={`GHS ${financialSummary?.collected || 0}`}
-          subtext={`This term only (${fullViewingTermLabel || 'selected term'})`}
-          trend={{ value: `${Math.round(financialSummary?.collectionRate || 0)}% of expected`, positive: true }}
-          glowColor="emerald"
-          delay={200}
-        />
-        <StatCard 
-          label="Other Income"
-          value={`GHS ${financialSummary?.otherIncome || 0}`}
-          subtext="This term only"
-          trend={{ value: 'Donations, services & more', positive: true }}
-          glowColor="blue"
-          delay={250}
-        />
-        <StatCard 
-          label="Outstanding Balance"
-          value={`GHS ${financialSummary?.outstanding || 0}`}
-          subtext="This term accounts receivable"
-          trend={{ value: "Action required", positive: false }}
-          glowColor="red"
-          delay={300}
-        />
-        <StatCard 
-          label="Total Income"
-          value={`GHS ${financialSummary?.totalIncome ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))}`}
-          subtext="Fees + other (this term)"
-          trend={{ value: 'Term activity', positive: true }}
-          glowColor="emerald"
-          delay={375}
-        />
-        <StatCard 
-          label="Total Expenses"
-          value={`GHS ${financialSummary?.totalExpenses ?? 0}`}
-          subtext="This term only"
-          trend={{ value: 'Excludes fund transfers', positive: false }}
-          glowColor="red"
-          delay={385}
-        />
-        <StatCard 
-          label="System Net Position"
-          value={`GHS ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance) ?? 0}`}
-          subtext="All terms combined (carried forward)"
-          trend={{ value: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'Surplus' : 'Deficit', positive: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 }}
-          glowColor="blue"
-          delay={400}
-        />
-      </section>
+      {/* --- FINANCIAL METRICS OVERVIEW --- */}
+      <div className="space-y-4">
+        {/* Row 1: Term Fees & Collections (4 cards) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard 
+            label="Fees Expected"
+            value={`GHS ${financialSummary?.totalExpected || 0}`}
+            subtext="Projected term fee revenue"
+            progress={financialSummary?.collectionRate || 0}
+            icon={Receipt}
+            accentColor="amber"
+            delay={50}
+          />
+          <StatCard 
+            label="Fees Collected"
+            value={`GHS ${financialSummary?.collected || 0}`}
+            subtext={`${fullViewingTermLabel || 'Selected term'} fees`}
+            trend={{ value: `${Math.round(financialSummary?.collectionRate || 0)}% of bill`, positive: true }}
+            icon={Wallet}
+            accentColor="emerald"
+            delay={100}
+          />
+          <StatCard 
+            label="Outstanding Fees"
+            value={`GHS ${financialSummary?.outstanding || 0}`}
+            subtext="Accounts receivable"
+            trend={{ value: "Pending payment", positive: false }}
+            icon={Clock}
+            accentColor="rose"
+            delay={150}
+          />
+          <StatCard 
+            label="Other Income"
+            value={`GHS ${financialSummary?.otherIncome || 0}`}
+            subtext="Donations & services"
+            trend={{ value: "Non-fee income", positive: true }}
+            icon={TrendingUp}
+            accentColor="blue"
+            delay={200}
+          />
+        </div>
 
-          {/* --- SECOND STATS ROW --- */}
-          <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <MiniStatCard label="Active Students" value={feesByClass.reduce((a, b) => a + b.students, 0).toString()} icon={Users} delay={500} />
-        <MiniStatCard label="Staff on Payroll" value={payroll.length.toString()} icon={Wallet} delay={600} />
-        <MiniStatCard label="Monthly Payroll" value={`GHS ${payroll.reduce((a, b) => a + parseFloat(b.net), 0).toLocaleString()}`} icon={DollarSign} delay={700} />
-        <MiniStatCard label="School Performance" value={`${Math.round(performance?.schoolAverage || 0)}%`} icon={GraduationCap} delay={800} />
-        <MiniStatCard label="Attendance Rate" value={`${Math.round(attendance[attendance.length - 1]?.rate || 0)}%`} icon={UserCheck} delay={900} />
-          </section>
+        {/* Row 2: Cash Flow & Net Position (3 cards) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard 
+            label="Total Income"
+            value={`GHS ${financialSummary?.totalIncome ?? ((financialSummary?.collected ?? 0) + (financialSummary?.otherIncome ?? 0))}`}
+            subtext="Fees collected + other revenue"
+            trend={{ value: "Total revenue", positive: true }}
+            icon={DollarSign}
+            accentColor="emerald"
+            delay={250}
+          />
+          <StatCard 
+            label="Total Expenses"
+            value={`GHS ${financialSummary?.totalExpenses ?? 0}`}
+            subtext="Operating costs (excludes transfers)"
+            trend={{ value: "Operational spend", positive: false }}
+            icon={ArrowDownRight}
+            accentColor="rose"
+            delay={300}
+          />
+          <StatCard 
+            label="System Net Position"
+            value={`GHS ${(financialSummary?.systemNetPosition ?? financialSummary?.netBalance) ?? 0}`}
+            subtext="Cumulative net position across all terms"
+            trend={{
+              value: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? 'Surplus' : 'Deficit',
+              positive: (financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0,
+            }}
+            icon={Landmark}
+            accentColor={(financialSummary?.systemNetPosition ?? financialSummary?.netBalance ?? 0) >= 0 ? "indigo" : "rose"}
+            delay={350}
+          />
+        </div>
+      </div>
+
+      {/* --- SECOND STATS ROW (Operations KPIs) --- */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        <MiniStatCard label="Active Students" value={feesByClass.reduce((a, b) => a + b.students, 0).toString()} icon={Users} accent="blue" delay={400} />
+        <MiniStatCard label="Staff on Payroll" value={payroll.length.toString()} icon={Wallet} accent="indigo" delay={450} />
+        <MiniStatCard label="Monthly Payroll" value={`GHS ${payroll.reduce((a, b) => a + parseFloat(b.net), 0).toLocaleString()}`} icon={DollarSign} accent="emerald" delay={500} />
+        <MiniStatCard label="School Average" value={`${Math.round(performance?.schoolAverage || 0)}%`} icon={GraduationCap} accent="amber" delay={550} />
+        <MiniStatCard label="Attendance Rate" value={`${Math.round(attendance[attendance.length - 1]?.rate || 0)}%`} icon={UserCheck} accent="violet" delay={600} />
+      </section>
 
       <>
           {/* --- MAIN CONTENT GRID --- */}

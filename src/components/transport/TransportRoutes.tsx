@@ -77,7 +77,7 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
     try {
       const [data, school] = await Promise.all([
         apiService.get<Route[]>('/transport/routes'),
-        apiService.get<{ latitude: number; longitude: number; label: string; school_name: string } | null>('/transport/school-location'),
+        apiService.get<{ latitude: number; longitude: number; label: string; school_name: string; logo_url?: string } | null>('/transport/school-location'),
       ]);
       setRoutes(data);
       if (school) {
@@ -176,7 +176,7 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 space-y-5 animate-in fade-in duration-500">
+    <div className="p-4 md:p-5 lg:p-6 space-y-4 animate-in fade-in duration-500">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800 dark:text-white">Routes</h1>
@@ -206,16 +206,16 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-800 hover:bg-slate-800">
-              <TableHead className="font-semibold text-white min-w-[160px]">Route name</TableHead>
-              <TableHead className="font-semibold text-white">Shift</TableHead>
-              <TableHead className="font-semibold text-white text-center">Stops</TableHead>
-              <TableHead className="font-semibold text-white text-center min-w-[72px]">Distance</TableHead>
-              <TableHead className="font-semibold text-white min-w-[200px]">Stop path</TableHead>
-              <TableHead className="font-semibold text-white text-center">Students</TableHead>
-              <TableHead className="font-semibold text-white min-w-[130px]">Driver</TableHead>
-              <TableHead className="font-semibold text-white min-w-[130px]">Vehicle</TableHead>
-              <TableHead className="font-semibold text-white">Status</TableHead>
-              <TableHead className="font-semibold text-white text-right min-w-[140px]">Actions</TableHead>
+              <TableHead className="font-semibold text-white px-3 py-2.5 min-w-[120px] max-w-[170px] text-xs">Route name</TableHead>
+              <TableHead className="font-semibold text-white px-2 py-2.5 w-24 text-xs">Shift</TableHead>
+              <TableHead className="font-semibold text-white px-1.5 py-2.5 text-center w-14 text-xs">Stops</TableHead>
+              <TableHead className="font-semibold text-white px-1.5 py-2.5 text-center w-16 text-xs">Distance</TableHead>
+              <TableHead className="font-semibold text-white px-2 py-2.5 min-w-[110px] max-w-[160px] text-xs">Stop path</TableHead>
+              <TableHead className="font-semibold text-white px-1.5 py-2.5 text-center w-16 text-xs">Students</TableHead>
+              <TableHead className="font-semibold text-white px-2 py-2.5 min-w-[95px] max-w-[125px] text-xs">Driver</TableHead>
+              <TableHead className="font-semibold text-white px-2 py-2.5 min-w-[95px] max-w-[125px] text-xs">Vehicle</TableHead>
+              <TableHead className="font-semibold text-white px-1.5 py-2.5 text-center w-20 text-xs">Status</TableHead>
+              <TableHead className="font-semibold text-white px-2 py-2.5 text-right w-24 text-xs">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -223,7 +223,7 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
                   {[...Array(10)].map((__, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-full max-w-[100px]" /></TableCell>
+                    <TableCell key={j} className="p-2.5"><Skeleton className="h-4 w-full max-w-[100px]" /></TableCell>
                   ))}
                 </TableRow>
               ))
@@ -244,60 +244,65 @@ export const TransportRoutes: React.FC<TransportRoutesProps> = ({ onNavigate }) 
             ) : (
               filteredRoutes.map(route => (
                 <TableRow key={route.id} className="hover:bg-slate-50/80 even:bg-slate-50/30">
-                  <TableCell className="py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full shrink-0 ring-2 ring-white shadow" style={{ background: route.color || '#3b82f6' }} />
-                      <span className="font-semibold text-slate-900 text-sm">{route.name}</span>
+                  <TableCell className="px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0 ring-2 ring-white shadow-sm" style={{ background: route.color || '#3b82f6' }} />
+                      <span className="font-semibold text-slate-900 text-xs sm:text-sm truncate" title={route.name}>{route.name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="py-3">{getTimeOfDayBadge(route.time_of_day)}</TableCell>
-                  <TableCell className="py-3 text-center text-sm font-medium text-slate-700">
+                  <TableCell className="px-2 py-2.5">{getTimeOfDayBadge(route.time_of_day)}</TableCell>
+                  <TableCell className="px-1.5 py-2.5 text-center text-xs font-semibold text-slate-700">
                     {route.stops?.length || 0}
                   </TableCell>
-                  <TableCell className="py-3 text-center text-xs font-mono text-slate-600">
+                  <TableCell className="px-1.5 py-2.5 text-center text-xs font-mono text-slate-600">
                     {(() => {
                       const km = routeDistanceKm(route);
                       return km != null ? formatDistance(km) : '—';
                     })()}
                   </TableCell>
-                  <TableCell className="py-3 text-xs text-slate-600 max-w-[240px] truncate" title={stopsPreview(route.stops)}>
+                  <TableCell className="px-2 py-2.5 text-xs text-slate-600 max-w-[160px] truncate" title={stopsPreview(route.stops)}>
                     {stopsPreview(route.stops)}
                   </TableCell>
-                  <TableCell className="py-3 text-center text-sm font-medium text-slate-700">
-                    {route.student_count || 0}
+                  <TableCell className="px-1.5 py-2.5 text-center">
+                    <span className="inline-flex items-center justify-center min-w-[1.75rem] px-1.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800">
+                      {route.student_count || 0}
+                    </span>
                   </TableCell>
-                  <TableCell className="py-3 text-sm">
+                  <TableCell className="px-2 py-2.5 text-xs">
                     {route.driver_name ? (
-                      <span className="font-medium text-slate-800">{route.driver_name}</span>
-                    ) : (
-                      <span className="text-slate-400 italic text-xs">Unassigned</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="py-3 text-sm">
-                    {route.vehicle_name ? (
-                      <div>
-                        <span className="font-medium text-slate-800">{route.vehicle_name}</span>
-                        <span className="block text-[11px] font-mono text-slate-500">{route.plate_number}</span>
+                      <div className="min-w-0">
+                        <span className="font-medium text-slate-800 block truncate" title={route.driver_name}>{route.driver_name}</span>
+                        {route.driver_phone && <span className="text-[10px] text-slate-400 block font-mono truncate">{route.driver_phone}</span>}
                       </div>
                     ) : (
                       <span className="text-slate-400 italic text-xs">Unassigned</span>
                     )}
                   </TableCell>
-                  <TableCell className="py-3">
+                  <TableCell className="px-2 py-2.5 text-xs">
+                    {route.vehicle_name ? (
+                      <div className="min-w-0">
+                        <span className="font-medium text-slate-800 block truncate" title={route.vehicle_name}>{route.vehicle_name}</span>
+                        {route.plate_number && <span className="block text-[10px] font-mono text-slate-500 truncate">{route.plate_number}</span>}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 italic text-xs">Unassigned</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="px-1.5 py-2.5 text-center">
                     <Badge
                       variant="outline"
-                      className={`text-[10px] capitalize ${route.status === 'active' ? 'text-emerald-600 border-emerald-200 bg-emerald-50' : 'text-rose-600 border-rose-200 bg-rose-50'}`}
+                      className={`text-[10px] px-1.5 py-0.5 capitalize whitespace-nowrap ${route.status === 'active' ? 'text-emerald-600 border-emerald-200 bg-emerald-50' : 'text-rose-600 border-rose-200 bg-rose-50'}`}
                     >
                       {route.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="py-3 text-right">
+                  <TableCell className="px-2 py-2 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-xs rounded-lg"
+                        className="h-7 w-7 p-0 rounded-lg text-slate-600 hover:text-slate-900"
                         onClick={() => { setSelectedRouteForAssign(route); setAssignModalOpen(true); }}
                         title="Assign students"
                       >

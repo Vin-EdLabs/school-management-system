@@ -66,13 +66,13 @@ export type ParsedTeacherRemark = {
 
 /** Legacy auto-fill values — treat as empty when loading or displaying. */
 const LEGACY_REMARK_PLACEHOLDERS: Record<keyof Omit<ParsedTeacherRemark, 'text'>, Set<string>> = {
-  conduct: new Set(['Humble']),
-  attitude: new Set(['Dependable']),
-  interest: new Set(['Sports']),
+  conduct: new Set(),
+  attitude: new Set(),
+  interest: new Set(),
   attendance: new Set(),
   attendanceOutOf: new Set(),
   promotedTo: new Set(),
-  reopeningDate: new Set(['21st April, 2026']),
+  reopeningDate: new Set(),
 };
 
 function cleanRemarkField(

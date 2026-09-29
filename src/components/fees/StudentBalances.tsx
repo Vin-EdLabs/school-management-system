@@ -285,26 +285,25 @@ const StudentBalances = () => {
 
   const getStatusBadge = (student: any) => {
     const status = student.feeStatus?.status;
-    if (status === 'Not Set') return <Badge variant="secondary">Not Set</Badge>;
+    if (status === 'Not Set') return <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">Not Set</Badge>;
     if (status === 'No Fee Set') {
       return (
-        <div className="flex flex-col items-start gap-1">
-          <Badge variant="secondary" className="flex items-center gap-1 border-amber-400 text-amber-800 bg-amber-50">
-            <AlertCircle className="w-3 h-3" />
-            No Fee Set
-          </Badge>
-          {student.feeStructureMissing ? (
-            <span className="text-[10px] text-amber-700 leading-tight">No term fee posted for this class/term</span>
-          ) : null}
-        </div>
+        <Badge
+          variant="secondary"
+          className="inline-flex items-center gap-1 border-amber-400 text-amber-800 bg-amber-50 text-[10px] px-1.5 py-0.5 whitespace-nowrap"
+          title={student.feeStructureMissing ? "No term fee posted for this class/term" : undefined}
+        >
+          <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+          No Fee
+        </Badge>
       );
     }
     if (status === 'Credit' || (student.netBalance ?? 0) < -0.001 || student.creditBalance > 0) {
-      return <Badge variant="default" className="bg-green-600">Credit</Badge>;
+      return <Badge variant="default" className="bg-green-600 text-[10px] px-1.5 py-0.5">Credit</Badge>;
     }
     if (status === 'Partially Paid' || (student.balance > 0 && student.totalPaid > 0)) {
       return (
-        <Badge variant="outline" className="border-amber-500 text-amber-700">
+        <Badge variant="outline" className="border-amber-500 text-amber-700 text-[10px] px-1.5 py-0.5 whitespace-nowrap">
           Partially Paid
         </Badge>
       );
@@ -312,18 +311,17 @@ const StudentBalances = () => {
     if (status === 'Outstanding' || status === 'Outstanding + Arrears' || (student.balance > 0 && student.totalPaid === 0)) {
       const hasArrears = student.arrears > 0;
       return (
-        <div className="flex flex-col items-start gap-1">
-          <Badge variant="destructive" className="flex items-center space-x-1">
-            <AlertCircle className="w-3 h-3" />
-            <span>{hasArrears ? 'Outstanding + Arrears' : 'Outstanding'}</span>
-          </Badge>
-          {student.feeStructureMissing ? (
-            <span className="text-[10px] text-amber-700 leading-tight">No fee set for this class/term</span>
-          ) : null}
-        </div>
+        <Badge
+          variant="destructive"
+          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 whitespace-nowrap"
+          title={student.feeStructureMissing ? "No fee set for this class/term" : (hasArrears ? "Outstanding with arrears" : undefined)}
+        >
+          <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+          <span>{hasArrears ? 'Outstanding + Arrears' : 'Outstanding'}</span>
+        </Badge>
       );
     }
-    return <Badge variant="default" className="bg-green-500">Paid</Badge>;
+    return <Badge variant="default" className="bg-green-500 text-[10px] px-1.5 py-0.5">Paid</Badge>;
   };
 
   return (
@@ -347,7 +345,7 @@ const StudentBalances = () => {
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-2 px-3 sm:px-4 pb-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
@@ -441,52 +439,54 @@ const StudentBalances = () => {
           </Select>
         </div>
 
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
+        <div className="rounded-md border border-border overflow-x-auto w-full bg-card">
+          <Table className="w-full">
             <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Class</TableHead>
-                <TableHead>Total Term Bill</TableHead>
-                <TableHead>Arrears</TableHead>
-                <TableHead>Credit</TableHead>
-                <TableHead>Total Due</TableHead>
-                <TableHead>Amount Paid</TableHead>
-                <TableHead>Balance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Payments</TableHead>
-                {canGenerateInvoice ? <TableHead className="text-right">Invoice</TableHead> : null}
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="whitespace-nowrap px-2 py-2 text-xs font-semibold">Student</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-xs font-semibold">Class</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Term Bill</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Arrears</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Credit</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Total Due</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Paid</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-right text-xs font-semibold">Balance</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-center text-xs font-semibold">Status</TableHead>
+                <TableHead className="whitespace-nowrap px-1.5 py-2 text-center text-xs font-semibold">Payments</TableHead>
+                {canGenerateInvoice ? <TableHead className="whitespace-nowrap px-1.5 pr-2.5 py-2 text-right text-xs font-semibold">Invoice</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredStudents.length === 0 ? (
                 <TableRow className="border-border">
-                  <TableCell colSpan={canGenerateInvoice ? 11 : 10} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={canGenerateInvoice ? 11 : 10} className="text-center py-8 text-muted-foreground text-xs">
                     No students found matching your criteria
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredStudents.map((student) => (
                   <TableRow key={student.id} className="border-border hover:bg-muted/30 transition-colors">
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-foreground flex items-center gap-2">
-                          {student.firstName} {student.lastName}
+                    <TableCell className="px-2 py-2 align-middle">
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground text-xs flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate max-w-[140px] sm:max-w-none" title={`${student.firstName} ${student.lastName}`}>
+                            {student.firstName} {student.lastName}
+                          </span>
                           {student.isBeneficiary && (
-                            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 text-[10px] h-5 px-1.5 font-bold">
+                            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 text-[9px] h-4 px-1 font-bold shrink-0">
                               Beneficiary
                             </Badge>
                           )}
                         </div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-[11px] text-muted-foreground font-mono">
                           ID: {student.studentId}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{student.classAssigned}</Badge>
+                    <TableCell className="px-1.5 py-2 align-middle whitespace-nowrap">
+                      <Badge variant="outline" className="text-[11px] px-1.5 py-0 font-normal">{student.classAssigned}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
                       <CompactTermBillCell
                         total={student.currentTermFee ?? 0}
                         studentLabel={`${student.firstName} ${student.lastName}`.trim()}
@@ -501,51 +501,52 @@ const StudentBalances = () => {
                         discountLabel={student.discountLabel}
                       />
                     </TableCell>
-                    <TableCell>
-                      <span className={`font-mono ${
-                        (student.arrears ?? 0) > 0 ? 'text-amber-600 font-bold' : 'text-gray-500'
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
+                      <span className={`font-mono text-xs tabular-nums ${
+                        (student.arrears ?? 0) > 0 ? 'text-amber-600 font-bold dark:text-amber-400' : 'text-muted-foreground'
                       }`}>
                         GHS {(student.arrears ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className={`font-mono ${
-                        (student.creditBalance ?? 0) > 0 ? 'text-green-600 font-bold' : 'text-gray-500'
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
+                      <span className={`font-mono text-xs tabular-nums ${
+                        (student.creditBalance ?? 0) > 0 ? 'text-green-600 font-bold dark:text-green-400' : 'text-muted-foreground'
                       }`}>
                         GHS {(student.creditBalance ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-foreground">
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
+                      <span className="font-mono text-xs tabular-nums text-foreground">
                         GHS {Math.max(0, student.totalAmountDue ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
+                      <span className="font-mono text-xs tabular-nums text-emerald-600 dark:text-emerald-400 font-bold">
                         GHS {(student.totalPaid ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className={`font-mono font-bold ${
-                        (student.balance ?? 0) > 0 ? 'text-red-600' : 'text-green-600'
+                    <TableCell className="px-1.5 py-2 align-middle text-right whitespace-nowrap">
+                      <span className={`font-mono text-xs tabular-nums font-bold ${
+                        (student.balance ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
                       }`}>
                         GHS {Math.max(0, student.balance ?? 0).toLocaleString()}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-1.5 py-2 align-middle text-center whitespace-nowrap">
                       {getStatusBadge(student)}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
+                    <TableCell className="px-1.5 py-2 align-middle text-center whitespace-nowrap">
+                      <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 font-normal whitespace-nowrap">
                         {student.paymentCount} payment{student.paymentCount !== 1 ? 's' : ''}
                       </Badge>
                     </TableCell>
                     {canGenerateInvoice ? (
-                      <TableCell className="text-right">
+                      <TableCell className="px-1.5 pr-2.5 py-2 align-middle text-right whitespace-nowrap">
                         <GenerateInvoiceButton
                           studentId={Number(student.id)}
                           studentName={`${student.firstName} ${student.lastName}`}
                           termId={student.activeTermId ?? activeAcademicTermId}
+                          className="h-7 px-2 text-xs"
                         />
                       </TableCell>
                     ) : null}

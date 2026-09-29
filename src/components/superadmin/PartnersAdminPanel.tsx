@@ -2265,47 +2265,47 @@ export default function PartnersAdminPanel() {
       </div>
 
       <Tabs defaultValue="applications" className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 overflow-x-auto p-1.5 sm:grid-cols-4 lg:grid-cols-8 lg:w-full dark:h-10 dark:p-1">
-          <TabsTrigger value="applications" className="flex w-full items-center justify-center gap-1.5">
+        <TabsList className="flex h-auto w-full flex-wrap items-center justify-start gap-1 rounded-2xl border border-slate-200/80 bg-slate-100/80 p-1.5 dark:border-slate-800 dark:bg-slate-900/60">
+          <TabsTrigger value="applications" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Applications</span>
+            <span>Applications</span>
             {pendingCount > 0 && (
               <Badge className="ml-0.5 rounded-full bg-amber-500 px-1.5 text-[10px] text-white hover:bg-amber-500">
                 {pendingCount}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="management" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="management" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Users className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Partners</span>
+            <span>Partners</span>
           </TabsTrigger>
-          <TabsTrigger value="leads" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="leads" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">School Leads</span>
+            <span>School Leads</span>
           </TabsTrigger>
-          <TabsTrigger value="commissions" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="commissions" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Banknote className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Commissions</span>
+            <span>Commissions</span>
           </TabsTrigger>
-          <TabsTrigger value="email" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="email" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Mail className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Email</span>
+            <span>Email</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="notifications" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Bell className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Notifications</span>
+            <span>Notifications</span>
           </TabsTrigger>
-          <TabsTrigger value="videos" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="videos" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <PlaySquare className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Training Videos</span>
+            <span>Training Videos</span>
           </TabsTrigger>
-          <TabsTrigger value="support" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="support" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <Headphones className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Support</span>
+            <span>Support</span>
           </TabsTrigger>
-          <TabsTrigger value="login-audit" className="flex w-full items-center justify-center gap-1.5">
+          <TabsTrigger value="login-audit" className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap rounded-xl">
             <LogIn className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Login Audit</span>
+            <span>Login Audit</span>
           </TabsTrigger>
         </TabsList>
 

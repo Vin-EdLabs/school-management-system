@@ -782,7 +782,7 @@ const PersonalTodosWidget: React.FC<{
             type="button"
             variant="ghost"
             className={cn(
-              'relative h-11 gap-2 rounded-2xl px-3 sm:px-4 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-300 dark:hover:text-indigo-300 dark:hover:bg-indigo-950/50 touch-manipulation transition-all duration-300',
+              'relative h-9 gap-1.5 rounded-xl px-2.5 sm:px-3 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-300 dark:hover:text-indigo-300 dark:hover:bg-indigo-950/50 touch-manipulation transition-all duration-200',
               open &&
                 'bg-emerald-50 text-emerald-800 shadow-[0_0_0_2px_rgba(16,185,129,0.5),0_0_24px_rgba(16,185,129,0.35)] ring-2 ring-emerald-400/60 ring-offset-2 ring-offset-background dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/50',
               loginBlink && !open && 'animate-pulse ring-2 ring-amber-400/50 ring-offset-2 ring-offset-background'
@@ -790,10 +790,10 @@ const PersonalTodosWidget: React.FC<{
             title="My to-dos"
           >
             {open && (
-              <span className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-emerald-400/40 animate-ping" />
+              <span className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-emerald-400/40 animate-ping" />
             )}
-            <ListTodo className={cn('h-5 w-5 shrink-0', open && 'text-emerald-700 dark:text-emerald-400')} />
-            <span className="hidden sm:inline text-sm font-semibold">My to-dos</span>
+            <ListTodo className={cn('h-4 w-4 shrink-0', open && 'text-emerald-700 dark:text-emerald-400')} />
+            <span className="hidden lg:inline text-xs sm:text-sm font-semibold">My to-dos</span>
             {todayPendingCount > 0 && (
               <span
                 className={cn(

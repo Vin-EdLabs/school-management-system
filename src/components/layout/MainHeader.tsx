@@ -362,14 +362,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
         size="icon"
         data-notif-bell
         className={cn(
-          'relative h-10 w-10 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation',
+          'relative h-9 w-9 shrink-0 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50 touch-manipulation',
           className
         )}
         title={showAdminBell ? (isHeadmaster ? 'Notifications' : 'School messages') : 'Notifications'}
         aria-expanded={notifOpen}
         onClick={() => setNotifOpen((open) => !open)}
       >
-        <Bell className="h-5 w-5" />
+        <Bell className="h-4.5 w-4.5" />
         {bellUnreadCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
             {bellUnreadCount > 9 ? '9+' : bellUnreadCount}
@@ -764,24 +764,24 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
   return (
     <>
-    <div className="hidden md:flex relative items-center justify-between w-full h-full gap-2 sm:gap-4 md:gap-6 min-w-0">
+    <div className="hidden md:flex items-center justify-between w-full h-full gap-2 sm:gap-3 lg:gap-4 min-w-0">
       {/* Welcome Section */}
-      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 basis-0">
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
-          <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#146C43] to-[#22C55E] flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20 dark:from-blue-500 dark:to-indigo-600 dark:shadow-sm">
+          <User className="w-4 h-4 text-white" />
         </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-sm sm:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate tracking-tight">
+        <div>
+          <h1 className="text-sm sm:text-[15px] font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap tracking-tight leading-tight">
             {getGreeting()}, <span className="text-emerald-700 dark:text-indigo-400">{displayName}</span>
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 mt-0.5">
             {isHeadmaster ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-[10px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider rounded border border-amber-200/80 dark:border-amber-800 shadow-sm">
-                <Crown className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-[9px] font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider rounded border border-amber-200/80 dark:border-amber-800 shadow-sm">
+                <Crown className="h-2.5 w-2.5" />
                 Headmaster
               </span>
             ) : (
-             <span className="px-2 py-0.5 bg-emerald-50 dark:bg-indigo-950/50 text-[10px] font-bold text-emerald-700 dark:text-indigo-400 uppercase tracking-wider rounded border border-emerald-100/70 dark:border-indigo-900 shadow-sm">
+             <span className="px-1.5 py-0.5 bg-emerald-50 dark:bg-indigo-950/50 text-[9px] font-bold text-emerald-700 dark:text-indigo-400 uppercase tracking-wider rounded border border-emerald-100/70 dark:border-indigo-900 shadow-sm">
               {user?.role?.replace('-', ' ')}
             </span>
             )}
@@ -791,14 +791,14 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
 
       {/* Center: Personal To-dos */}
       {showPersonalTodos && (
-        <div className="hidden md:block absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+        <div className="flex items-center justify-center shrink-0 px-2">
           <PersonalTodosWidget />
         </div>
       )}
 
       {/* Right Section: Time and Actions */}
-      <div className="flex items-center gap-1 sm:gap-2 md:gap-4 shrink-0 flex-1 basis-0 justify-end ml-auto">
-        <div className="hidden sm:flex items-center">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
+        <div className="hidden lg:flex items-center">
           <div className="px-2 py-1 bg-white/85 dark:bg-slate-900/50 rounded-lg border border-slate-200/70 dark:border-slate-800 flex items-center gap-1.5 shadow-sm">
             <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-indigo-400 shrink-0" />
             <span className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300 tabular-nums">
@@ -807,22 +807,22 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           <ModuleUserGuideDialog activeModule={activeModule} setActiveModule={setActiveModule} />
           <PwaInstallButton
             variant="ghost"
             size="icon"
             logoUrl={pwaLogo}
-            className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
+            className="h-9 w-9 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           />
           {renderNotificationBell()}
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleTheme}
-            className="h-10 w-10 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
+            className="h-9 w-9 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 dark:text-slate-400 dark:hover:text-indigo-400 dark:hover:bg-indigo-950/50"
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
           {(user?.role === 'finance' || user?.role === 'super-admin') && onAiAssistantClick && (
@@ -830,10 +830,11 @@ const MainHeader: React.FC<MainHeaderProps> = ({ onAiAssistantClick, activeModul
               variant="outline"
               size="sm"
               onClick={onAiAssistantClick}
-              className="shrink-0 bg-gradient-to-r from-blue-50 to-indigo-100 hover:from-blue-100 hover:to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 h-10 px-4 font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              title="AI Assistant"
+              className="shrink-0 bg-gradient-to-r from-blue-50 to-indigo-100 hover:from-blue-100 hover:to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 h-9 px-2.5 xl:px-3 text-xs font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
             >
-              <Bot className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
-              AI Assistant
+              <Bot className="w-4 h-4 text-indigo-600 dark:text-indigo-400 xl:mr-1.5" />
+              <span className="hidden xl:inline">AI Assistant</span>
             </Button>
           )}
         </div>

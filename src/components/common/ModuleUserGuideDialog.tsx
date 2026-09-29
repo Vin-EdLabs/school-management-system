@@ -47,11 +47,11 @@ export function ModuleUserGuideDialog({
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="hidden h-9 shrink-0 gap-1.5 border-indigo-200/80 bg-white px-2.5 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950/50 sm:flex sm:px-3"
-        title="How to use this page"
+        className="hidden h-9 shrink-0 gap-1.5 rounded-xl border-indigo-200/80 bg-white px-2.5 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950/50 sm:flex xl:px-3"
+        title="User guide"
       >
-        <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="hidden md:inline">User guide</span>
+        <BookOpen className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="hidden xl:inline">User guide</span>
       </Button>
       <Button
         type="button"

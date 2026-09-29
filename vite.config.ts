@@ -57,6 +57,18 @@ export default defineConfig(({ mode }) => ({
         target: 'http://localhost:3001',
         changeOrigin: true,
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err: any) => {
+            if (err?.code === 'ECONNRESET' || err?.code === 'ECONNABORTED') return;
+            console.error('[vite ws proxy error]:', err?.message || err);
+          });
+          proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
+            socket.on('error', (err: any) => {
+              if (err?.code === 'ECONNRESET' || err?.code === 'ECONNABORTED') return;
+              console.error('[vite ws socket error]:', err?.message || err);
+            });
+          });
+        },
       },
       '/uploads': {
         target: 'http://localhost:3001',

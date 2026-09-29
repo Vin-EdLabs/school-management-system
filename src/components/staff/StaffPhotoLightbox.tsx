@@ -7,12 +7,13 @@ import { ZoomIn } from 'lucide-react';
 type Props = {
   src?: string | null;
   name: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   rounded?: 'full' | 'lg';
 };
 
 const sizeMap = {
+  xs: 'h-8 w-8',
   sm: 'h-10 w-10',
   md: 'h-14 w-14',
   lg: 'h-20 w-20',
@@ -48,7 +49,7 @@ const StaffPhotoLightbox: React.FC<Props> = ({
       >
         <Avatar className={cn(sizeMap[size], radius, hasPhoto && 'cursor-zoom-in ring-2 ring-border group-hover:ring-primary/40 transition-shadow')}>
           {src ? <AvatarImage src={src} alt={name} className="object-cover" /> : null}
-          <AvatarFallback className={cn('text-sm font-medium', radius)}>
+          <AvatarFallback className={cn(size === 'xs' ? 'text-xs font-normal' : 'text-sm font-medium', radius)}>
             {name?.slice(0, 2).toUpperCase() || '?'}
           </AvatarFallback>
         </Avatar>

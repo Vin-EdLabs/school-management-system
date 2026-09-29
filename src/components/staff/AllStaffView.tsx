@@ -375,335 +375,228 @@ const AllStaffView = () => {
 
       <Card className="border-border bg-card shadow-sm">
 
-        <CardHeader className="border-b border-border/70 bg-muted/30">
-
-          <CardTitle className="flex items-center gap-2">
-
-            <Users className="w-5 h-5" />
-
-            <span>
-              All Staff ({countedInView}
-              {filtered.length !== countedInView ? (
-                <span className="text-muted-foreground font-normal"> · {filtered.length} listed</span>
+        <CardHeader className="border-b border-border/70 bg-muted/30 py-3 px-3.5 sm:px-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="flex items-center space-x-2 shrink-0 text-base sm:text-lg">
+              <Users className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+              <span>
+                All Staff ({countedInView}
+                {filtered.length !== countedInView ? (
+                  <span className="text-muted-foreground font-normal text-sm"> · {filtered.length} listed</span>
+                ) : null}
+                )
+              </span>
+              {selected.size > 0 ? (
+                <Badge variant="secondary" className="ml-1 font-normal text-xs">
+                  {selected.size} selected
+                </Badge>
               ) : null}
-              )
-            </span>
-
-            {selected.size > 0 ? (
-
-              <Badge variant="secondary" className="ml-1 font-normal">
-
-                {selected.size} selected
-
-              </Badge>
-
-            ) : null}
-
-          </CardTitle>
-
+            </CardTitle>
+            <div className="relative w-full sm:w-72 md:w-80 lg:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or staff ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 bg-background text-sm rounded-lg"
+              />
+            </div>
+          </div>
         </CardHeader>
 
-        <CardContent className="pt-6">
+        <CardContent className="pt-3.5 px-2.5 sm:px-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 flex-wrap mb-3.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-32 sm:w-36 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="teacher">Teachers</SelectItem>
+                  <SelectItem value="other">Other Staff</SelectItem>
+                </SelectContent>
+              </Select>
 
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-28 sm:w-32 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <div className="relative flex-1 min-w-0">
+              <Select value={genderFilter} onValueChange={setGenderFilter}>
+                <SelectTrigger className="w-24 sm:w-28 h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                </SelectContent>
+              </Select>
 
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-
-              <Input
-
-                placeholder="Search by name or staff ID..."
-
-                value={search}
-
-                onChange={(e) => setSearch(e.target.value)}
-
-                className="pl-10"
-
-              />
-
+              <label
+                className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer select-none"
+                title="Include non-counted staff in export"
+              >
+                <Checkbox
+                  className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
+                  checked={includeNonCounted}
+                  onCheckedChange={(v) => setIncludeNonCounted(v === true)}
+                />
+                Non-counted
+              </label>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filtered.length === 0}
+                onClick={() => void exportPdf()}
+              >
+                <FileDown className="h-4 w-4" />
+                Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
 
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-
-              <SelectTrigger className="w-40">
-
-                <SelectValue placeholder="Type" />
-
-              </SelectTrigger>
-
-              <SelectContent>
-
-                <SelectItem value="all">All types</SelectItem>
-
-                <SelectItem value="teacher">Teachers</SelectItem>
-
-                <SelectItem value="other">Other Staff</SelectItem>
-
-              </SelectContent>
-
-            </Select>
-
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-
-              <SelectTrigger className="w-36">
-
-                <SelectValue placeholder="Status" />
-
-              </SelectTrigger>
-
-              <SelectContent>
-
-                <SelectItem value="active">Active</SelectItem>
-
-                <SelectItem value="inactive">Inactive</SelectItem>
-
-                <SelectItem value="all">All statuses</SelectItem>
-
-              </SelectContent>
-
-            </Select>
-
-            <Select value={genderFilter} onValueChange={setGenderFilter}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="male">Male</SelectItem>
-                <SelectItem value="female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <label
-              className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap cursor-pointer"
-              title="Include non-counted staff in export"
-            >
-              <Checkbox
-                className="h-3.5 w-3.5 [&_svg]:h-3 [&_svg]:w-3"
-                checked={includeNonCounted}
-                onCheckedChange={(v) => setIncludeNonCounted(v === true)}
-              />
-              Non-counted
-            </label>
-
-            <Button
-
-              type="button"
-
-              variant="outline"
-
-              size="sm"
-
-              disabled={exporting || filtered.length === 0}
-
-              onClick={() => void exportPdf()}
-
-            >
-
-              <FileDown className="h-4 w-4 mr-2" />
-
-              Export PDF{selected.size > 0 ? ` (${selected.size})` : ''}
-
-            </Button>
-
-            <Button
-
-              type="button"
-
-              variant="outline"
-
-              size="sm"
-
-              disabled={exporting || filtered.length === 0}
-
-              onClick={() => void exportExcel()}
-
-            >
-
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-
-              Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
-
-            </Button>
-
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={exporting || filtered.length === 0}
+                onClick={() => void exportExcel()}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Export CSV{selected.size > 0 ? ` (${selected.size})` : ''}
+              </Button>
             </div>
-
           </div>
 
-
-
           {loading ? (
-
             <div className="py-12 text-center text-muted-foreground">Loading staff...</div>
-
           ) : filtered.length === 0 ? (
-
             <div className="py-12 text-center text-muted-foreground">No staff found.</div>
-
           ) : (
-
             <div className="rounded-md border border-border overflow-x-auto w-full bg-card">
-
-              <Table>
-
+              <Table className="w-full">
                 <TableHeader>
-
-                  <TableRow>
-
-                    <TableHead className="w-10">
-
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-7 max-w-7 px-0.5 pl-2 pr-0">
                       <Checkbox
-
                         checked={allFilteredSelected}
-
                         onCheckedChange={toggleSelectAll}
-
                         aria-label="Select all staff"
-
                       />
-
                     </TableHead>
-
-                    <TableHead className="w-14">Photo</TableHead>
-
-                    <TableHead>Name</TableHead>
-
-                    <TableHead>Staff ID</TableHead>
-
-                    <TableHead>Type</TableHead>
-
-                    <TableHead>Position</TableHead>
-
-                    <TableHead>Department</TableHead>
-
-                    <TableHead>Phone</TableHead>
-
-                    <TableHead>Status</TableHead>
-
+                    <TableHead className="w-10 px-0.5 text-center whitespace-nowrap">Photo</TableHead>
+                    <TableHead className="whitespace-nowrap px-2">Name</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Staff ID</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Type</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Position</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Department</TableHead>
+                    <TableHead className="whitespace-nowrap px-2">Phone</TableHead>
+                    <TableHead className="whitespace-nowrap px-1.5">Status</TableHead>
                   </TableRow>
-
                 </TableHeader>
 
                 <TableBody>
-
                   {filtered.map((row) => {
-
                     const key = rowKey(row);
                     const counted = isCountedRow(row);
 
                     return (
-
                       <TableRow
-
                         key={key}
-
                         className={`cursor-pointer hover:bg-muted/40 ${!counted ? 'opacity-60' : ''}`}
-
                         onClick={() => openRow(row)}
-
                       >
-
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-
+                        <TableCell className="w-7 max-w-7 px-0.5 pl-2 pr-0" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
-
                             checked={selected.has(key)}
-
                             onCheckedChange={() => toggleSelect(key)}
-
                             aria-label={`Select ${row.full_name}`}
-
                           />
-
                         </TableCell>
 
-                        <TableCell>
-
+                        <TableCell className="w-10 px-0.5 text-center">
                           {row.staff_type === 'teacher' ? (
-
                             <LazyTeacherAvatar
-
                               teacherId={String(row.id)}
-
                               fullName={row.full_name}
-
                               photoUrl={row.passport_photo_url}
-
-                              className="h-9 w-9"
-
+                              className="h-8 w-8 mx-auto"
                             />
-
                           ) : (
-
                             <StaffPhotoLightbox
-
                               src={row.passport_photo_url}
-
                               name={row.full_name}
-
-                              size="sm"
-
+                              size="xs"
+                              className="mx-auto"
                             />
-
                           )}
-
                         </TableCell>
 
-                        <TableCell className="font-medium">
-                          <span className="inline-flex items-center gap-2 flex-wrap">
-                            {row.full_name}
+                        <TableCell className="py-2 px-2 whitespace-nowrap">
+                          <div className="font-medium text-foreground text-sm flex items-center gap-1.5 leading-snug">
+                            <span>{row.full_name}</span>
                             {!counted ? (
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                              <Badge variant="outline" className="text-[9px] uppercase tracking-wide px-1 py-0 font-normal">
                                 Not Counted
                               </Badge>
                             ) : null}
-                          </span>
+                          </div>
+                          {row.gender ? <div className="text-xs text-muted-foreground">{row.gender}</div> : null}
                         </TableCell>
 
-                        <TableCell className="font-mono text-sm">{row.staff_id}</TableCell>
+                        <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                          <span className="font-mono text-xs">{row.staff_id}</span>
+                        </TableCell>
 
-                        <TableCell>
-
-                          <Badge variant="outline" className={typeBadge(row.staff_type)}>
-
+                        <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                          <Badge variant="outline" className={`text-xs font-normal ${typeBadge(row.staff_type)}`}>
                             {row.staff_type === 'teacher' ? 'Teacher' : 'Staff'}
-
                           </Badge>
-
                         </TableCell>
 
-                        <TableCell>{row.position || '—'}</TableCell>
+                        <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                          {row.position ? (
+                            <Badge variant="secondary" className="text-xs font-normal">{row.position}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
 
-                        <TableCell>{row.department || '—'}</TableCell>
+                        <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                          {row.department ? (
+                            <span className="text-xs text-muted-foreground">{row.department}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
 
-                        <TableCell>{row.phone_number || '—'}</TableCell>
+                        <TableCell className="py-2 px-2 whitespace-nowrap text-xs">
+                          {row.phone_number || '—'}
+                        </TableCell>
 
-                        <TableCell>
-
-                          <Badge variant="outline" className={statusBadge(row.employment_status)}>
-
+                        <TableCell className="py-2 px-1.5 whitespace-nowrap">
+                          <Badge variant="outline" className={`text-xs font-normal capitalize ${statusBadge(row.employment_status)}`}>
                             {row.employment_status || 'active'}
-
                           </Badge>
-
                         </TableCell>
-
                       </TableRow>
-
                     );
-
                   })}
-
                 </TableBody>
-
               </Table>
-
             </div>
-
           )}
 
         </CardContent>

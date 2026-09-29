@@ -370,7 +370,7 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
   if (variant === 'sidebar') {
     return (
       <>
-        <Card className="rounded-2xl shadow-sm border-border border-l-4 border-l-emerald-600 dark:border-l-emerald-500">
+        <Card className="rounded-2xl shadow-sm border border-border">
           <CardContent className="p-5 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">

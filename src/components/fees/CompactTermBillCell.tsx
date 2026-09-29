@@ -81,7 +81,7 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
   return (
     <>
       <div className="inline-flex flex-col items-end gap-0.5">
-        <span className="font-mono tabular-nums font-medium">
+        <span className="font-mono tabular-nums font-medium text-xs">
           GHS {formatMoney(termBillTotal)}
         </span>
         {canExpand ? (
@@ -90,10 +90,10 @@ const CompactTermBillCell: React.FC<CompactTermBillCellProps> = ({
             onClick={openBreakdown}
             onMouseEnter={warmCache}
             onFocus={warmCache}
-            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 underline-offset-2 hover:underline dark:text-emerald-400 self-end"
+            className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 hover:text-emerald-900 underline-offset-2 hover:underline dark:text-emerald-400 self-end whitespace-nowrap"
           >
-            View breakdown
-            <ChevronDown className="h-3 w-3" />
+            Breakdown
+            <ChevronDown className="h-2.5 w-2.5" />
           </button>
         ) : null}
       </div>

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { FileText, Loader2, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogBody,
@@ -63,6 +64,7 @@ type SingleProps = {
   termId?: number | null;
   size?: 'sm' | 'default';
   variant?: 'outline' | 'secondary' | 'default';
+  className?: string;
 };
 
 type GenerateInvoiceActionsProps = BulkProps | SingleProps;
@@ -111,7 +113,7 @@ const GenerateInvoiceActions: React.FC<GenerateInvoiceActionsProps> = (props) =>
           variant={variant}
           size={size}
           disabled={loading}
-          className="gap-1.5"
+          className={cn("gap-1.5", props.className)}
           onClick={() => void handleSingle()}
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}

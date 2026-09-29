@@ -1,7 +1,7 @@
+import './env.js';
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { initializeDatabase } from './db/connection.js';
 import { startReceiptLockJob } from './jobs/receiptLockJob.js';
 import { startTeacherSuspensionJob } from './jobs/teacherSuspensionJob.js';
@@ -97,9 +97,6 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { idempotencyGuard } from './middleware/idempotency.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -127,7 +124,7 @@ app.use(cors({
     if (!origin) {
       return callback(null, true);
     }
-    
+
     // Whitelist patterns for matching root and subdomains dynamically
     const allowedPatterns = [
       /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/,
@@ -146,7 +143,7 @@ app.use(cors({
       /^http:\/\/([a-z0-9-]+\.)?schoolsite\.lvh\.me:(8080|5173|4173)$/,
       /^http:\/\/([a-z0-9-]+\.)?edu\.lvh\.me:(8080|5173|4173)$/,
     ];
-    
+
     const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
     if (isAllowed) {
       callback(null, true);

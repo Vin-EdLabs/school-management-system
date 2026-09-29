@@ -60,7 +60,7 @@ const MyComplaintsPage: React.FC = () => {
   }, [load]);
 
   return (
-    <div className="mx-auto max-w-6xl p-4 md:p-6 space-y-5 animate-in fade-in duration-300">
+    <div className="mx-auto max-w-6xl p-3.5 pb-6 sm:p-4 md:p-5 sm:pb-8 space-y-4 animate-in fade-in duration-300">
       <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-950 p-6 text-white shadow-lg">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-400/15 blur-2xl" />
         <div className="relative flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -117,14 +117,14 @@ const MyComplaintsPage: React.FC = () => {
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Subject</th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Severity</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Action</th>
+                <tr className="border-b border-border/70">
+                  <th className="px-2 py-2.5 font-medium whitespace-nowrap pl-3">Date</th>
+                  <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Type</th>
+                  <th className="px-2 py-2.5 font-medium whitespace-nowrap">Subject</th>
+                  <th className="px-2 py-2.5 font-medium">Title</th>
+                  <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Severity</th>
+                  <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Status</th>
+                  <th className="px-2.5 py-2.5 font-medium whitespace-nowrap text-right pr-3">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -132,27 +132,27 @@ const MyComplaintsPage: React.FC = () => {
                   <tr
                     key={row.id}
                     className={cn(
-                      'border-t border-border/80',
+                      'border-t border-border/80 hover:bg-muted/40 transition-colors',
                       row.severity === 'high' && 'border-l-4 border-l-red-500'
                     )}
                   >
-                    <td className="px-4 py-3 whitespace-nowrap">{formatComplaintWhen(row.created_at)}</td>
-                    <td className="px-4 py-3 capitalize">{row.complaint_type}</td>
-                    <td className="px-4 py-3 font-medium">{row.subject?.name || '—'}</td>
-                    <td className="px-4 py-3 max-w-[220px] truncate">{row.title}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className={cn('capitalize', severityBadgeClass(row.severity))}>
+                    <td className="px-2 py-2 whitespace-nowrap text-xs pl-3">{formatComplaintWhen(row.created_at)}</td>
+                    <td className="px-1.5 py-2 capitalize whitespace-nowrap text-xs">{row.complaint_type}</td>
+                    <td className="px-2 py-2 font-medium whitespace-nowrap text-xs">{row.subject?.name || '—'}</td>
+                    <td className="px-2 py-2 text-xs font-medium max-w-[220px] truncate">{row.title}</td>
+                    <td className="px-1.5 py-2 whitespace-nowrap">
+                      <Badge variant="outline" className={cn('capitalize text-xs font-normal', severityBadgeClass(row.severity))}>
                         {row.severity}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className={statusBadgeClass(row.status)}>
+                    <td className="px-1.5 py-2 whitespace-nowrap">
+                      <Badge variant="outline" className={cn('text-xs font-normal', statusBadgeClass(row.status))}>
                         {statusLabel(row.status)}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setSelected(row)}>
-                        <Eye className="h-3.5 w-3.5 mr-1.5" />
+                    <td className="px-2.5 py-2 text-right whitespace-nowrap pr-3">
+                      <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs rounded-lg gap-1" onClick={() => setSelected(row)}>
+                        <Eye className="h-3.5 w-3.5" />
                         View
                       </Button>
                     </td>

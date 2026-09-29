@@ -308,7 +308,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
     <div className="min-h-full bg-[#FAFAFA] dark:bg-background">
       <div className="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6 animate-in fade-in duration-500">
         {/* Hero — admin dashboard feel */}
-        <div className={cn(boardingSurfaceCard, 'border-l-4 border-l-emerald-600 p-5 dark:border-l-emerald-500 md:p-6')}>
+        <div className={cn(boardingSurfaceCard, 'p-5 md:p-6')}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -386,8 +386,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
               key={k.label}
               className={cn(
                 boardingSurfaceCard,
-                'min-w-[200px] flex-shrink-0 snap-start border-l-4 p-4 hover:-translate-y-0.5 md:min-w-0',
-                k.border
+                'min-w-[200px] flex-shrink-0 snap-start p-4 hover:-translate-y-0.5 md:min-w-0'
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -495,7 +494,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
               <p className="mt-2 text-[11px] text-muted-foreground">{stats?.vacant_beds ?? 0} beds available</p>
             </Card>
 
-            <Card className={cn(boardingSurfaceCard, 'border-l-4 border-l-emerald-600 p-5 dark:border-l-emerald-500')}>
+            <Card className={cn(boardingSurfaceCard, 'p-5')}>
               <div className="flex items-center gap-2">
                 <UserCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <h3 className="text-sm font-semibold text-foreground">Gender split</h3>
@@ -513,7 +512,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
             </Card>
 
             {(stats?.overdue_exeats ?? 0) > 0 ? (
-              <Card className={cn(boardingSurfaceCard, 'border-l-4 border-l-red-500 p-5')}>
+              <Card className={cn(boardingSurfaceCard, 'p-5')}>
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-red-500" />
                   <h3 className="text-sm font-semibold text-foreground">Overdue returns</h3>
@@ -530,7 +529,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
             ) : null}
 
             {!stats?.todays_roll_call_done ? (
-              <Card className={cn(boardingSurfaceCard, 'border-l-4 border-l-amber-500 p-5')}>
+              <Card className={cn(boardingSurfaceCard, 'p-5')}>
                 <div className="flex items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-amber-500" />
                   <h3 className="text-sm font-semibold text-foreground">Roll call pending</h3>
@@ -553,7 +552,7 @@ export const BoardingOverview: React.FC<BoardingOverviewProps> = ({ onNavigate }
             )}
 
             {(stats?.sick_bay_active_count ?? 0) > 0 ? (
-              <Card className={cn(boardingSurfaceCard, 'border-l-4 border-l-violet-600 p-5 dark:border-l-violet-400')}>
+              <Card className={cn(boardingSurfaceCard, 'p-5')}>
                 <div className="flex items-center gap-2">
                   <Stethoscope className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                   <h3 className="text-sm font-semibold text-foreground">Sick bay</h3>

@@ -163,16 +163,16 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-5 animate-in fade-in duration-300">
-      <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-950 p-6 text-white shadow-lg">
+    <div className="mx-auto max-w-7xl p-3.5 pb-6 sm:p-4 md:p-5 sm:pb-8 space-y-4 animate-in fade-in duration-300">
+      <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-slate-900 via-emerald-950 to-teal-950 p-4 sm:p-5 text-white shadow-lg">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-400/15 blur-2xl" />
-        <div className="relative space-y-2">
+        <div className="relative space-y-1.5">
           <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-100 ring-1 ring-emerald-400/30">
             <Flag className="h-3.5 w-3.5" />
             School oversight
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Complaints</h1>
-          <p className="text-sm text-white/75 max-w-xl">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Complaints</h1>
+          <p className="text-xs sm:text-sm text-white/75 max-w-xl">
             {readOnly
               ? 'Review student and staff complaints filed by teachers (view only).'
               : 'Review, investigate, and resolve complaints filed by teachers.'}
@@ -192,8 +192,8 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
             tone: 'border-red-200 bg-red-50 text-red-800',
           },
         ].map((c) => (
-          <Card key={c.label} className={cn('rounded-2xl shadow-sm', c.tone)}>
-            <CardContent className="p-4">
+          <Card key={c.label} className={cn('rounded-xl shadow-sm', c.tone)}>
+            <CardContent className="p-3 sm:p-3.5">
               <p className="text-[11px] uppercase tracking-wide opacity-70">{c.label}</p>
               <p className="text-2xl font-bold tabular-nums mt-1">{c.value}</p>
             </CardContent>
@@ -206,7 +206,7 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
           type="button"
           onClick={() => setTab('active')}
           className={cn(
-            'flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors',
+            'flex-1 rounded-lg py-2 text-sm font-semibold transition-colors',
             tab === 'active' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
           )}
         >
@@ -216,7 +216,7 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
           type="button"
           onClick={() => setTab('resolved')}
           className={cn(
-            'flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors',
+            'flex-1 rounded-lg py-2 text-sm font-semibold transition-colors',
             tab === 'resolved' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
           )}
         >
@@ -224,19 +224,19 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
         </button>
       </div>
 
-      <Card className="rounded-2xl shadow-sm">
-        <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-end flex-wrap">
+      <Card className="rounded-xl shadow-sm border-border bg-card">
+        <CardContent className="p-3 sm:p-3.5 flex flex-col lg:flex-row gap-2.5 lg:items-center flex-wrap">
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search title, description, subject…"
-              className="h-10 pl-9 rounded-xl"
+              className="h-9 pl-9 rounded-lg text-sm bg-background"
             />
           </div>
           <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-            <SelectTrigger className="w-full sm:w-40 h-10 rounded-xl">
+            <SelectTrigger className="w-full sm:w-36 h-9 rounded-lg text-xs sm:text-sm">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -249,7 +249,7 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
             value={severityFilter}
             onValueChange={(v) => setSeverityFilter(v as typeof severityFilter)}
           >
-            <SelectTrigger className="w-full sm:w-40 h-10 rounded-xl">
+            <SelectTrigger className="w-full sm:w-36 h-9 rounded-lg text-xs sm:text-sm">
               <SelectValue placeholder="Severity" />
             </SelectTrigger>
             <SelectContent>
@@ -263,29 +263,29 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="h-10 rounded-xl w-full sm:w-auto"
+            className="h-9 rounded-lg text-xs sm:text-sm w-full sm:w-auto"
           />
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="h-10 rounded-xl w-full sm:w-auto"
+            className="h-9 rounded-lg text-xs sm:text-sm w-full sm:w-auto"
           />
-          <Button variant="outline" className="h-10 rounded-xl" onClick={() => void load()}>
-            <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', loading && 'animate-spin')} />
+          <Button variant="outline" className="h-9 rounded-lg text-xs sm:text-sm gap-1.5" onClick={() => void load()}>
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             Refresh
           </Button>
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl shadow-sm overflow-hidden">
-        <CardHeader className="border-b bg-muted/30 pb-3">
-          <CardTitle className="text-base">{tab === 'active' ? 'Active complaints' : 'Resolved complaints'}</CardTitle>
-          <CardDescription>
+      <Card className="rounded-xl shadow-sm overflow-hidden border-border bg-card">
+        <CardHeader className="border-b bg-muted/30 py-3 px-3.5 sm:px-5">
+          <CardTitle className="text-base">{tab === 'active' ? 'Active complaints' : 'Resolved complaints'} ({items.length})</CardTitle>
+          <CardDescription className="text-xs">
             High severity rows show a red accent. Anonymous filers stay hidden.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
+        <CardContent className="p-0 overflow-x-auto w-full">
           {loading ? (
             <div className="p-10 flex justify-center text-muted-foreground gap-2 text-sm">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
@@ -296,15 +296,15 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
             <TooltipProvider>
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Date</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Filed By</th>
-                    <th className="px-4 py-3 font-medium">Subject</th>
-                    <th className="px-4 py-3 font-medium">Title</th>
-                    <th className="px-4 py-3 font-medium">Severity</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
+                  <tr className="border-b border-border/70">
+                    <th className="px-2 py-2.5 font-medium whitespace-nowrap pl-3">Date</th>
+                    <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Type</th>
+                    <th className="px-2 py-2.5 font-medium whitespace-nowrap">Filed By</th>
+                    <th className="px-2 py-2.5 font-medium whitespace-nowrap">Subject</th>
+                    <th className="px-2 py-2.5 font-medium">Title</th>
+                    <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Severity</th>
+                    <th className="px-1.5 py-2.5 font-medium whitespace-nowrap">Status</th>
+                    <th className="px-2.5 py-2.5 font-medium whitespace-nowrap text-right pr-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -312,17 +312,17 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
                     <tr
                       key={row.id}
                       className={cn(
-                        'border-t border-border/80',
+                        'border-t border-border/80 hover:bg-muted/40 transition-colors',
                         row.severity === 'high' && 'border-l-4 border-l-red-500 bg-red-50/30'
                       )}
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">{formatComplaintWhen(row.created_at)}</td>
-                      <td className="px-4 py-3 capitalize">{row.complaint_type}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-2 whitespace-nowrap text-xs pl-3">{formatComplaintWhen(row.created_at)}</td>
+                      <td className="px-1.5 py-2 capitalize whitespace-nowrap text-xs">{row.complaint_type}</td>
+                      <td className="px-2 py-2 whitespace-nowrap text-xs">
                         {row.is_anonymous ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                              <span className="inline-flex items-center gap-1 text-muted-foreground">
                                 <Lock className="h-3.5 w-3.5" />
                                 Anonymous
                               </span>
@@ -335,33 +335,33 @@ const ComplaintsDashboard: React.FC<Props> = ({ readOnly = false }) => {
                           <span className="font-medium">{row.filed_by?.name || '—'}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium">{row.subject?.name || '—'}</p>
+                      <td className="px-2 py-2 whitespace-nowrap text-xs">
+                        <div className="leading-tight">
+                          <p className="font-medium text-foreground">{row.subject?.name || '—'}</p>
                           {row.subject?.class_name && (
-                            <p className="text-xs text-muted-foreground">{row.subject.class_name}</p>
+                            <p className="text-[11px] text-muted-foreground">{row.subject.class_name}</p>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 max-w-[200px] truncate">{row.title}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant="outline" className={cn('capitalize', severityBadgeClass(row.severity))}>
+                      <td className="px-2 py-2 text-xs font-medium max-w-[200px] truncate">{row.title}</td>
+                      <td className="px-1.5 py-2 whitespace-nowrap">
+                        <Badge variant="outline" className={cn('capitalize text-xs font-normal', severityBadgeClass(row.severity))}>
                           {row.severity}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="outline" className={statusBadgeClass(row.status)}>
+                      <td className="px-1.5 py-2 whitespace-nowrap">
+                        <Badge variant="outline" className={cn('text-xs font-normal', statusBadgeClass(row.status))}>
                           {statusLabel(row.status)}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-2.5 py-2 text-right whitespace-nowrap pr-3">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="rounded-lg"
+                          className="h-7 px-2.5 text-xs rounded-lg gap-1.5"
                           onClick={() => void openDetail(row)}
                         >
-                          <Eye className="h-3.5 w-3.5 mr-1.5" />
+                          <Eye className="h-3.5 w-3.5" />
                           View & Manage
                         </Button>
                       </td>

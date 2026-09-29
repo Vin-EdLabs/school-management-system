@@ -47,7 +47,12 @@ const ParentImpersonationBanner: React.FC<{ tenantId: number }> = ({ tenantId })
       applySession(restored.token, merged as Record<string, unknown>);
       prepareReturnToAdminDashboard(restored.backup);
       toast({ title: 'Impersonation ended', description: 'Back to your account' });
-      navigate(resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup), {
+      const dest = resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup);
+      if (dest.startsWith('http')) {
+        window.location.href = dest;
+        return;
+      }
+      navigate(dest, {
         replace: true,
       });
     } catch (e: unknown) {

@@ -378,13 +378,14 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode; return
       toast({ title: 'Impersonation ended', description: 'Back to your account' });
 
       const dest = resolvePostImpersonationPath(merged as Record<string, unknown>, restored.backup);
-      if (restored.backup?.startedFromSuperAdmin || dest === PLATFORM_ADMIN_PATH) {
+      if (dest.startsWith('http') || restored.backup?.startedFromSuperAdmin || dest === PLATFORM_ADMIN_PATH) {
         window.location.href = dest;
         hardNav = true;
         return;
       }
 
-      navigate(dest, { replace: true });
+      window.location.href = dest;
+      hardNav = true;
     } catch (e: unknown) {
       clearImpersonationTransition();
       toast({

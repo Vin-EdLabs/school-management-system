@@ -1927,7 +1927,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'school_settings.sms_balance'
   );
   await safe(
-    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHOLARNRV'`,
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHNerve'`,
     'school_settings.sms_sender_id'
   );
   await safe(
@@ -1947,7 +1947,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'tenants.sms_balance'
   );
   await safe(
-    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHOLARNRV'`,
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHNerve'`,
     'tenants.sms_sender_id'
   );
 
@@ -2025,6 +2025,34 @@ export async function ensureSupplementalSchema(): Promise<void> {
   await safe(
     `CREATE INDEX IF NOT EXISTS idx_sms_sender_id_tenant ON sms_sender_id_requests (tenant_id, created_at DESC)`,
     'idx_sms_sender_id_tenant'
+  );
+
+  // Table: platform_sms_packages (SuperAdmin-configurable purchase bundles)
+  await safe(
+    `CREATE TABLE IF NOT EXISTS platform_sms_packages (
+      id VARCHAR(60) PRIMARY KEY,
+      name VARCHAR(120) NOT NULL,
+      credits INTEGER NOT NULL,
+      price_ghs NUMERIC(10, 2) NOT NULL,
+      description TEXT,
+      popular BOOLEAN NOT NULL DEFAULT false,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'platform_sms_packages'
+  );
+
+  await safe(
+    `INSERT INTO platform_sms_packages (id, name, credits, price_ghs, description, popular, is_active, sort_order)
+     VALUES
+       ('starter_500', 'Starter Pack', 500, 40.00, 'Great for small schools and introductory testing', false, true, 1),
+       ('standard_1500', 'Standard Pack', 1500, 110.00, 'Ideal for monthly attendance & fee reminder broadcasts', false, true, 2),
+       ('term_3500', 'Term Bundle', 3500, 240.00, 'Recommended for full-term notices and terminal report alerts', true, true, 3),
+       ('annual_10000', 'Annual Institution Pack', 10000, 650.00, 'Best value for high-volume, multi-campus institutions', false, true, 4)
+     ON CONFLICT (id) DO NOTHING`,
+    'seed_platform_sms_packages'
   );
 
   const critical = [

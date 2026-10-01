@@ -20,14 +20,120 @@ export type SmsPackage = {
   credits: number;
   priceGhs: number;
   badge?: string;
+  description?: string;
+  popular?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
 };
 
-export const SMS_PACKAGES: SmsPackage[] = [
-  { id: 'pkg_500', name: 'Starter Pack', credits: 500, priceGhs: 35 },
-  { id: 'pkg_1500', name: 'Popular Pack', credits: 1500, priceGhs: 95, badge: 'Popular' },
-  { id: 'pkg_3000', name: 'Standard Pack', credits: 3000, priceGhs: 180 },
-  { id: 'pkg_10000', name: 'Bulk School Pack', credits: 10000, priceGhs: 550, badge: 'Best Value' },
+export const DEFAULT_SMS_PACKAGES: SmsPackage[] = [
+  { id: 'starter_500', name: 'Starter Pack', credits: 500, priceGhs: 40, description: 'Great for small schools and introductory testing' },
+  { id: 'standard_1500', name: 'Standard Pack', credits: 1500, priceGhs: 110, description: 'Ideal for monthly attendance & fee reminder broadcasts' },
+  { id: 'term_3500', name: 'Term Bundle', credits: 3500, priceGhs: 240, popular: true, badge: 'Popular', description: 'Recommended for full-term notices and terminal report alerts' },
+  { id: 'annual_10000', name: 'Annual Institution Pack', credits: 10000, priceGhs: 650, badge: 'Best Value', description: 'Best value for high-volume, multi-campus institutions' },
 ];
+
+export const SMS_PACKAGES: SmsPackage[] = DEFAULT_SMS_PACKAGES;
+
+/**
+ * Fetches active SMS packages available for school tenants to purchase.
+ */
+export async function getActiveSmsPackages(): Promise<SmsPackage[]> {
+  try {
+    const res = await query(
+      `SELECT id, name, credits, price_ghs AS "priceGhs", description, popular, is_active AS "isActive", sort_order AS "sortOrder"
+       FROM platform_sms_packages
+       WHERE is_active = true
+       ORDER BY sort_order ASC, credits ASC`
+    );
+    if (res.rows.length > 0) {
+      return res.rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        credits: Number(r.credits),
+        priceGhs: Number(r.priceGhs),
+        description: r.description || '',
+        popular: Boolean(r.popular),
+        isActive: Boolean(r.isActive),
+        sortOrder: Number(r.sortOrder || 0),
+        badge: r.popular ? 'Popular' : undefined,
+      }));
+    }
+  } catch (err) {
+    console.warn('[arkesel] Using default SMS packages due to query fallback:', err);
+  }
+  return DEFAULT_SMS_PACKAGES;
+}
+
+/**
+ * Fetches all SMS packages (including inactive ones) for SuperAdmin pricing management.
+ */
+export async function getAllSmsPackages(): Promise<SmsPackage[]> {
+  try {
+    const res = await query(
+      `SELECT id, name, credits, price_ghs AS "priceGhs", description, popular, is_active AS "isActive", sort_order AS "sortOrder"
+       FROM platform_sms_packages
+       ORDER BY sort_order ASC, credits ASC`
+    );
+    if (res.rows.length > 0) {
+      return res.rows.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        credits: Number(r.credits),
+        priceGhs: Number(r.priceGhs),
+        description: r.description || '',
+        popular: Boolean(r.popular),
+        isActive: Boolean(r.isActive),
+        sortOrder: Number(r.sortOrder || 0),
+        badge: r.popular ? 'Popular' : undefined,
+      }));
+    }
+  } catch (err) {
+    console.warn('[arkesel] Using default SMS packages for superadmin:', err);
+  }
+  return DEFAULT_SMS_PACKAGES;
+}
+
+/**
+ * Saves or updates SMS packages list configured by SuperAdmin.
+ */
+export async function saveSmsPackages(packages: SmsPackage[]): Promise<SmsPackage[]> {
+  for (let i = 0; i < packages.length; i++) {
+    const p = packages[i];
+    const id = (p.id || `pkg_${p.credits || Date.now()}`).trim();
+    const name = (p.name || 'SMS Pack').trim();
+    const credits = Math.max(1, Math.floor(Number(p.credits) || 100));
+    const priceGhs = Math.max(0.1, Number(p.priceGhs) || 1);
+    const description = (p.description || '').trim();
+    const popular = Boolean(p.popular);
+    const isActive = p.isActive !== false;
+    const sortOrder = typeof p.sortOrder === 'number' ? p.sortOrder : i + 1;
+
+    await query(
+      `INSERT INTO platform_sms_packages
+         (id, name, credits, price_ghs, description, popular, is_active, sort_order, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         credits = EXCLUDED.credits,
+         price_ghs = EXCLUDED.price_ghs,
+         description = EXCLUDED.description,
+         popular = EXCLUDED.popular,
+         is_active = EXCLUDED.is_active,
+         sort_order = EXCLUDED.sort_order,
+         updated_at = NOW()`,
+      [id, name, credits, priceGhs, description, popular, isActive, sortOrder]
+    );
+  }
+  return getAllSmsPackages();
+}
+
+/**
+ * Deletes an SMS package tier by ID.
+ */
+export async function deleteSmsPackage(packageId: string): Promise<void> {
+  await query(`DELETE FROM platform_sms_packages WHERE id = $1`, [packageId]);
+}
 
 export function isArkeselConfigured(): boolean {
   return Boolean(process.env.ARKESEL_API_KEY && process.env.ARKESEL_API_KEY.trim().length > 0);
@@ -39,7 +145,7 @@ export function getMasterArkeselApiKey(): string {
 
 export function getDefaultSenderId(): string {
   const custom = (process.env.ARKESEL_DEFAULT_SENDER_ID || '').trim();
-  return custom ? custom.slice(0, 11) : 'SCHOLARNRV';
+  return custom ? custom.slice(0, 11) : 'SCHNerve';
 }
 
 /**
@@ -148,6 +254,13 @@ export async function getTenantSmsWallet(tenantId: number): Promise<TenantSmsWal
   );
 
   const row = res.rows[0];
+  const defaultId = getDefaultSenderId();
+  const senderIdStatus = ((row?.sender_id_status as any) || 'default') as 'default' | 'pending' | 'approved' | 'rejected';
+  const effectiveSenderId =
+    senderIdStatus === 'approved' && row?.sender_id
+      ? String(row.sender_id).slice(0, 11)
+      : defaultId;
+
   const toggles = {
     ...defaultToggles,
     ...(row?.toggles && typeof row.toggles === 'object' ? row.toggles : {}),
@@ -155,8 +268,8 @@ export async function getTenantSmsWallet(tenantId: number): Promise<TenantSmsWal
 
   return {
     balance: Number(row?.balance || 0),
-    senderId: String(row?.sender_id || getDefaultSenderId()).slice(0, 11),
-    senderIdStatus: (row?.sender_id_status as any) || 'default',
+    senderId: effectiveSenderId,
+    senderIdStatus,
     enabled: Boolean(row?.enabled ?? true),
     toggles,
     gatewayConfigured: isArkeselConfigured(),
@@ -269,6 +382,26 @@ export type SendSmsResult = {
   skippedReason?: string;
 };
 
+export function resolveToggleKeyForEventType(eventType: SmsEventType): keyof TenantSmsWallet['toggles'] | null {
+  switch (eventType) {
+    case 'payment':
+      return 'payments';
+    case 'attendance':
+      return 'attendance';
+    case 'grades':
+      return 'grades';
+    case 'broadcast':
+      return 'broadcasts';
+    case 'exeats':
+    case 'complaints':
+      return 'exeats';
+    case 'birthdays':
+      return 'birthdays';
+    default:
+      return null;
+  }
+}
+
 /**
  * Primary outbound SMS dispatch engine:
  * 1. Checks tenant wallet & toggle preferences
@@ -313,8 +446,9 @@ export async function sendArkeselSms(input: {
 
   // Check event-specific toggle
   if (!skipToggleCheck && eventType !== 'test') {
-    const toggleKey = eventType === 'grades' ? 'grades' : eventType === 'broadcast' ? 'broadcasts' : eventType === 'exeats' ? 'exeats' : eventType;
-    if ((wallet.toggles as any)[toggleKey] === false) {
+    const toggleKey = resolveToggleKeyForEventType(eventType);
+    if (toggleKey && wallet.toggles[toggleKey] === false) {
+      console.info(`[arkesel] SMS skipped for tenant ${tenantId}: '${eventType}' (${toggleKey}) is toggled OFF.`);
       return {
         success: false,
         sentCount: 0,

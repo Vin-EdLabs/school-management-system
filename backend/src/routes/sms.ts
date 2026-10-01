@@ -8,6 +8,10 @@ import {
   checkMasterArkeselBalance,
   sendArkeselSms,
   SMS_PACKAGES,
+  getActiveSmsPackages,
+  getAllSmsPackages,
+  saveSmsPackages,
+  deleteSmsPackage,
   normalizePhoneNumber,
 } from '../services/arkeselService.js';
 import { resolvePlatformPaystackKeys } from '../services/platformPaystackService.js';
@@ -26,6 +30,56 @@ router.use(authenticate);
 // -------------------------------------------------------------
 // SUPER-ADMIN MANAGEMENT ENDPOINTS
 // -------------------------------------------------------------
+
+// Get all packages (for superadmin bundle & pricing management)
+router.get('/admin/packages', async (req: AuthRequest, res) => {
+  if (!isSuperAdminUser(req)) {
+    return res.status(403).json({ error: 'Super-admin access required' });
+  }
+
+  try {
+    const packages = await getAllSmsPackages();
+    res.json({ packages });
+  } catch (error: any) {
+    console.error('[sms-admin] get packages error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to fetch SMS packages' });
+  }
+});
+
+// Update or add packages (superadmin)
+router.put('/admin/packages', async (req: AuthRequest, res) => {
+  if (!isSuperAdminUser(req)) {
+    return res.status(403).json({ error: 'Super-admin access required' });
+  }
+
+  try {
+    const packages = req.body?.packages;
+    if (!Array.isArray(packages)) {
+      return res.status(400).json({ error: 'Expected an array of packages' });
+    }
+    const updated = await saveSmsPackages(packages);
+    res.json({ success: true, packages: updated });
+  } catch (error: any) {
+    console.error('[sms-admin] save packages error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to save SMS packages' });
+  }
+});
+
+// Delete package tier (superadmin)
+router.delete('/admin/packages/:id', async (req: AuthRequest, res) => {
+  if (!isSuperAdminUser(req)) {
+    return res.status(403).json({ error: 'Super-admin access required' });
+  }
+
+  try {
+    const packageId = String(req.params.id);
+    await deleteSmsPackage(packageId);
+    res.json({ success: true, message: 'Package deleted successfully' });
+  } catch (error: any) {
+    console.error('[sms-admin] delete package error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to delete SMS package' });
+  }
+});
 
 router.get('/admin/master-balance', async (req: AuthRequest, res) => {
   if (!isSuperAdminUser(req)) {
@@ -192,9 +246,11 @@ router.get('/wallet', async (req: AuthRequest, res) => {
       ).catch(() => ({ rows: [] })),
     ]);
 
+    const activePackages = await getActiveSmsPackages();
+
     res.json({
       wallet,
-      packages: SMS_PACKAGES,
+      packages: activePackages,
       recentLogs: recentLogs.rows,
       recentTopups: recentTopups.rows,
       pendingSenderIdRequest: pendingRequest.rows[0] || null,
@@ -210,6 +266,14 @@ router.put('/preferences', requireRole('administrator', 'finance', 'headmaster')
   try {
     const tenantId = req.user!.tenantId!;
     const { enabled, toggles } = req.body;
+
+    // Ensure school_settings row exists for tenant
+    await query(
+      `INSERT INTO school_settings (tenant_id, school_name)
+       VALUES ($1, 'School')
+       ON CONFLICT (tenant_id) DO NOTHING`,
+      [tenantId]
+    );
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -301,7 +365,8 @@ router.post('/topup/initialize', requireRole('administrator', 'finance', 'headma
     const tenantId = req.user!.tenantId!;
     const { packageId, callbackUrl } = req.body;
 
-    const selectedPkg = SMS_PACKAGES.find((p) => p.id === packageId);
+    const activePackages = await getActiveSmsPackages();
+    const selectedPkg = activePackages.find((p) => p.id === packageId);
     if (!selectedPkg) {
       return res.status(400).json({ error: 'Invalid SMS package selected' });
     }

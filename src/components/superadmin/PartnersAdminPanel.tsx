@@ -424,7 +424,7 @@ function ApplicationsTab({
     total_pending: 'total_pending' in p ? p.total_pending : 0,
   });
 
-  const openDetail = async (p: AdminPartner) => {
+  const openDetail = async (p: AdminPartner | AdminPartnerDetail | { id: number }) => {
     try {
       const result = await adminGet<{
         partner: AdminPartnerDetail;

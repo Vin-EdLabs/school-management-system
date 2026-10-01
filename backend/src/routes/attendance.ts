@@ -5,6 +5,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { writeAuditLog } from '../services/auditService.js';
+import { sendSmsToStudentParents } from '../services/arkeselService.js';
 
 const router = express.Router();
 
@@ -162,6 +163,30 @@ router.post('/', async (req: AuthRequest, res) => {
       details: { classId: Number(classId), date, count: activeRecords.length },
     });
     emitTenantDataChanged(tenantId, 'attendance', 'updated');
+
+    // Notify parents of students marked absent via SMS (respects school SMS toggle)
+    const absentStudentIds = activeRecords
+      .filter((r: { present: boolean; studentId: number }) => r.present === false)
+      .map((r: { studentId: number }) => Number(r.studentId));
+
+    if (absentStudentIds.length > 0) {
+      (async () => {
+        try {
+          const absentStudents = await query(
+            `SELECT id, first_name, last_name FROM students WHERE id = ANY($1) AND tenant_id = $2`,
+            [absentStudentIds, tenantId]
+          );
+          for (const s of absentStudents.rows) {
+            const fullName = `${s.first_name || ''} ${s.last_name || ''}`.trim() || 'Your child';
+            const msg = `Attendance Notice: ${fullName} was marked absent from school today (${date}). Please contact the school if this is unexpected.`;
+            sendSmsToStudentParents(tenantId, s.id, msg, 'attendance').catch(() => {});
+          }
+        } catch (err) {
+          console.warn('[attendance] Absent SMS dispatch error:', err);
+        }
+      })();
+    }
+
     res.json({ message: 'Attendance saved', count: activeRecords.length });
   } catch (error) {
     console.error('Save attendance error:', error);

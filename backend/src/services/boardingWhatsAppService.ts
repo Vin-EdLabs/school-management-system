@@ -1,5 +1,6 @@
 import { query } from '../db/connection.js';
 import { notifyTenantStaffByRoles } from './staffNotificationService.js';
+import { sendSmsToStudentParents } from './arkeselService.js';
 
 /** Log outbound WhatsApp intent (integrate provider when available). */
 export async function logBoardingWhatsAppMessage(input: {
@@ -62,6 +63,9 @@ export async function notifyOverdueExeatWhatsApp(input: {
     context: 'overdue-exeat-parent',
     referenceKey: `exeat-${input.exeatId}`,
   });
+
+  // Outbound SMS to guardian
+  sendSmsToStudentParents(input.tenantId, input.studentId, parentMsg, 'exeats').catch(() => {});
 }
 
 export async function notifyHighSeverityComplaintWhatsApp(input: {
@@ -85,4 +89,7 @@ export async function notifyHighSeverityComplaintWhatsApp(input: {
     context: 'complaint-high',
     referenceKey: `complaint-${input.complaintId}`,
   });
+
+  // Outbound SMS to guardian
+  sendSmsToStudentParents(input.tenantId, input.studentId, message, 'complaints').catch(() => {});
 }

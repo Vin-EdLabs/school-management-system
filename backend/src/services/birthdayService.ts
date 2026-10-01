@@ -1,5 +1,6 @@
 import { query } from '../db/connection.js';
 import { sendPushToStudentParents, sendPushToStaffUser, sendPushToTenantStaff } from './webPushService.js';
+import { sendSmsToStudentParents } from './arkeselService.js';
 
 export interface BirthdayPerson {
   id: number;
@@ -669,6 +670,9 @@ export async function sendBirthdayNotifications(
       url: '/parent-portal',
       icon: 'cake',
     }).catch(() => {});
+
+    // Birthday SMS to parents (respects birthday toggle)
+    sendSmsToStudentParents(tenantId, person.id, parentBody, 'birthdays').catch(() => {});
 
     if (person.classId) {
       const teacherUserIds = await getClassTeacherUserIds(tenantId, person.classId);

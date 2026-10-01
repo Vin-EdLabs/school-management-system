@@ -1921,6 +1921,140 @@ export async function ensureSupplementalSchema(): Promise<void> {
     'idx_platform_invoices_reference'
   );
 
+  // --- SMS & Arkesel Gateway Schema ---
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_balance INTEGER NOT NULL DEFAULT 0`,
+    'school_settings.sms_balance'
+  );
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHNerve'`,
+    'school_settings.sms_sender_id'
+  );
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_sender_id_status VARCHAR(20) DEFAULT 'default'`,
+    'school_settings.sms_sender_id_status'
+  );
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_enabled BOOLEAN NOT NULL DEFAULT true`,
+    'school_settings.sms_enabled'
+  );
+  await safe(
+    `ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS sms_notification_toggles JSONB DEFAULT '{"payments": true, "attendance": true, "grades": true, "broadcasts": true, "exeats": true, "birthdays": false}'::jsonb`,
+    'school_settings.sms_notification_toggles'
+  );
+  await safe(
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sms_balance INTEGER NOT NULL DEFAULT 0`,
+    'tenants.sms_balance'
+  );
+  await safe(
+    `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS sms_sender_id VARCHAR(11) DEFAULT 'SCHNerve'`,
+    'tenants.sms_sender_id'
+  );
+
+  // Table: sms_logs
+  await safe(
+    `CREATE TABLE IF NOT EXISTS sms_logs (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      recipient_phone VARCHAR(50) NOT NULL,
+      recipient_name VARCHAR(255),
+      recipient_type VARCHAR(50) DEFAULT 'parent',
+      event_type VARCHAR(50) NOT NULL,
+      message TEXT NOT NULL,
+      segment_count INTEGER NOT NULL DEFAULT 1,
+      credits_deducted INTEGER NOT NULL DEFAULT 1,
+      status VARCHAR(20) NOT NULL DEFAULT 'sent',
+      gateway_response JSONB,
+      error_message TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'sms_logs'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_sms_logs_tenant_created ON sms_logs (tenant_id, created_at DESC)`,
+    'idx_sms_logs_tenant_created'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_sms_logs_tenant_event ON sms_logs (tenant_id, event_type)`,
+    'idx_sms_logs_tenant_event'
+  );
+
+  // Table: sms_topup_transactions
+  await safe(
+    `CREATE TABLE IF NOT EXISTS sms_topup_transactions (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      package_name VARCHAR(100) NOT NULL,
+      amount_ghs NUMERIC(10, 2) NOT NULL,
+      credits_purchased INTEGER NOT NULL,
+      paystack_reference VARCHAR(150) UNIQUE,
+      status VARCHAR(50) NOT NULL DEFAULT 'pending',
+      payment_method VARCHAR(50) DEFAULT 'paystack',
+      initiated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      paid_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'sms_topup_transactions'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_sms_topup_tenant ON sms_topup_transactions (tenant_id, created_at DESC)`,
+    'idx_sms_topup_tenant'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_sms_topup_reference ON sms_topup_transactions (paystack_reference)`,
+    'idx_sms_topup_reference'
+  );
+
+  // Table: sms_sender_id_requests
+  await safe(
+    `CREATE TABLE IF NOT EXISTS sms_sender_id_requests (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      requested_sender_id VARCHAR(11) NOT NULL,
+      purpose TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      rejection_reason TEXT,
+      requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'sms_sender_id_requests'
+  );
+  await safe(
+    `CREATE INDEX IF NOT EXISTS idx_sms_sender_id_tenant ON sms_sender_id_requests (tenant_id, created_at DESC)`,
+    'idx_sms_sender_id_tenant'
+  );
+
+  // Table: platform_sms_packages (SuperAdmin-configurable purchase bundles)
+  await safe(
+    `CREATE TABLE IF NOT EXISTS platform_sms_packages (
+      id VARCHAR(60) PRIMARY KEY,
+      name VARCHAR(120) NOT NULL,
+      credits INTEGER NOT NULL,
+      price_ghs NUMERIC(10, 2) NOT NULL,
+      description TEXT,
+      popular BOOLEAN NOT NULL DEFAULT false,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'platform_sms_packages'
+  );
+
+  await safe(
+    `INSERT INTO platform_sms_packages (id, name, credits, price_ghs, description, popular, is_active, sort_order)
+     VALUES
+       ('starter_500', 'Starter Pack', 500, 40.00, 'Great for small schools and introductory testing', false, true, 1),
+       ('standard_1500', 'Standard Pack', 1500, 110.00, 'Ideal for monthly attendance & fee reminder broadcasts', false, true, 2),
+       ('term_3500', 'Term Bundle', 3500, 240.00, 'Recommended for full-term notices and terminal report alerts', true, true, 3),
+       ('annual_10000', 'Annual Institution Pack', 10000, 650.00, 'Best value for high-volume, multi-campus institutions', false, true, 4)
+     ON CONFLICT (id) DO NOTHING`,
+    'seed_platform_sms_packages'
+  );
+
   const critical = [
     'subjects',
     'classes',

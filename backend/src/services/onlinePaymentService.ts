@@ -21,6 +21,7 @@ import {
 } from './paystackService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from './webPushService.js';
+import { sendSmsToStudentParents } from './arkeselService.js';
 import { resolveActiveLedgerTerm } from './studentUnifiedBalanceService.js';
 import { getStudentBalanceFromLedger } from './ledgerBalanceService.js';
 import { handlePlatformBillingWebhookEvent } from './platformBillingService.js';
@@ -459,6 +460,11 @@ export async function finalizeSuccessfulOnlinePayment(
     body: `${studentName}: GHS ${amountGhs.toFixed(2)} was received online. Receipt #${receiptNumber}. Ref ${reference}.`,
     url: `/parent/${tenantId}`,
   }).catch(() => {});
+
+  const onlineSmsMsg = `Payment Successful: GHS ${amountGhs.toFixed(2)} received online for ${studentName}. Receipt #${receiptNumber}. Ref: ${reference}. Thank you.`;
+  sendSmsToStudentParents(tenantId, studentId, onlineSmsMsg, 'payment').catch((err) => {
+    console.warn('[onlinePaymentService] SMS dispatch failed:', err?.message || err);
+  });
 
   try {
     const io = getIO();

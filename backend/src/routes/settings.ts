@@ -17,6 +17,11 @@ import {
   sendPushToStudentsParents,
   sendPushToClassParents,
 } from '../services/webPushService.js';
+import {
+  sendSmsToTenantParents,
+  sendSmsToClassParents,
+  sendSmsToStudentsParents,
+} from '../services/arkeselService.js';
 import { notifyTenantStaffByRoles } from '../services/staffNotificationService.js';
 import { isFcmConfigured } from '../services/fcmService.js';
 import { notifySetupProgressChanged } from '../services/setupProgressService.js';
@@ -1001,6 +1006,26 @@ router.post('/push/test', requireRole('super-admin', 'administrator', 'headmaste
       stats = await sendPushToTenantParents(tenantId, pushPayloadParents);
     }
 
+    // Optional SMS broadcast dispatch
+    let smsDispatchResult: any = null;
+    if (req.body?.sendSms === true && audience !== 'staff') {
+      try {
+        const smsMessage = `${title}: ${body}`.trim();
+        if (audience === 'students' || audience === 'student') {
+          if (targetStudentIds && targetStudentIds.length > 0) {
+            smsDispatchResult = await sendSmsToStudentsParents(tenantId, targetStudentIds, smsMessage, 'broadcast');
+          }
+        } else if (audience === 'class' && targetClassId != null) {
+          smsDispatchResult = await sendSmsToClassParents(tenantId, targetClassId, smsMessage, 'broadcast');
+        } else {
+          smsDispatchResult = await sendSmsToTenantParents(tenantId, smsMessage, 'broadcast');
+        }
+      } catch (smsErr) {
+        console.warn('[settings] SMS broadcast error:', smsErr);
+        smsDispatchResult = { success: false, error: 'SMS dispatch failed' };
+      }
+    }
+
     // Realtime in-app banner for open parent sessions (filtered on client when targeted).
     if (audience !== 'staff') {
       try {
@@ -1057,6 +1082,7 @@ router.post('/push/test', requireRole('super-admin', 'administrator', 'headmaste
               ? 'students'
               : 'all',
       ...stats,
+      sms: smsDispatchResult,
     });
   } catch (error) {
     console.error('Send test push error:', error);

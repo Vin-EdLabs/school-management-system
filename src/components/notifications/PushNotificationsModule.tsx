@@ -13,7 +13,12 @@ import { useSchool } from '@/contexts/SchoolContext';
 import { useData } from '@/contexts/DataContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { BellRing, RefreshCw, Send, Users, ListChecks, GraduationCap, Search, Megaphone } from 'lucide-react';
+import { BellRing, RefreshCw, Send, Users, ListChecks, GraduationCap, Search, Megaphone, MessageSquare, CreditCard, Sparkles, AlertCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { SmsWalletTab } from './SmsWalletTab';
+import { fetchSmsWallet } from '@/services/smsApi';
 
 type PushStats = {
   parentAccounts: number;
@@ -96,6 +101,9 @@ const PushNotificationsModule: React.FC = () => {
   const [message, setMessage] = useState(
     'You have a new message from the school. Open the parent portal to read more.'
   );
+  const [activeMainTab, setActiveMainTab] = useState<'broadcast' | 'wallet'>('broadcast');
+  const [smsBalance, setSmsBalance] = useState<number | null>(null);
+  const [sendSms, setSendSms] = useState(true);
 
   const sortedStudents = useMemo(() => {
     return [...students].sort((a, b) => {
@@ -155,6 +163,13 @@ const PushNotificationsModule: React.FC = () => {
     } finally {
       setLoadingStats(false);
     }
+
+    try {
+      const walletRes = await fetchSmsWallet();
+      setSmsBalance(walletRes.wallet.balance);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -184,6 +199,7 @@ const PushNotificationsModule: React.FC = () => {
       title: title.trim(),
       message: message.trim(),
       audience,
+      sendSms: audience !== 'staff' && sendSms,
     };
     if (audience === 'students') {
       body.studentIds = selectedStudentIds.map((id) => parseInt(id, 10)).filter((n) => Number.isFinite(n));
@@ -199,6 +215,14 @@ const PushNotificationsModule: React.FC = () => {
         staffUserAccounts?: number;
         subscribedUserAccounts?: number;
         subscribedDevices?: number;
+        sms?: {
+          success?: boolean;
+          sentCount?: number;
+          creditsDeducted?: number;
+          remainingBalance?: number;
+          error?: string;
+          skippedReason?: string;
+        };
       }>('/settings/push/test', body);
       const scope =
         res.audience === 'staff'
@@ -212,9 +236,22 @@ const PushNotificationsModule: React.FC = () => {
         res.audience === 'staff'
           ? `Sent to ${scope}: ${res.staffUserAccounts ?? 0} staff/teacher account(s), ${res.subscribedUserAccounts ?? 0} with at least one device, ${res.subscribedDevices ?? 0} push endpoint(s).`
           : `Sent to ${scope}: ${res.parentAccounts ?? 0} parent account(s), ${res.subscribedAccounts ?? 0} with an active device subscription.`;
+      
+      let extraToast = '';
+      if (res.sms) {
+        if (res.sms.success) {
+          extraToast = ` Also sent SMS to ${res.sms.sentCount} recipient(s). Remaining: ${res.sms.remainingBalance} credits.`;
+          if (res.sms.remainingBalance != null) setSmsBalance(res.sms.remainingBalance);
+        } else if (res.sms.error) {
+          extraToast = ` (SMS Alert: ${res.sms.error})`;
+        } else if (res.sms.skippedReason) {
+          extraToast = ` (SMS not sent: ${res.sms.skippedReason})`;
+        }
+      }
+
       toast({
-        title: 'Notification sent',
-        description,
+        title: 'Notification dispatched',
+        description: `${description}${extraToast}`,
       });
       await loadStats();
     } catch (err: any) {
@@ -253,6 +290,20 @@ const PushNotificationsModule: React.FC = () => {
     },
   ];
 
+  const fullText = `${title}: ${message}`.trim();
+  const charCount = fullText.length;
+  const segments = charCount <= 160 ? 1 : Math.ceil(charCount / 153);
+  const estRecipients =
+    audience === 'students'
+      ? selectedStudentIds.length
+      : audience === 'class'
+        ? students.filter((s) => {
+            const c = classes.find((cl) => cl.id === classId);
+            return c && s.classAssigned === c.className;
+          }).length
+        : stats.parentAccounts;
+  const estCost = estRecipients * segments;
+
   return (
     <div className="w-full min-h-0 px-4 py-6 sm:px-8 lg:px-12 xl:px-14 max-w-[min(100%,1680px)] mx-auto space-y-8 lg:space-y-10 pb-12">
       <div className="flex flex-col gap-5 lg:gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -261,20 +312,52 @@ const PushNotificationsModule: React.FC = () => {
             <BellRing className="w-8 h-8 lg:w-9 lg:h-9 text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-gray-900">Push notifications</h1>
+            <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-gray-900">
+              Announcements &amp; SMS Hub
+            </h1>
             <p className="text-gray-600 mt-2 text-base lg:text-lg max-w-3xl">
-              Send web push to parents (parent portal) or to teachers and payroll staff (school app). Same VAPID keys;
-              staff must open the school app once and allow notifications to register their device.
+              Broadcast push notifications to the parent portal and school app, or dispatch text messages to parent phones via Arkesel SMS.
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={loadStats} disabled={loadingStats} className="shrink-0 h-11 px-5">
-          {loadingStats ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          Refresh stats
-        </Button>
+
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={loadStats} disabled={loadingStats} className="shrink-0 h-11 px-5">
+            {loadingStats ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            Refresh stats
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 lg:gap-6">
+      <Tabs
+        value={activeMainTab}
+        onValueChange={(v) => setActiveMainTab(v as any)}
+        className="w-full space-y-6"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-3">
+          <TabsList className="grid w-full sm:w-auto grid-cols-2 max-w-md">
+            <TabsTrigger value="broadcast" className="gap-2 text-xs sm:text-sm">
+              <Megaphone className="h-4 w-4" /> Broadcast Announcement
+            </TabsTrigger>
+            <TabsTrigger value="wallet" className="gap-2 text-xs sm:text-sm">
+              <CreditCard className="h-4 w-4" /> SMS Wallet &amp; Settings
+              {smsBalance != null && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'ml-1 text-[11px] font-mono',
+                    smsBalance > 50 ? 'border-emerald-300 text-emerald-700' : 'border-amber-300 text-amber-700'
+                  )}
+                >
+                  {smsBalance} cr
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="broadcast" className="space-y-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 lg:gap-6">
         <Card className="border-slate-200/80 shadow-sm min-h-[120px]">
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="text-sm font-medium text-muted-foreground">Parent accounts</CardTitle>
@@ -534,6 +617,73 @@ const PushNotificationsModule: React.FC = () => {
               </div>
             </div>
 
+            {audience !== 'staff' && (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5 max-w-3xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700">
+                      <MessageSquare className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        Also dispatch as SMS via Arkesel
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Deliver text message directly to parent mobile numbers (works even when parents are offline).
+                      </div>
+                    </div>
+                  </div>
+                  <Switch checked={sendSms} onCheckedChange={setSendSms} />
+                </div>
+
+                {sendSms && (
+                  <div className="border-t border-indigo-100 pt-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
+                      <span>
+                        Text length:{' '}
+                        <strong className="text-foreground">{charCount}</strong> chars (
+                        {segments} segment{segments > 1 ? 's' : ''})
+                      </span>
+                      <span>
+                        Est. recipients:{' '}
+                        <strong className="text-foreground">{estRecipients}</strong>
+                      </span>
+                      <span>
+                        Est. credits needed:{' '}
+                        <strong className="text-indigo-600 font-semibold">{estCost}</strong>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">
+                        Wallet balance:{' '}
+                        <strong
+                          className={
+                            smsBalance != null && smsBalance >= estCost
+                              ? 'text-emerald-600'
+                              : 'text-amber-600 font-semibold'
+                          }
+                        >
+                          {smsBalance != null ? `${smsBalance} credits` : 'Loading...'}
+                        </strong>
+                      </span>
+                      {smsBalance != null && smsBalance < estCost && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-50"
+                          onClick={() => setActiveMainTab('wallet')}
+                        >
+                          Top Up Credits
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <Button type="submit" variant="primaryAction" className="w-full sm:w-auto min-w-[220px] h-12 text-base" size="lg" disabled={sending || dataLoading}>
               {sending ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               {sending
@@ -545,7 +695,13 @@ const PushNotificationsModule: React.FC = () => {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </TabsContent>
+
+    <TabsContent value="wallet" className="pt-2">
+      <SmsWalletTab onBalanceUpdated={(b) => setSmsBalance(b)} />
+    </TabsContent>
+  </Tabs>
+</div>
   );
 };
 

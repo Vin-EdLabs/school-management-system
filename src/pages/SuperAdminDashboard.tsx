@@ -127,6 +127,7 @@ import GlobalAnnouncementsModule from '../components/superadmin/GlobalAnnounceme
 import PlatformUsageModule from '../components/superadmin/PlatformUsageModule';
 import SuperAdminFinanceWipeModule from '../components/superadmin/SuperAdminFinanceWipeModule';
 import PlatformBillingModule from '../components/superadmin/PlatformBillingModule';
+import SuperAdminSmsPanel from '../components/superadmin/SuperAdminSmsPanel';
 import { SchoolProvider } from '../contexts/SchoolContext';
 import { ImpersonationProvider } from '../contexts/ImpersonationContext';
 import ImpersonationShell from '../components/impersonation/ImpersonationShell';
@@ -240,7 +241,7 @@ interface OnlineSession {
   durationSeconds?: number | null;
 }
 
-type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'contact-inquiries' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'paystack' | 'announcements' | 'online-users' | 'removed-staff' | 'removed-students' | 'finance-wipe' | 'platform-billing' | 'partners';
+type Section = 'schools' | 'usage' | 'visits' | 'tracker' | 'registrations' | 'contact-inquiries' | 'audit' | 'super-admins' | 'support-chat' | 'school-general-chat' | 'chat-broadcast' | 'school-websites' | 'school-data' | 'system-health' | 'platform-settings' | 'paystack' | 'sms-gateway' | 'announcements' | 'online-users' | 'removed-staff' | 'removed-students' | 'finance-wipe' | 'platform-billing' | 'partners';
 
 const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'schools', label: 'Schools', group: 'Overview' as const },
@@ -258,6 +259,7 @@ const SUPER_ADMIN_SIDEBAR_SEARCH_ITEMS = [
   { id: 'school-websites', label: 'School Websites', group: 'Overview' as const },
   { id: 'partners', label: 'Partners', group: 'Overview' as const },
   { id: 'paystack', label: 'Paystack', group: 'System' as const },
+  { id: 'sms-gateway', label: 'SMS & Arkesel Gateway', group: 'System' as const },
   { id: 'platform-settings', label: 'Platform Settings', group: 'System' as const },
   { id: 'finance-wipe', label: 'Finance Config', group: 'System' as const },
   { id: 'platform-billing', label: 'Platform Billing', group: 'System' as const },
@@ -1575,6 +1577,7 @@ const SuperAdminDashboard = () => {
   ];
   const systemItems = [
     { id: 'paystack' as Section, label: 'Paystack', icon: CreditCard },
+    { id: 'sms-gateway' as Section, label: 'SMS & Arkesel Gateway', icon: Phone },
     { id: 'platform-settings' as Section, label: 'Platform Settings', icon: Settings },
     { id: 'finance-wipe' as Section, label: 'Finance Config', icon: Trash2 },
     { id: 'platform-billing' as Section, label: 'Platform Billing', icon: Receipt },
@@ -3500,6 +3503,10 @@ const SuperAdminDashboard = () => {
 
             {section === 'paystack' && (
               <PaystackPlatformPanel />
+            )}
+
+            {section === 'sms-gateway' && (
+              <SuperAdminSmsPanel />
             )}
 
             {section === 'finance-wipe' && (

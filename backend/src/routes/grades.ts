@@ -6,6 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { attachWritableTermGuard } from '../middleware/attachWritableTermGuard.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
+import { sendSmsToStudentsParents } from '../services/arkeselService.js';
 import { resolveSchoolDisplayName } from '../services/schoolBrandingService.js';
 import { archiveClassReportCardsOnRelease, archiveStudentReportCard, validateClassReportReadyForRelease, resolveArchiveSignatures, buildTermReportData } from '../services/reportCardArchiveService.js';
 import { assertMainClassTeacher, isMainClassTeacher } from '../services/classTeacherAccess.js';
@@ -757,6 +758,14 @@ router.post('/release-report', async (req: AuthRequest, res) => {
           body: `Your ward's ${fullTermLabel || term} results are now available.`,
           url: `/parent/${tenantId}`,
         }).catch(() => {});
+      }
+
+      const releasedStudentIds = studentsRes.rows.map((r: { id: number }) => Number(r.id));
+      if (releasedStudentIds.length > 0) {
+        const reportSms = `Academic Notice: ${fullTermLabel || term} terminal report cards have been released. Log in to the parent portal to view your ward's results.`;
+        sendSmsToStudentsParents(tenantId, releasedStudentIds, reportSms, 'grades').catch((err) => {
+          console.warn('[grades] Report card SMS dispatch error:', err);
+        });
       }
     }
 

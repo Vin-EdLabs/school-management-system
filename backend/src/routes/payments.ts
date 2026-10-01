@@ -6,6 +6,7 @@ import { setTenantContext } from '../middleware/tenant.js';
 import { recordPaymentWithLedger } from '../services/ledgerPaymentService.js';
 import { getIO } from '../socket.js';
 import { sendPushToStudentParents } from '../services/webPushService.js';
+import { sendSmsToStudentParents } from '../services/arkeselService.js';
 import { writeAuditLog } from '../services/auditService.js';
 import { formatMoneyGhs, resolveActorFromRequest, resolveStudentLabel, withActor } from '../utils/auditResolve.js';
 import { getClientIp } from '../utils/clientIp.js';
@@ -546,6 +547,16 @@ router.post(
       body: `${studentName}: GHS ${paymentAmount.toFixed(2)} was received. Receipt #${receiptNumber}.`,
       url: `/parent/${tenantId}`,
     }).catch(() => {});
+
+    // Outbound SMS notification to parent
+    const outstandingText =
+      receiptSnapshot?.outstandingAfter != null
+        ? ` Outstanding balance: GHS ${Number(receiptSnapshot.outstandingAfter).toFixed(2)}.`
+        : '';
+    const paymentSmsText = `Receipt #${receiptNumber}: GHS ${paymentAmount.toFixed(2)} received for ${studentName}.${outstandingText} Thank you.`;
+    sendSmsToStudentParents(tenantId, Number(student_id), paymentSmsText, 'payment').catch((err) => {
+      console.warn('[payments] Failed to dispatch SMS:', err?.message || err);
+    });
 
     res.status(201).json({
       payment: paymentOut,

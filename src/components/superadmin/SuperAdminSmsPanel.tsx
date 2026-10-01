@@ -11,9 +11,14 @@ import {
   fetchAllSenderIdRequests,
   updateSenderIdRequestStatus,
   adminCreditTenantSms,
+  fetchAdminSmsPackages,
+  saveAdminSmsPackages,
+  deleteAdminSmsPackage,
   type SenderIdRequestRow,
+  type SmsPackage,
 } from '@/services/smsApi';
 import { apiService } from '@/services/api';
+import { Switch } from '@/components/ui/switch';
 import {
   Zap,
   ShieldCheck,
@@ -24,6 +29,11 @@ import {
   Clock,
   PhoneCall,
   Search,
+  Tag,
+  Trash2,
+  Plus,
+  Sparkles,
+  Save,
 } from 'lucide-react';
 
 interface SchoolItem {
@@ -39,6 +49,10 @@ export const SuperAdminSmsPanel: React.FC = () => {
   const [schools, setSchools] = useState<SchoolItem[]>([]);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
+  // Package Pricing State
+  const [packages, setPackages] = useState<SmsPackage[]>([]);
+  const [savingPackages, setSavingPackages] = useState(false);
+
   // Manual Credit State
   const [selectedSchoolId, setSelectedSchoolId] = useState<number | ''>('');
   const [creditAmount, setCreditAmount] = useState<string>('500');
@@ -49,16 +63,18 @@ export const SuperAdminSmsPanel: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [balRes, reqRes, schoolsRes] = await Promise.all([
+      const [balRes, reqRes, schoolsRes, pkgsRes] = await Promise.all([
         fetchMasterArkeselBalance().catch((e) => ({ success: false, error: e?.message })),
         fetchAllSenderIdRequests().catch(() => []),
         apiService.get<any>('/schools').catch(() => ({ schools: [] })),
+        fetchAdminSmsPackages().catch(() => ({ packages: [] })),
       ]);
 
       setMasterBalance(balRes);
       setRequests(reqRes);
       const schoolList = Array.isArray(schoolsRes) ? schoolsRes : schoolsRes?.schools || [];
       setSchools(schoolList);
+      setPackages(pkgsRes?.packages || []);
     } catch (err: any) {
       toast({
         title: 'Error loading SMS admin data',
@@ -151,6 +167,73 @@ export const SuperAdminSmsPanel: React.FC = () => {
       });
     } finally {
       setCrediting(false);
+    }
+  };
+
+  const handlePackageChange = (index: number, field: keyof SmsPackage, value: any) => {
+    setPackages((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleAddPackage = () => {
+    const newPkg: SmsPackage = {
+      id: `pkg_${Date.now()}`,
+      name: 'Custom SMS Bundle',
+      credits: 1000,
+      priceGhs: 75.0,
+      description: 'Custom bundle',
+      popular: false,
+      isActive: true,
+      sortOrder: packages.length + 1,
+    };
+    setPackages((prev) => [...prev, newPkg]);
+  };
+
+  const handleDeletePackage = async (index: number) => {
+    const pkg = packages[index];
+    if (!pkg) return;
+    if (!window.confirm(`Delete package '${pkg.name}'?`)) return;
+
+    try {
+      if (pkg.id) {
+        await deleteAdminSmsPackage(pkg.id).catch(() => {});
+      }
+      setPackages((prev) => prev.filter((_, i) => i !== index));
+      toast({
+        title: 'Package Removed',
+        description: `Package '${pkg.name}' has been deleted.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Failed to delete package',
+        description: err?.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleSavePackages = async () => {
+    setSavingPackages(true);
+    try {
+      const res = await saveAdminSmsPackages(packages);
+      if (res?.packages) {
+        setPackages(res.packages);
+      }
+      toast({
+        title: 'SMS Bundles & Pricing Saved! 🎉',
+        description: 'School administrators will now see these updated prices when purchasing credits.',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Failed to save packages',
+        description: err?.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingPackages(false);
     }
   };
 
@@ -385,6 +468,149 @@ export const SuperAdminSmsPanel: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* SMS Purchase Bundles & Dynamic Pricing Management */}
+      <Card className="border-border">
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Tag className="h-4 w-4 text-primary" /> SMS Purchase Bundles & Wholesale Pricing
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Configure the credit packages and GHS rates displayed to school administrators when they top up their wallets.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleAddPackage}
+                className="h-8 text-xs gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Tier
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSavePackages}
+                disabled={savingPackages}
+                className="h-8 text-xs gap-1.5 bg-primary text-primary-foreground"
+              >
+                <Save className="h-3.5 w-3.5" /> {savingPackages ? 'Saving...' : 'Save Pricing'}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {packages.map((pkg, idx) => {
+              const unitCost = pkg.credits > 0 ? (Number(pkg.priceGhs) / Number(pkg.credits)).toFixed(3) : '0.000';
+              return (
+                <div
+                  key={pkg.id || idx}
+                  className={`relative rounded-lg border p-4 space-y-3.5 transition-all bg-card ${
+                    pkg.popular ? 'border-primary ring-1 ring-primary/40 shadow-sm' : 'border-border'
+                  } ${!pkg.isActive ? 'opacity-60 bg-muted/30' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono font-semibold uppercase text-muted-foreground">
+                      Tier #{idx + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeletePackage(idx)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        title="Delete package"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Bundle Name</Label>
+                    <Input
+                      value={pkg.name}
+                      onChange={(e) => handlePackageChange(idx, 'name', e.target.value)}
+                      placeholder="e.g. Starter Pack"
+                      className="text-xs h-8 font-semibold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-muted-foreground">SMS Credits</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={pkg.credits}
+                        onChange={(e) => handlePackageChange(idx, 'credits', Math.max(1, Number(e.target.value)))}
+                        className="text-xs h-8 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-muted-foreground">Price (GH₵)</Label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="1"
+                        value={pkg.priceGhs}
+                        onChange={(e) => handlePackageChange(idx, 'priceGhs', Math.max(0.5, Number(e.target.value)))}
+                        className="text-xs h-8 font-mono font-bold text-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Description / Note</Label>
+                    <Input
+                      value={pkg.description || ''}
+                      onChange={(e) => handlePackageChange(idx, 'description', e.target.value)}
+                      placeholder="e.g. Recommended for monthly notices"
+                      className="text-[11px] h-7"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 border-t border-border/50 text-[11px]">
+                    <span className="text-muted-foreground">Unit Cost:</span>
+                    <span className="font-semibold text-foreground">~GH₵ {unitCost} / SMS</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(pkg.popular)}
+                        onChange={(e) => handlePackageChange(idx, 'popular', e.target.checked)}
+                        className="rounded border-input text-primary focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span className="text-[11px] font-medium flex items-center gap-1">
+                        <Sparkles className="h-3 w-3 text-amber-500" /> Popular Badge
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <Switch
+                        checked={pkg.isActive !== false}
+                        onCheckedChange={(checked) => handlePackageChange(idx, 'isActive', checked)}
+                        className="scale-75"
+                      />
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        {pkg.isActive !== false ? 'Active' : 'Disabled'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

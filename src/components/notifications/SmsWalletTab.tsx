@@ -321,7 +321,7 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
               <ShieldCheck className="h-4 w-4 text-primary" />
             </div>
             <CardTitle className="font-mono text-2xl font-bold tracking-tight">
-              {wallet?.senderId || 'SCHOLARNRV'}
+              {wallet?.senderId || 'SCHNerve'}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">

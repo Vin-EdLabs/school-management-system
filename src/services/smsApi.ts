@@ -6,6 +6,10 @@ export type SmsPackage = {
   credits: number;
   priceGhs: number;
   badge?: string;
+  description?: string;
+  popular?: boolean;
+  isActive?: boolean;
+  sortOrder?: number;
 };
 
 export type SmsNotificationToggles = {
@@ -178,4 +182,16 @@ export async function updateSenderIdRequestStatus(
   payload: { status: 'approved' | 'rejected'; rejectionReason?: string }
 ): Promise<{ success: boolean; message: string }> {
   return apiService.put(`/sms/admin/sender-id-requests/${requestId}`, payload);
+}
+
+export async function fetchAdminSmsPackages(): Promise<{ packages: SmsPackage[] }> {
+  return apiService.get('/sms/admin/packages');
+}
+
+export async function saveAdminSmsPackages(packages: SmsPackage[]): Promise<{ success: boolean; packages: SmsPackage[] }> {
+  return apiService.put('/sms/admin/packages', { packages });
+}
+
+export async function deleteAdminSmsPackage(packageId: string): Promise<{ success: boolean }> {
+  return apiService.delete(`/sms/admin/packages/${packageId}`);
 }

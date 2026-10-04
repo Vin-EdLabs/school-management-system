@@ -140,13 +140,15 @@ export function exportStudentsToCsv(rows: Student[]): string {
     'Last name',
     'Class',
     'Gender',
+    'Date of birth',
+    'Location',
     'Status',
     'Guardian',
     'Guardian phone',
   ];
   const esc = (v: string | number | undefined | null) => {
     const s = String(v ?? '');
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
   };
   const lines = [
@@ -159,6 +161,8 @@ export function exportStudentsToCsv(rows: Student[]): string {
         esc(s.lastName),
         esc(s.classAssigned),
         esc(s.gender),
+        esc(s.dateOfBirth),
+        esc(s.homeAddress),
         esc(enrollmentStatusLabel(s.enrollmentStatus)),
         esc(s.guardianName),
         esc(s.guardianContact),

@@ -378,6 +378,8 @@ export type SendSmsResult = {
   failedCount: number;
   creditsDeducted: number;
   remainingBalance: number;
+  senderId?: string;
+  gatewayResponse?: any;
   error?: string;
   skippedReason?: string;
 };
@@ -561,6 +563,7 @@ export async function sendArkeselSms(input: {
         'api-key': apiKey,
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        Connection: 'keep-alive',
       },
       body: JSON.stringify({
         sender: senderId,
@@ -609,6 +612,8 @@ export async function sendArkeselSms(input: {
         failedCount: cleanList.length,
         creditsDeducted: 0,
         remainingBalance: remainingBalance + totalCreditsNeeded,
+        senderId,
+        gatewayResponse: responseData,
         error: errorMsg,
       };
     }
@@ -639,6 +644,8 @@ export async function sendArkeselSms(input: {
       failedCount: 0,
       creditsDeducted: totalCreditsNeeded,
       remainingBalance,
+      senderId,
+      gatewayResponse: responseData,
     };
   } catch (err: any) {
     const errorMsg = err?.message || 'Network communication failure with Arkesel';
@@ -666,6 +673,7 @@ export async function sendArkeselSms(input: {
       failedCount: cleanList.length,
       creditsDeducted: 0,
       remainingBalance: remainingBalance + totalCreditsNeeded,
+      senderId,
       error: errorMsg,
     };
   }

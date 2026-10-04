@@ -74,6 +74,7 @@ export type SmsWalletResponse = {
   recentLogs: SmsLogRow[];
   recentTopups: SmsTopupRow[];
   pendingSenderIdRequest: SenderIdRequestRow | null;
+  approvedSenderIdRequest?: (SenderIdRequestRow & { updated_at?: string }) | null;
 };
 
 export type SmsLogsResponse = {
@@ -133,7 +134,16 @@ export async function verifySmsTopup(reference: string): Promise<{
 export async function sendTestSms(payload: {
   phone: string;
   message?: string;
-}): Promise<{ success: boolean; message: string; creditsDeducted: number; remainingBalance: number }> {
+  skipSenderIdApprovalCheck?: boolean;
+}): Promise<{
+  success: boolean;
+  message: string;
+  senderId?: string;
+  creditsDeducted: number;
+  remainingBalance: number;
+  gatewayStatus?: string;
+  gatewayData?: any;
+}> {
   return apiService.post('/sms/test', payload);
 }
 

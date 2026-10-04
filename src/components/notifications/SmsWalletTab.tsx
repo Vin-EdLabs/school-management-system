@@ -35,6 +35,9 @@ import {
   History,
   Sliders,
   DollarSign,
+  Lock,
+  AlertCircle,
+  Radio,
 } from 'lucide-react';
 
 export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => void }> = ({
@@ -244,8 +247,8 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
         message: testMessage.trim() || undefined,
       });
       toast({
-        title: 'Test SMS Sent! 🚀',
-        description: res.message,
+        title: 'Test SMS Dispatched! 🚀',
+        description: `Delivered via ${res.senderId || wallet?.senderId || 'SMS Gateway'}. Remaining balance: ${res.remainingBalance} credits.`,
       });
       setTestPhone('');
       setTestMessage('');
@@ -273,6 +276,13 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
 
   const wallet = walletData?.wallet;
   const balance = wallet?.balance ?? 0;
+  const isSenderIdApproved = wallet?.senderIdStatus === 'approved';
+  const hasCredits = balance >= 1;
+  const approvedAt = walletData?.approvedSenderIdRequest?.updated_at
+    ? new Date(walletData.approvedSenderIdRequest.updated_at).getTime()
+    : null;
+  const hoursSinceApproval = approvedAt ? Math.max(0, (Date.now() - approvedAt) / (1000 * 60 * 60)) : 999;
+  const isSyncingWithTelcos = hoursSinceApproval < 24;
 
   return (
     <div className="space-y-6">
@@ -327,9 +337,16 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
           <CardContent className="pt-0">
             <div className="flex items-center space-x-2">
               {wallet?.senderIdStatus === 'approved' ? (
-                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs">
-                  Verified Custom ID
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs">
+                    <CheckCircle2 className="mr-1 h-3 w-3" /> Approved Custom ID
+                  </Badge>
+                  {isSyncingWithTelcos && (
+                    <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-600 text-[10px] flex items-center gap-1">
+                      <Radio className="h-3 w-3 animate-pulse text-sky-500" /> Carrier Syncing (~24h)
+                    </Badge>
+                  )}
+                </div>
               ) : wallet?.senderIdStatus === 'pending' ? (
                 <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
                   <Clock className="mr-1 h-3 w-3" /> Pending Telco Review
@@ -364,6 +381,25 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
           </CardContent>
         </Card>
       </div>
+
+      {/* Telco Network Sync Reassurance Banner */}
+      {isSenderIdApproved && isSyncingWithTelcos && (
+        <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-4 text-xs space-y-2">
+          <div className="flex items-center gap-2 font-semibold text-sky-800 dark:text-sky-300">
+            <Radio className="h-4 w-4 animate-pulse text-sky-500 shrink-0" />
+            <span>Telco Carrier Sync in Progress (MTN, Telecel, AT)</span>
+            <Badge variant="outline" className="ml-auto border-sky-500/30 text-sky-700 dark:text-sky-300 text-[10px]">
+              Approved ~{Math.round(hoursSinceApproval)}h ago
+            </Badge>
+          </div>
+          <p className="text-muted-foreground leading-relaxed">
+            Your custom Sender ID <strong>{wallet?.senderId}</strong> is officially approved! In Ghana, mobile carriers (MTN, Telecel, and AT) periodically batch-synchronize new alphanumeric headers across their cell towers over 12–24 hours.
+          </p>
+          <div className="flex items-center gap-2 text-[11px] font-medium text-sky-900 dark:text-sky-200 bg-sky-500/10 px-3 py-1.5 rounded-md">
+            <span>💡 <strong>Carrier Route Warmup:</strong> The very first SMS sent to a mobile number registers your Sender ID on that SIM's carrier. The first delivery can experience a brief network lookup delay, after which subsequent messages arrive within 2–5 seconds.</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Tabs Navigation */}
       <Tabs defaultValue="packages" className="space-y-4">
@@ -707,12 +743,71 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
             {/* Test SMS Card */}
             <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-base">Send Test SMS</CardTitle>
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span>Send Test SMS</span>
+                  {isSenderIdApproved ? (
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-[10px]">
+                      Unlocked
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-amber-500/30 text-amber-700 dark:text-amber-400 text-[10px] flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> Locked
+                    </Badge>
+                  )}
+                </CardTitle>
                 <CardDescription className="text-xs">
-                  Verify immediate delivery to your personal phone number. (Consumes 1 SMS credit).
+                  Verify immediate delivery to your personal phone number under your school's verified sender name.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {!isSenderIdApproved ? (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-400">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      <span>Test Messaging is Locked</span>
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed">
+                      To prevent wasting SMS credits, test messages can only be sent once your school's custom Sender ID has been requested and approved by platform administrators.
+                    </p>
+                    <div className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                      {wallet?.senderIdStatus === 'pending'
+                        ? '⏳ Status: Your custom Sender ID is currently pending telco review.'
+                        : wallet?.senderIdStatus === 'rejected'
+                        ? '❌ Status: Your Sender ID request was rejected. Please submit a new one on the left.'
+                        : '👉 Status: No custom Sender ID requested yet. Please submit the form on the left first.'}
+                    </div>
+                  </div>
+                ) : !hasCredits ? (
+                  <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs space-y-1 text-rose-700 dark:text-rose-400">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>Insufficient SMS Credits</span>
+                    </div>
+                    <p>Your wallet balance is 0. Top up your SMS credits in the packages tab to enable testing.</p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-medium">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>Active Sender ID: <strong>{wallet?.senderId}</strong></span>
+                    </div>
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px]">
+                      {isSyncingWithTelcos ? 'Carrier Syncing (~24h)' : 'Verified for Testing'}
+                    </Badge>
+                  </div>
+                )}
+
+                {isSenderIdApproved && (
+                  <div className="rounded-md border border-sky-500/20 bg-sky-500/5 p-3 text-xs text-sky-800 dark:text-sky-300 space-y-1">
+                    <div className="font-semibold flex items-center gap-1.5 text-sky-900 dark:text-sky-200 text-xs">
+                      <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" /> Carrier Network Warmup Notice
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Sending to a new number or carrier (MTN, Telecel, AT) for the first time registers your Sender ID (<strong>{wallet?.senderId}</strong>) on their SMS routing tables. The first message establishes the route and may take a few minutes to land. Once registered on your SIM network, future messages deliver in seconds.
+                    </p>
+                  </div>
+                )}
+
                 <form onSubmit={handleSendTest} className="space-y-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="test-phone" className="text-xs font-semibold">
@@ -723,6 +818,7 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
                       placeholder="e.g. 0244123456 or +233..."
                       value={testPhone}
                       onChange={(e) => setTestPhone(e.target.value)}
+                      disabled={!isSenderIdApproved || !hasCredits || sendingTest}
                     />
                   </div>
 
@@ -736,17 +832,31 @@ export const SmsWalletTab: React.FC<{ onBalanceUpdated?: (balance: number) => vo
                       value={testMessage}
                       onChange={(e) => setTestMessage(e.target.value)}
                       maxLength={160}
+                      disabled={!isSenderIdApproved || !hasCredits || sendingTest}
                     />
                   </div>
 
-                  <Button type="submit" size="sm" variant="outline" disabled={sendingTest || !testPhone.trim()}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant={isSenderIdApproved && hasCredits ? 'default' : 'outline'}
+                    disabled={!isSenderIdApproved || !hasCredits || sendingTest || !testPhone.trim()}
+                  >
                     {sendingTest ? (
                       <>
                         <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Dispatching...
                       </>
+                    ) : !isSenderIdApproved ? (
+                      <>
+                        <Lock className="mr-1 h-3 w-3" /> Locked (Requires Approved Sender ID)
+                      </>
+                    ) : !hasCredits ? (
+                      <>
+                        <AlertCircle className="mr-1 h-3 w-3" /> Insufficient Credits
+                      </>
                     ) : (
                       <>
-                        <Send className="mr-1 h-3 w-3" /> Send Test SMS
+                        <Send className="mr-1 h-3 w-3" /> Send Test SMS ({wallet?.senderId})
                       </>
                     )}
                   </Button>

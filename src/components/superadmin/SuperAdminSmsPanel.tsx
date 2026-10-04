@@ -91,12 +91,21 @@ export const SuperAdminSmsPanel: React.FC = () => {
   }, []);
 
   const handleApproveSenderId = async (req: SenderIdRequestRow) => {
+    const confirmed = window.confirm(
+      `Approve Sender ID "${req.requested_sender_id}" for ${req.school_name || 'this school'}?\n\n` +
+      `⚠️ IMPORTANT TELCO CHECK:\n` +
+      `Ensure this Sender ID has been registered and approved on your master Arkesel dashboard / NCA telco registry.\n\n` +
+      `Approving here will unlock Test SMS for this school and use "${req.requested_sender_id}" for all their notifications.\n\n` +
+      `💡 Note: Ghana telcos (MTN, Telecel, AT) typically take 12–24 hours to sync new Sender IDs to all towers.`
+    );
+    if (!confirmed) return;
+
     setUpdatingId(req.id);
     try {
       await updateSenderIdRequestStatus(req.id, { status: 'approved' });
       toast({
         title: 'Sender ID Approved',
-        description: `Sender ID '${req.requested_sender_id}' has been approved for ${req.school_name || 'school'}.`,
+        description: `Sender ID '${req.requested_sender_id}' is now approved for ${req.school_name || 'school'}. Test SMS is now unlocked.`,
       });
       await loadData();
     } catch (err: any) {

@@ -229,7 +229,7 @@ router.get('/wallet', async (req: AuthRequest, res) => {
     }
     const wallet = await getTenantSmsWallet(tenantId);
 
-    const [recentLogs, recentTopups, pendingRequest] = await Promise.all([
+    const [recentLogs, recentTopups, pendingRequest, approvedRequest] = await Promise.all([
       query(
         `SELECT id, recipient_phone, recipient_name, recipient_type, event_type,
                 message, segment_count, credits_deducted, status, error_message, created_at
@@ -258,6 +258,15 @@ router.get('/wallet', async (req: AuthRequest, res) => {
          LIMIT 1`,
         [tenantId]
       ).catch(() => ({ rows: [] })),
+
+      query(
+        `SELECT requested_sender_id, status, created_at, updated_at
+         FROM sms_sender_id_requests
+         WHERE tenant_id = $1 AND status = 'approved'
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [tenantId]
+      ).catch(() => ({ rows: [] })),
     ]);
 
     const activePackages = await getActiveSmsPackages();
@@ -268,6 +277,7 @@ router.get('/wallet', async (req: AuthRequest, res) => {
       recentLogs: recentLogs.rows,
       recentTopups: recentTopups.rows,
       pendingSenderIdRequest: pendingRequest.rows[0] || null,
+      approvedSenderIdRequest: approvedRequest.rows[0] || null,
     });
   } catch (error: any) {
     console.error('[sms] get wallet error:', error);
@@ -532,7 +542,7 @@ router.get(
   }
 });
 
-// Send a test SMS to an admin-specified phone
+// Send a test SMS to an admin-specified phone (locked until Sender ID is approved)
 router.post(
   '/test',
   requireRole('super-admin', 'administrator', 'headmaster'),
@@ -542,43 +552,70 @@ router.post(
       if (!tenantId) {
         return res.status(400).json({ error: 'Tenant context required' });
       }
+
+      const wallet = await getTenantSmsWallet(tenantId);
+
+      // Require approved custom Sender ID before allowing test SMS to prevent credit wastage
+      const skipCheck = isSuperAdminUser(req) && Boolean(req.body?.skipSenderIdApprovalCheck);
+      if (!skipCheck && wallet.senderIdStatus !== 'approved') {
+        const statusDetail =
+          wallet.senderIdStatus === 'pending'
+            ? 'Your custom Sender ID request is currently pending telco review.'
+            : wallet.senderIdStatus === 'rejected'
+              ? 'Your previous Sender ID request was rejected. Please submit a new one.'
+              : 'You have not submitted a custom Sender ID request yet.';
+
+        return res.status(400).json({
+          error: `Test SMS is locked. You must have an approved custom Sender ID before sending test messages to prevent wasting SMS credits. ${statusDetail}`,
+          senderIdStatus: wallet.senderIdStatus,
+          senderId: wallet.senderId,
+          remainingBalance: wallet.balance,
+        });
+      }
+
       const phone = String(req.body?.phone || '').trim();
-    const customMessage = String(req.body?.message || '').trim();
+      const customMessage = String(req.body?.message || '').trim();
 
-    if (!phone) {
-      return res.status(400).json({ error: 'Phone number is required' });
-    }
+      if (!phone) {
+        return res.status(400).json({ error: 'Phone number is required' });
+      }
 
-    const testMessage =
-      customMessage ||
-      `This is a test notification from your school on ScholarNerve. Your SMS gateway is active and configured!`;
+      const testMessage =
+        customMessage ||
+        `This is a test notification from your school on ScholarNerve. Your SMS gateway is active and configured!`;
 
-    const result = await sendArkeselSms({
-      tenantId,
-      recipients: [{ phone, name: 'Admin Test', recipientType: 'staff' }],
-      message: testMessage,
-      eventType: 'test',
-      skipToggleCheck: true,
-    });
-
-    if (!result.success) {
-      return res.status(400).json({
-        error: result.error || 'Failed to send test SMS',
-        remainingBalance: result.remainingBalance,
+      const result = await sendArkeselSms({
+        tenantId,
+        recipients: [{ phone, name: 'Admin Test', recipientType: 'staff' }],
+        message: testMessage,
+        eventType: 'test',
+        skipToggleCheck: true,
       });
-    }
 
-    res.json({
-      success: true,
-      message: `Test SMS sent successfully to ${phone}`,
-      creditsDeducted: result.creditsDeducted,
-      remainingBalance: result.remainingBalance,
-    });
-  } catch (error: any) {
-    console.error('[sms] test error:', error);
-    res.status(500).json({ error: error?.message || 'Failed to send test SMS' });
+      if (!result.success) {
+        return res.status(400).json({
+          error: result.error || 'Failed to send test SMS',
+          senderId: result.senderId || wallet.senderId,
+          remainingBalance: result.remainingBalance,
+          gatewayData: result.gatewayResponse || null,
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Test SMS dispatched successfully to ${phone}`,
+        senderId: result.senderId || wallet.senderId,
+        creditsDeducted: result.creditsDeducted,
+        remainingBalance: result.remainingBalance,
+        gatewayStatus: result.gatewayResponse?.status || 'dispatched',
+        gatewayData: result.gatewayResponse || null,
+      });
+    } catch (error: any) {
+      console.error('[sms] test error:', error);
+      res.status(500).json({ error: error?.message || 'Failed to send test SMS' });
+    }
   }
-});
+);
 
 // Paginated SMS Logs
 router.get('/logs', async (req: AuthRequest, res) => {

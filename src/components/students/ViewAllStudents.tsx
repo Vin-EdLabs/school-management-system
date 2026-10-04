@@ -615,6 +615,96 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       return;
     }
 
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const margin = 14;
+    const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+    const logoDataUrl = await loadImageDataUrl(logoUrl);
+    const headerTop = 18;
+    const headerHeight = 24;
+
+    if (logoDataUrl) {
+      const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
+      const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
+      doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
+    }
+
+    const schoolTitle = school?.name?.trim() || 'School Name';
+    const titleX = logoDataUrl ? margin + 32 : margin;
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(16);
+    doc.text(schoolTitle, titleX, headerTop + 6);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(10);
+    doc.text('Student Roster', titleX, headerTop + 12);
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
+    doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
+    doc.setLineWidth(0.35);
+    doc.setDrawColor(45, 45, 45);
+    doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
+
+    autoTable(doc, {
+      startY: headerTop + headerHeight + 18,
+      head: [['#', 'Name', 'Student ID', 'Admission', 'Class', 'Gender', 'Date of birth', 'Location', 'Status', 'Guardian', 'Guardian phone']],
+      body: rows.map((student, index) => [
+        String(index + 1),
+        `${student.firstName} ${student.lastName}`.trim(),
+        student.studentId || '—',
+        student.admissionNumber || '—',
+        student.classAssigned || '—',
+        student.gender || '—',
+        student.dateOfBirth || '—',
+        student.homeAddress || '—',
+        enrollmentStatusLabel(student.enrollmentStatus),
+        student.guardianName || '—',
+        student.guardianContact || '—',
+      ]),
+      theme: 'grid',
+      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
+      bodyStyles: { valign: 'middle', fontSize: 7.5 },
+      styles: { cellPadding: 2, textColor: 55, overflow: 'linebreak' },
+      margin: { left: margin, right: margin },
+      tableLineColor: [180, 180, 180],
+      tableLineWidth: 0.15,
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 34 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 22 },
+        7: { cellWidth: 45 },
+        8: { cellWidth: 20, halign: 'center' },
+        9: { cellWidth: 32 },
+        10: { cellWidth: 28 },
+      },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${schoolTitle} — Student Roster`, margin, pageHeight - 8);
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+    }
+
+    doc.save(`students-export-${new Date().toISOString().split('T')[0]}.pdf`);
+    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to PDF.` });
+  };
+
+  const exportSelectedDiscountPdf = async () => {
+    const rows = registryStudents.filter((s) => selected.has(s.id));
+    if (rows.length === 0) {
+      toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
+      return;
+    }
+
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const margin = 14;
     const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
@@ -679,7 +769,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     });
 
     doc.save(`discounted-students-${new Date().toISOString().split('T')[0]}.pdf`);
-    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to PDF.` });
+    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to discount PDF.` });
   };
 
   const bulkPromote = () => {
@@ -805,6 +895,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                   <DropdownMenuItem onClick={exportSelectedPdf}>
                     <Download className="mr-2 h-4 w-4" />
                     Export PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={exportSelectedDiscountPdf}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Discounts PDF
                   </DropdownMenuItem>
                   {!readOnly && onRequestPromoteStudent ? (
                   <DropdownMenuItem onClick={bulkPromote}>

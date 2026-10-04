@@ -859,7 +859,7 @@ export async function sendSmsToStaffUser(
   eventType: SmsEventType
 ): Promise<SendSmsResult> {
   const res = await query(
-    `SELECT u.name, COALESCE(NULLIF(TRIM(u.phone), ''), NULLIF(TRIM(t.phone_number), '')) AS phone
+    `SELECT COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS name, COALESCE(NULLIF(TRIM(u.phone), ''), NULLIF(TRIM(t.phone_number), '')) AS phone
      FROM users u
      LEFT JOIN teachers t ON t.user_id = u.id AND t.tenant_id = u.tenant_id
      WHERE u.id = $1 AND u.tenant_id = $2`,

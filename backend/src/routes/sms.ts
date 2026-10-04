@@ -24,6 +24,17 @@ function isSuperAdminUser(req: AuthRequest): boolean {
   return role === 'super-admin' || role === 'superadmin';
 }
 
+function resolveTargetTenantId(req: AuthRequest): number | null {
+  if (req.user?.tenantId != null && Number(req.user.tenantId) > 0) {
+    return Number(req.user.tenantId);
+  }
+  if (isSuperAdminUser(req) && req.query.tenantId) {
+    const fromQuery = parseInt(String(req.query.tenantId), 10);
+    if (!isNaN(fromQuery) && fromQuery > 0) return fromQuery;
+  }
+  return null;
+}
+
 // All standard SMS routes require authentication
 router.use(authenticate);
 
@@ -136,7 +147,7 @@ router.get('/admin/sender-id-requests', async (req: AuthRequest, res) => {
 
   try {
     const list = await query(
-      `SELECT r.*, t.name AS school_name, u.name AS requester_name
+      `SELECT r.*, t.name AS school_name, COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS requester_name
        FROM sms_sender_id_requests r
        JOIN tenants t ON t.id = r.tenant_id
        LEFT JOIN users u ON u.id = r.requested_by
@@ -212,7 +223,10 @@ router.use(setTenantContext);
 // Get SMS wallet, current balance, sender ID, bundle packages & recent logs
 router.get('/wallet', async (req: AuthRequest, res) => {
   try {
-    const tenantId = req.user!.tenantId!;
+    const tenantId = resolveTargetTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context required' });
+    }
     const wallet = await getTenantSmsWallet(tenantId);
 
     const [recentLogs, recentTopups, pendingRequest] = await Promise.all([
@@ -262,18 +276,28 @@ router.get('/wallet', async (req: AuthRequest, res) => {
 });
 
 // Update SMS Preferences (toggles & global enabled)
-router.put('/preferences', requireRole('administrator', 'finance', 'headmaster'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const { enabled, toggles } = req.body;
+router.put(
+  '/preferences',
+  requireRole('super-admin', 'administrator', 'finance', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId =
+        req.user?.tenantId ??
+        (isSuperAdminUser(req) && req.query.tenantId ? parseInt(String(req.query.tenantId), 10) : null);
 
-    // Ensure school_settings row exists for tenant
-    await query(
-      `INSERT INTO school_settings (tenant_id, school_name)
-       VALUES ($1, 'School')
-       ON CONFLICT (tenant_id) DO NOTHING`,
-      [tenantId]
-    );
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+
+      const { enabled, toggles } = req.body;
+
+      // Ensure school_settings row exists for tenant
+      await query(
+        `INSERT INTO school_settings (tenant_id, school_name)
+         VALUES ($1, 'School')
+         ON CONFLICT (tenant_id) DO NOTHING`,
+        [tenantId]
+      );
 
     const updates: string[] = [];
     const values: any[] = [];
@@ -310,10 +334,16 @@ router.put('/preferences', requireRole('administrator', 'finance', 'headmaster')
 });
 
 // Request Custom Sender ID
-router.post('/sender-id/request', requireRole('administrator', 'headmaster'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const requested = String(req.body?.senderId || '').trim().toUpperCase();
+router.post(
+  '/sender-id/request',
+  requireRole('super-admin', 'administrator', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = resolveTargetTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+      const requested = String(req.body?.senderId || '').trim().toUpperCase();
     const purpose = String(req.body?.purpose || '').trim();
 
     if (!requested || requested.length < 3 || requested.length > 11) {
@@ -360,10 +390,16 @@ router.post('/sender-id/request', requireRole('administrator', 'headmaster'), as
 });
 
 // Initialize Top-Up Payment via Paystack
-router.post('/topup/initialize', requireRole('administrator', 'finance', 'headmaster'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const { packageId, callbackUrl } = req.body;
+router.post(
+  '/topup/initialize',
+  requireRole('super-admin', 'administrator', 'finance', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = resolveTargetTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+      const { packageId, callbackUrl } = req.body;
 
     const activePackages = await getActiveSmsPackages();
     const selectedPkg = activePackages.find((p) => p.id === packageId);
@@ -422,10 +458,16 @@ router.post('/topup/initialize', requireRole('administrator', 'finance', 'headma
 });
 
 // Verify Top-Up Payment Reference
-router.get('/topup/verify', requireRole('administrator', 'finance', 'headmaster'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const reference = String(req.query.reference || '').trim();
+router.get(
+  '/topup/verify',
+  requireRole('super-admin', 'administrator', 'finance', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = resolveTargetTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+      const reference = String(req.query.reference || '').trim();
 
     if (!reference) {
       return res.status(400).json({ error: 'reference query param is required' });
@@ -491,10 +533,16 @@ router.get('/topup/verify', requireRole('administrator', 'finance', 'headmaster'
 });
 
 // Send a test SMS to an admin-specified phone
-router.post('/test', requireRole('administrator', 'headmaster'), async (req: AuthRequest, res) => {
-  try {
-    const tenantId = req.user!.tenantId!;
-    const phone = String(req.body?.phone || '').trim();
+router.post(
+  '/test',
+  requireRole('super-admin', 'administrator', 'headmaster'),
+  async (req: AuthRequest, res) => {
+    try {
+      const tenantId = resolveTargetTenantId(req);
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context required' });
+      }
+      const phone = String(req.body?.phone || '').trim();
     const customMessage = String(req.body?.message || '').trim();
 
     if (!phone) {
@@ -535,7 +583,10 @@ router.post('/test', requireRole('administrator', 'headmaster'), async (req: Aut
 // Paginated SMS Logs
 router.get('/logs', async (req: AuthRequest, res) => {
   try {
-    const tenantId = req.user!.tenantId!;
+    const tenantId = resolveTargetTenantId(req);
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant context required' });
+    }
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '25'), 10)));
     const offset = (page - 1) * limit;

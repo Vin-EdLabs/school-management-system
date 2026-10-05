@@ -1,3 +1,16 @@
+export type StaffLegalDocument = {
+  id: string;
+  name: string;
+  title: string;
+  type: string;
+  url: string;
+  document_number?: string;
+  issue_date?: string;
+  expiry_date?: string;
+  uploaded_at: string;
+  file_size?: number;
+};
+
 export type OtherStaffRecord = {
   id: number;
   staff_id: string;
@@ -28,4 +41,17 @@ export type OtherStaffRecord = {
   qualification?: string;
   specialization?: string;
   counts_as_staff?: boolean;
+  documents?: StaffLegalDocument[];
 };
+
+export function isDriverPosition(position?: string | null): boolean {
+  if (!position) return false;
+  const p = position.toLowerCase();
+  return (
+    p.includes('driver') ||
+    p.includes('chauffeur') ||
+    p.includes('transport') ||
+    p.includes('bus')
+  );
+}
+

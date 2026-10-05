@@ -343,6 +343,10 @@ export class ApiService {
     return this.uploadFile(`/other-staff/${staffId}/photo`, file, 'photo');
   }
 
+  async uploadOtherStaffDocument(file: File): Promise<{ url: string; name: string; type: string; size: number }> {
+    return this.uploadFile('/other-staff/upload-document', file, 'file');
+  }
+
   async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file'): Promise<T> {
     const formData = new FormData();
     formData.append(fieldName, file);

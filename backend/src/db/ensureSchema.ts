@@ -517,6 +517,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
       bank_account_name VARCHAR(255),
       employment_status VARCHAR(50) DEFAULT 'active',
       notes TEXT,
+      documents JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(tenant_id, staff_id)
@@ -816,6 +817,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
   );
   await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS qualification TEXT`, 'other_staff.qualification');
   await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS specialization TEXT`, 'other_staff.specialization');
+  await safe(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS documents JSONB NOT NULL DEFAULT '[]'::jsonb`, 'other_staff.documents');
 
   await safe(
     `

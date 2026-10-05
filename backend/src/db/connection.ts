@@ -633,6 +633,7 @@ const runMigrations = async () => {
         bank_account_name VARCHAR(255),
         employment_status VARCHAR(50) DEFAULT 'active',
         notes TEXT,
+        documents JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(tenant_id, staff_id)
@@ -1729,6 +1730,8 @@ const runMigrations = async () => {
       ON student_ledger (tenant_id, created_at DESC)
       WHERE entry_type = 'manual_adjustment'
     `).catch(() => { });
+
+    await client.query(`ALTER TABLE other_staff ADD COLUMN IF NOT EXISTS documents JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => { });
 
     // Detect legacy schemas that do not have users.tenant_id
     const usersTenantCol = await client.query(

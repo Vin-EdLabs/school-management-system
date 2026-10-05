@@ -33,6 +33,17 @@ const upload = multer({
   },
 });
 
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp|pdf/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype) || file.mimetype === 'application/pdf';
+    cb(null, extOk && mimeOk);
+  },
+});
+
 function emitChanged(tenantId: number, action: 'created' | 'updated' | 'deleted') {
   try {
     getIO().to(`tenant:${tenantId}`).emit('tenant-data-changed', {
@@ -257,6 +268,28 @@ router.use(setTenantContext);
 /** User account creation is not term-gated (matches Settings → Users). */
 router.post('/:id/create-user', requireRole('super-admin', 'administrator'), handleCreateStaffUser);
 
+/** Document upload for other staff (e.g. driver license, permits, certificates) */
+router.post(
+  '/upload-document',
+  requireRole('super-admin', 'administrator'),
+  documentUpload.single('file'),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'Document file is required' });
+      const b64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      res.json({
+        url: b64,
+        name: req.file.originalname,
+        type: req.file.mimetype,
+        size: req.file.size,
+      });
+    } catch (error) {
+      console.error('Upload staff document error:', error);
+      res.status(500).json({ error: 'Failed to upload document' });
+    }
+  }
+);
+
 attachWritableTermGuard(router);
 
 router.get('/all-staff', async (req: AuthRequest, res) => {
@@ -404,6 +437,14 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
     }
 
     const staffId = await nextOtherStaffId(tenantId);
+    const rawDocs = d.documents;
+    let documentsJson = '[]';
+    if (Array.isArray(rawDocs)) {
+      documentsJson = JSON.stringify(rawDocs);
+    } else if (typeof rawDocs === 'string' && rawDocs.trim()) {
+      documentsJson = rawDocs.trim();
+    }
+
     const result = await query(
       `INSERT INTO other_staff (
         tenant_id, staff_id, full_name, gender, date_of_birth, phone_number, email,
@@ -411,9 +452,9 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         monthly_salary, ssnit_number, ssnit_enabled,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name,
-        employment_status, notes, qualification, specialization, counts_as_staff
+        employment_status, notes, qualification, specialization, counts_as_staff, documents
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
       ) RETURNING *`,
       [
         tenantId,
@@ -444,6 +485,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         d.qualification ? String(d.qualification).trim() : null,
         d.specialization ? String(d.specialization).trim() : null,
         d.counts_as_staff === false ? false : true,
+        documentsJson,
       ]
     );
 
@@ -499,7 +541,7 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'position', 'department', 'employment_type', 'employment_date', 'monthly_salary', 'ssnit_number',
       'ssnit_enabled', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name', 'employment_status', 'notes',
-      'qualification', 'specialization', 'counts_as_staff',
+      'qualification', 'specialization', 'counts_as_staff', 'documents',
     ];
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -510,6 +552,9 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
         let val = updates[key];
         if (key === 'qualification' || key === 'specialization') {
           val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
+        }
+        if (key === 'documents') {
+          val = Array.isArray(val) ? JSON.stringify(val) : (typeof val === 'string' && val.trim() ? val.trim() : '[]');
         }
         values.push(
           (key === 'date_of_birth' || key === 'employment_date') && val === '' ? null : val

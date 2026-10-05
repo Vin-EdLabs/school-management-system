@@ -43,6 +43,7 @@ async function scrubStaffRow(
          home_address = NULL,
          national_id = NULL,
          notes = NULL,
+         documents = '[]'::jsonb,
          staff_id = '__removed_' || id::text,
          employment_status = 'inactive',
          is_deleted = true,

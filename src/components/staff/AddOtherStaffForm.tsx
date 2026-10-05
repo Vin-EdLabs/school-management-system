@@ -20,7 +20,9 @@ import {
   scrollToFormField,
   validateFormFields,
 } from '@/utils/formValidation';
-import type { OtherStaffRecord } from './otherStaffTypes';
+import type { OtherStaffRecord, StaffLegalDocument } from './otherStaffTypes';
+import { isDriverPosition } from './otherStaffTypes';
+import StaffLegalDocumentsSection from './StaffLegalDocumentsSection';
 
 interface AddOtherStaffFormProps {
   onSuccess: () => void;
@@ -52,6 +54,7 @@ const emptyForm = () => ({
   qualification: '',
   specialization: '',
   counts_as_staff: true,
+  documents: [] as StaffLegalDocument[],
 });
 
 const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
@@ -66,7 +69,7 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const submitLock = useRef(false);
 
-  const set = (key: keyof ReturnType<typeof emptyForm>, value: string | boolean) => {
+  const set = (key: keyof ReturnType<typeof emptyForm>, value: string | boolean | StaffLegalDocument[]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -110,6 +113,7 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
         bank_branch: form.bank_branch || null,
         bank_account_name: form.bank_account_name || null,
         counts_as_staff: form.counts_as_staff !== false,
+        documents: form.documents || [],
       };
 
       const created = await apiService.post<OtherStaffRecord>('/other-staff', body);
@@ -386,6 +390,13 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
               } as const;
               set(map[field], value);
             }}
+          />
+
+          <StaffLegalDocumentsSection
+            documents={form.documents}
+            onChange={(docs) => set('documents', docs)}
+            isDriver={isDriverPosition(form.position)}
+            disabled={isSubmitting}
           />
 
           <div className="space-y-2">

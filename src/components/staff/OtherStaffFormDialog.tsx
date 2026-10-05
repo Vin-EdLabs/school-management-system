@@ -30,7 +30,9 @@ import {
   scrollToFormField,
   validateFormFields,
 } from '@/utils/formValidation';
-import type { OtherStaffRecord } from './otherStaffTypes';
+import type { OtherStaffRecord, StaffLegalDocument } from './otherStaffTypes';
+import { isDriverPosition } from './otherStaffTypes';
+import StaffLegalDocumentsSection from './StaffLegalDocumentsSection';
 
 export type { OtherStaffRecord } from './otherStaffTypes';
 
@@ -60,6 +62,7 @@ const emptyForm = () => ({
   qualification: '',
   specialization: '',
   counts_as_staff: true,
+  documents: [] as StaffLegalDocument[],
 });
 
 type Props = {
@@ -92,6 +95,17 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
       return;
     }
     if (staff) {
+      let initialDocs: StaffLegalDocument[] = [];
+      if (Array.isArray(staff.documents)) {
+        initialDocs = staff.documents;
+      } else if (typeof staff.documents === 'string') {
+        try {
+          initialDocs = JSON.parse(staff.documents) || [];
+        } catch {
+          initialDocs = [];
+        }
+      }
+
       setForm({
         full_name: staff.full_name || '',
         gender: staff.gender || '',
@@ -118,6 +132,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         qualification: staff.qualification || '',
         specialization: staff.specialization || '',
         counts_as_staff: staff.counts_as_staff !== false,
+        documents: initialDocs,
       });
       setShowEmergency(!!(
         staff.emergency_contact_name ||
@@ -136,7 +151,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
     }
   }, [open, staff]);
 
-  const set = (key: keyof ReturnType<typeof emptyForm>, value: string | boolean) => {
+  const set = (key: keyof ReturnType<typeof emptyForm>, value: string | boolean | StaffLegalDocument[]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -187,6 +202,7 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
         bank_branch: form.bank_branch || null,
         bank_account_name: form.bank_account_name || null,
         counts_as_staff: form.counts_as_staff !== false,
+        documents: form.documents || [],
       };
 
       let id = staff?.id;
@@ -435,6 +451,13 @@ const OtherStaffFormDialog: React.FC<Props> = ({ open, onClose, staff, onSuccess
               } as const;
               set(map[field], value);
             }}
+          />
+
+          <StaffLegalDocumentsSection
+            documents={form.documents}
+            onChange={(docs) => set('documents', docs)}
+            isDriver={isDriverPosition(form.position)}
+            disabled={submitting}
           />
 
           <div className="space-y-2">

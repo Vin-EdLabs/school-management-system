@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,10 +16,28 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { apiService } from '@/services/api';
 import { toast } from '@/hooks/use-toast';
-import { Pencil, Phone, Mail, MapPin, Briefcase, Banknote, User, Calendar, Hash, Trash2, Download, Loader2 } from 'lucide-react';
+import {
+  Pencil,
+  Phone,
+  Mail,
+  MapPin,
+  Briefcase,
+  Banknote,
+  User,
+  Calendar,
+  Hash,
+  Trash2,
+  Download,
+  Loader2,
+  ShieldCheck,
+  FileText,
+  Eye,
+  ExternalLink,
+} from 'lucide-react';
 import OtherStaffFormDialog from './OtherStaffFormDialog';
 import StaffRemovalConfirmDialog from '../common/StaffRemovalConfirmDialog';
-import type { OtherStaffRecord } from './otherStaffTypes';
+import type { OtherStaffRecord, StaffLegalDocument } from './otherStaffTypes';
+import { isDriverPosition } from './otherStaffTypes';
 import StaffPhotoLightbox from './StaffPhotoLightbox';
 import { useSchool } from '../../contexts/SchoolContext';
 import { resolveLogoUrl } from '../../services/tenantService';
@@ -52,7 +70,21 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<StaffLegalDocument | null>(null);
   const { school } = useSchool();
+
+  const documents: StaffLegalDocument[] = useMemo(() => {
+    if (!staff?.documents) return [];
+    if (Array.isArray(staff.documents)) return staff.documents;
+    if (typeof staff.documents === 'string') {
+      try {
+        return JSON.parse(staff.documents) || [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [staff?.documents]);
 
   useEffect(() => {
     if (!open || staffId == null) {
@@ -241,6 +273,111 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
                 </div>
               </div>
 
+              {documents.length > 0 ? (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        <h4 className="text-sm font-semibold text-foreground">
+                          Legal & Compliance Documents
+                        </h4>
+                      </div>
+                      <Badge variant="secondary" className="text-xs">
+                        {documents.length} document{documents.length > 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {documents.map((doc) => {
+                        const pdf =
+                          doc.type?.toLowerCase().includes('pdf') ||
+                          doc.name?.toLowerCase().endsWith('.pdf') ||
+                          doc.url?.startsWith('data:application/pdf');
+
+                        return (
+                          <div
+                            key={doc.id}
+                            className="flex flex-col justify-between rounded-lg border border-border/80 bg-muted/20 p-3 hover:border-emerald-500/40 transition"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card border border-border/60">
+                                {pdf ? (
+                                  <FileText className="h-5 w-5 text-red-500" />
+                                ) : (
+                                  <img
+                                    src={doc.url}
+                                    alt=""
+                                    className="h-8 w-8 rounded object-cover"
+                                  />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-xs font-semibold text-foreground truncate" title={doc.title}>
+                                  {doc.title}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate" title={doc.name}>
+                                  {doc.name}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                  {doc.document_number && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                                      <Hash className="w-2.5 h-2.5 mr-0.5" />
+                                      {doc.document_number}
+                                    </Badge>
+                                  )}
+                                  {doc.expiry_date && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                      <Calendar className="w-2.5 h-2.5 mr-0.5" />
+                                      Expires: {doc.expiry_date}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2.5 flex items-center justify-end gap-1 border-t border-border/40 pt-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setPreviewDoc(doc)}
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-1" />
+                                Preview
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                asChild
+                              >
+                                <a href={doc.url} download={doc.name} target="_blank" rel="noreferrer">
+                                  <Download className="w-3.5 h-3.5 mr-1" />
+                                  Download
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : isDriverPosition(staff.position) ? (
+                <>
+                  <Separator />
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200 flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold">Driver compliance note:</span> No Driver's License or compliance documents uploaded yet. Click <strong>Edit</strong> below to upload license records.
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
               {staff.notes && (
                 <>
                   <Separator />
@@ -307,6 +444,47 @@ const OtherStaffProfileDialog: React.FC<Props> = ({ staffId, open, onClose, onUp
           onConfirm={(mode) => void handleDelete(mode)}
         />
       ) : null}
+
+      {/* Document Preview Modal */}
+      {previewDoc && (
+        <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>
+          <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="px-5 py-3 border-b border-border/70 flex flex-row items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="text-base">{previewDoc.title}</DialogTitle>
+                <p className="text-xs text-muted-foreground truncate">{previewDoc.name}</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 text-xs"
+                asChild
+              >
+                <a href={previewDoc.url} target="_blank" rel="noreferrer" download={previewDoc.name}>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open in New Tab
+                </a>
+              </Button>
+            </DialogHeader>
+            <DialogBody className="p-4 flex items-center justify-center bg-slate-900/5 min-h-[350px] overflow-auto">
+              {previewDoc.type?.toLowerCase().includes('pdf') || previewDoc.name?.toLowerCase().endsWith('.pdf') || previewDoc.url?.startsWith('data:application/pdf') ? (
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.title}
+                  className="w-full h-[65vh] rounded-md border border-border bg-white"
+                />
+              ) : (
+                <img
+                  src={previewDoc.url}
+                  alt={previewDoc.title}
+                  className="max-h-[70vh] max-w-full rounded-md object-contain shadow-sm"
+                />
+              )}
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };

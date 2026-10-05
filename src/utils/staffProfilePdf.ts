@@ -310,6 +310,34 @@ export async function downloadOtherStaffProfilePdf(
     },
   ];
 
+  const docs = Array.isArray(staff.documents)
+    ? staff.documents
+    : typeof staff.documents === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(staff.documents);
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+
+  if (docs.length > 0) {
+    sections.push({
+      title: 'Legal & Compliance Documents',
+      fields: docs.map((d: any) => ({
+        label: d.title || 'Document',
+        value: [
+          d.name,
+          d.document_number ? `Doc/License #: ${d.document_number}` : null,
+          d.expiry_date ? `Expires: ${d.expiry_date}` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+      })),
+    });
+  }
+
   const doc = buildProfileDoc(
     schoolName,
     'Staff Profile',

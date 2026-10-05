@@ -1106,7 +1106,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 <SelectItem value="Female">Female</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={filterDiscount} onValueChange={setFilterDiscount}>
+            <Select value={filterDiscount} onValueChange={(val) => setFilterDiscount(val as typeof filterDiscount)}>
               <SelectTrigger className="h-9 lg:col-span-2" aria-label="Filter by discount">
                 <SelectValue placeholder="Discount" />
               </SelectTrigger>

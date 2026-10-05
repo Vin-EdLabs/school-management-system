@@ -69,6 +69,29 @@ export function todayDateString(now = new Date()): string {
   return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
 }
 
+/** Check whether a date string or Date is a weekend (Saturday or Sunday) in Africa/Accra. */
+export function isWeekend(dateOrIso?: Date | string): boolean {
+  if (!dateOrIso) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Accra',
+      weekday: 'short',
+    }).format(new Date());
+    return parts === 'Sat' || parts === 'Sun';
+  }
+  if (typeof dateOrIso === 'string') {
+    const s = dateOrIso.trim();
+    const iso = s.includes('T') ? s : `${s}T12:00:00Z`;
+    const d = new Date(iso);
+    const day = d.getUTCDay();
+    return day === 0 || day === 6;
+  }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Accra',
+    weekday: 'short',
+  }).format(dateOrIso);
+  return parts === 'Sat' || parts === 'Sun';
+}
+
 /** Minutes past midnight in Africa/Accra for a UTC timestamp. */
 export function localMinutesOfDay(isoOrDate: Date | string): number {
   const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
@@ -201,6 +224,14 @@ export async function selfCheckIn(
   longitude: number,
   lateReason?: string | null
 ): Promise<CheckInResult> {
+  if (isWeekend()) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: 'Staff clock-in is only available on weekdays (Monday to Friday).' },
+    };
+  }
+
   const settings = await getAttendanceSettings(tenantId);
   if (!settings || settings.latitude == null || settings.longitude == null) {
     return {
@@ -389,6 +420,7 @@ export async function selfCheckOut(
 export const STAFF_AUTO_CHECKOUT_TIME = '18:00';
 
 export async function autoCheckoutTenant(tenantId: number): Promise<number> {
+  if (isWeekend()) return 0;
   const today = todayDateString();
   const checkoutAt = combineDateAndTimeUtc(today, STAFF_AUTO_CHECKOUT_TIME);
 
@@ -420,6 +452,7 @@ export function addMinutesToTime(timeStr: string, minutesToAdd: number): string 
  * Runs ~1 hour after school_start_time.
  */
 export async function sendMissingCheckInReminders(tenantId: number): Promise<number> {
+  if (isWeekend()) return 0;
   const { sendPushToStaffUser } = await import('./webPushService.js');
   const today = todayDateString();
   const roles = [...ATTENDANCE_STAFF_ROLES];
@@ -469,7 +502,7 @@ export type TodayStaffStatus = {
   is_late: boolean;
   late_reason: string | null;
   check_in_method: string | null;
-  status: 'present' | 'absent' | 'checked_out';
+  status: 'present' | 'absent' | 'checked_out' | 'weekend';
 };
 
 export async function getTodayOverview(
@@ -477,6 +510,7 @@ export async function getTodayOverview(
   roleFilter?: string | null
 ): Promise<TodayStaffStatus[]> {
   const today = todayDateString();
+  const isTodayWeekend = isWeekend(today);
   const roles = [...ATTENDANCE_STAFF_ROLES];
   const params: unknown[] = [tenantId, today, roles];
   let roleClause = '';
@@ -508,7 +542,7 @@ export async function getTodayOverview(
   );
 
   return res.rows.map((row: any) => {
-    let status: TodayStaffStatus['status'] = 'absent';
+    let status: TodayStaffStatus['status'] = isTodayWeekend ? 'weekend' : 'absent';
     if (row.check_in_time && row.check_out_time) status = 'checked_out';
     else if (row.check_in_time) status = 'present';
     return {

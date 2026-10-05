@@ -46,6 +46,10 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
   const [busy, setBusy] = useState(false);
   const [record, setRecord] = useState<StaffAttendanceRecord | null>(null);
   const [configured, setConfigured] = useState(true);
+  const [isWeekend, setIsWeekend] = useState(() => {
+    const d = new Date().getDay();
+    return d === 0 || d === 6;
+  });
   const [tick, setTick] = useState(0);
   const [lateOpen, setLateOpen] = useState(false);
   const [zoneOpen, setZoneOpen] = useState(false);
@@ -61,6 +65,9 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
       const data = await staffAttendanceService.getMyToday();
       setRecord(data.record);
       setConfigured(!!data.settings?.configured);
+      if (data.is_weekend !== undefined) {
+        setIsWeekend(!!data.is_weekend);
+      }
     } catch {
       /* keep previous */
     } finally {
@@ -162,6 +169,13 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
   };
 
   const handleClockIn = async () => {
+    if (isWeekend) {
+      toast({
+        title: 'Weekend',
+        description: 'Staff clock-in is only available on weekdays (Monday to Friday).',
+      });
+      return;
+    }
     if (!configured) {
       toast({
         title: 'Not configured',
@@ -390,16 +404,35 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
 
             {!record && (
               <>
-                <p className="text-sm text-muted-foreground">Not clocked in today</p>
-                <Button
-                  size="sm"
-                  onClick={handleClockIn}
-                  disabled={busy}
-                  className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
-                  Clock In
-                </Button>
+                {isWeekend ? (
+                  <>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-slate-400" />
+                      Weekend · School closed
+                    </p>
+                    <Button
+                      size="sm"
+                      disabled
+                      variant="outline"
+                      className="w-full h-9 rounded-lg text-muted-foreground cursor-not-allowed border-dashed"
+                    >
+                      Weekend (No Clock-In)
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">Not clocked in today</p>
+                    <Button
+                      size="sm"
+                      onClick={handleClockIn}
+                      disabled={busy}
+                      className="w-full h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
+                      Clock In
+                    </Button>
+                  </>
+                )}
               </>
             )}
 
@@ -465,7 +498,16 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
               </div>
 
               {!record && (
-                <p className="text-sm text-slate-600 dark:text-slate-300 pt-1">You have not clocked in today.</p>
+                isWeekend ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 pt-1 flex items-center gap-2">
+                    <Badge variant="outline" className="border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-900 text-slate-600 dark:text-slate-400 text-xs">
+                      Weekend
+                    </Badge>
+                    <span>School is closed today. Clock-in resumes Monday.</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-300 pt-1">You have not clocked in today.</p>
+                )
               )}
 
               {checkedIn && record && (
@@ -515,14 +557,24 @@ const StaffAttendanceClockCard: React.FC<Props> = ({ onOpenHistory, variant = 'd
                 </Button>
               )}
               {!record && (
-                <Button
-                  onClick={handleClockIn}
-                  disabled={busy}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[120px]"
-                >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
-                  Clock In
-                </Button>
+                isWeekend ? (
+                  <Button
+                    disabled
+                    variant="outline"
+                    className="min-w-[120px] text-muted-foreground cursor-not-allowed border-dashed"
+                  >
+                    Weekend
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleClockIn}
+                    disabled={busy}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[120px]"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
+                    Clock In
+                  </Button>
+                )
               )}
               {checkedIn && (
                 <Button onClick={handleClockOut} disabled={busy} variant="secondary" className="min-w-[120px]">

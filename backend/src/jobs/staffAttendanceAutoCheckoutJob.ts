@@ -2,6 +2,7 @@ import cron, { type ScheduledTask } from 'node-cron';
 import {
   addMinutesToTime,
   autoCheckoutTenant,
+  isWeekend,
   listAllAttendanceSettings,
   normalizeTimeString,
   sendMissingCheckInReminders,
@@ -13,12 +14,13 @@ const TIMEZONE = 'Africa/Accra';
 const checkoutJobs = new Map<number, ScheduledTask>();
 const reminderJobs = new Map<number, ScheduledTask>();
 
-function cronExpressionFromTime(timeStr: string): string | null {
+function cronExpressionFromTime(timeStr: string, weekdaysOnly = true): string | null {
   const norm = normalizeTimeString(timeStr);
   const [hh, mm] = norm.split(':').map((p) => parseInt(p, 10));
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-  return `${mm} ${hh} * * *`;
+  const dow = weekdaysOnly ? '1-5' : '*';
+  return `${mm} ${hh} * * ${dow}`;
 }
 
 function stopJob(map: Map<number, ScheduledTask>, tenantId: number): void {
@@ -48,12 +50,13 @@ export function registerTenantAutoCheckout(
   _schoolEndTime?: string
 ): boolean {
   unregisterTenantAutoCheckout(tenantId);
-  const expr = cronExpressionFromTime(STAFF_AUTO_CHECKOUT_TIME);
+  const expr = cronExpressionFromTime(STAFF_AUTO_CHECKOUT_TIME, true);
   if (!expr) return false;
 
   const task = cron.schedule(
     expr,
     () => {
+      if (isWeekend()) return;
       void autoCheckoutTenant(tenantId)
         .then((n) => {
           if (n > 0) {
@@ -81,7 +84,7 @@ export function registerTenantCheckInReminder(
 ): boolean {
   unregisterTenantCheckInReminder(tenantId);
   const reminderTime = addMinutesToTime(schoolStartTime, 60);
-  const expr = cronExpressionFromTime(reminderTime);
+  const expr = cronExpressionFromTime(reminderTime, true);
   if (!expr) {
     console.warn(
       `[staff-attendance] Invalid reminder time for tenant ${tenantId} (from start ${schoolStartTime})`
@@ -92,6 +95,7 @@ export function registerTenantCheckInReminder(
   const task = cron.schedule(
     expr,
     () => {
+      if (isWeekend()) return;
       void sendMissingCheckInReminders(tenantId)
         .then((n) => {
           if (n > 0) {

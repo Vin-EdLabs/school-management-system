@@ -34,7 +34,7 @@ export type TodayStaffRow = {
   is_late: boolean;
   late_reason: string | null;
   check_in_method: string | null;
-  status: 'present' | 'absent' | 'checked_out';
+  status: 'present' | 'absent' | 'checked_out' | 'weekend';
 };
 
 export type TodayOverview = {
@@ -44,8 +44,11 @@ export type TodayOverview = {
     absent: number;
     checked_out: number;
     late: number;
+    weekend?: number;
+    is_weekend?: boolean;
   };
   staff: TodayStaffRow[];
+  is_weekend?: boolean;
 };
 
 export type PaginatedAttendance = {
@@ -57,6 +60,7 @@ export type PaginatedAttendance = {
 
 export type MyTodayResponse = {
   record: StaffAttendanceRecord | null;
+  is_weekend?: boolean;
   settings: {
     school_start_time?: string;
     school_end_time?: string;

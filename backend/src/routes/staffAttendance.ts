@@ -14,6 +14,7 @@ import {
   getMyHistory,
   getMyToday,
   getTodayOverview,
+  isWeekend,
   selfCheckIn,
   selfCheckOut,
   upsertAttendanceSettings,
@@ -183,14 +184,17 @@ router.get('/today', requireRole(...VIEW_ROLES), async (req: AuthRequest, res) =
   try {
     const role = typeof req.query.role === 'string' ? req.query.role : null;
     const rows = await getTodayOverview(tenantIdOf(req), role);
+    const isTodayWeekend = isWeekend();
     const summary = {
       total: rows.length,
       present: rows.filter((r) => r.status === 'present').length,
       absent: rows.filter((r) => r.status === 'absent').length,
       checked_out: rows.filter((r) => r.status === 'checked_out').length,
       late: rows.filter((r) => r.is_late).length,
+      weekend: rows.filter((r) => r.status === 'weekend').length,
+      is_weekend: isTodayWeekend,
     };
-    res.json({ summary, staff: rows });
+    res.json({ summary, staff: rows, is_weekend: isTodayWeekend });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to load today overview';
     res.status(500).json({ error: message });
@@ -241,8 +245,10 @@ router.get('/my-today', requireRole(...STAFF_ROLES), async (req: AuthRequest, re
   try {
     const record = await getMyToday(tenantIdOf(req), Number(req.user!.id));
     const settings = await getAttendanceSettings(tenantIdOf(req));
+    const isTodayWeekend = isWeekend();
     res.json({
       record,
+      is_weekend: isTodayWeekend,
       settings: settings
         ? {
             school_start_time: settings.school_start_time,

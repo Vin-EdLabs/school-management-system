@@ -107,7 +107,15 @@ const StaffAttendanceDashboard: React.FC<Props> = ({ readOnly = false }) => {
   const [roleFilter, setRoleFilter] = useState('all');
   const [loadingToday, setLoadingToday] = useState(true);
   const [staff, setStaff] = useState<TodayStaffRow[]>([]);
-  const [summary, setSummary] = useState({ total: 0, present: 0, absent: 0, checked_out: 0, late: 0 });
+  const [summary, setSummary] = useState<{
+    total: number;
+    present: number;
+    absent: number;
+    checked_out: number;
+    late: number;
+    weekend?: number;
+    is_weekend?: boolean;
+  }>({ total: 0, present: 0, absent: 0, checked_out: 0, late: 0, is_weekend: false });
   const [search, setSearch] = useState('');
 
   const [settings, setSettings] = useState<AttendanceSettings | null>(null);
@@ -254,6 +262,13 @@ const StaffAttendanceDashboard: React.FC<Props> = ({ readOnly = false }) => {
     if (row.status === 'checked_out') {
       return <Badge variant="secondary">Checked out</Badge>;
     }
+    if (row.status === 'weekend') {
+      return (
+        <Badge variant="outline" className="border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-900 text-slate-500 dark:text-slate-400">
+          Weekend
+        </Badge>
+      );
+    }
     return <Badge variant="outline">Absent</Badge>;
   };
 
@@ -321,11 +336,11 @@ const StaffAttendanceDashboard: React.FC<Props> = ({ readOnly = false }) => {
                 iconTone: 'bg-emerald-600 text-white',
               },
               {
-                label: 'Absent',
-                value: summary.absent,
-                icon: UserX,
-                tone: 'border-rose-200 bg-rose-50 text-rose-800',
-                iconTone: 'bg-rose-500 text-white',
+                label: summary.is_weekend ? 'Weekend / Off' : 'Absent',
+                value: summary.is_weekend ? (summary.weekend ?? summary.absent) : summary.absent,
+                icon: summary.is_weekend ? Clock : UserX,
+                tone: summary.is_weekend ? 'border-slate-200 bg-slate-50 text-slate-800' : 'border-rose-200 bg-rose-50 text-rose-800',
+                iconTone: summary.is_weekend ? 'bg-slate-600 text-white' : 'bg-rose-500 text-white',
               },
               {
                 label: 'Late',
@@ -348,6 +363,13 @@ const StaffAttendanceDashboard: React.FC<Props> = ({ readOnly = false }) => {
               </Card>
             ))}
           </div>
+
+          {summary.is_weekend && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200/80 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/30 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>Today is a weekend. Standard staff clock-in is closed, and absent marks are paused.</span>
+            </div>
+          )}
 
           <Card className="rounded-2xl shadow-sm">
             <CardContent className="p-4 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -463,7 +485,7 @@ const StaffAttendanceDashboard: React.FC<Props> = ({ readOnly = false }) => {
                         </td>
                         {!readOnly && (
                           <td className="px-4 py-3">
-                            {row.status === 'absent' && (
+                            {(row.status === 'absent' || row.status === 'weekend') && (
                               <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openAdminCheckIn(row)}>
                                 <LogIn className="h-3.5 w-3.5 mr-1.5" />
                                 Check In

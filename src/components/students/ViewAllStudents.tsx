@@ -705,7 +705,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       return;
     }
 
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const margin = 14;
     const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
     const logoDataUrl = await loadImageDataUrl(logoUrl);
@@ -732,16 +732,18 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
     doc.setLineWidth(0.35);
     doc.setDrawColor(45, 45, 45);
-    doc.line(margin, headerTop + headerHeight + 12, 210 - margin, headerTop + headerHeight + 12);
+    doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
 
     autoTable(doc, {
       startY: headerTop + headerHeight + 18,
-      head: [['#', 'Name', 'Student ID', 'Class', 'Discount kind', 'Discount value']],
+      head: [['#', 'Name', 'Student ID', 'Class', 'Date of birth', 'Location', 'Discount kind', 'Discount value']],
       body: rows.map((student, index) => [
         String(index + 1),
-        `${student.firstName} ${student.lastName}`,
-        student.studentId,
+        `${student.firstName} ${student.lastName}`.trim(),
+        student.studentId || '—',
         student.classAssigned || '—',
+        student.dateOfBirth || '—',
+        student.homeAddress || '—',
         isFullDiscount(student)
           ? 'Full waiver'
           : student.discountType === 'percentage'
@@ -754,19 +756,35 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         discountLabel(student),
       ]),
       theme: 'grid',
-      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center' },
-      bodyStyles: { valign: 'middle' },
-      styles: { fontSize: 9, cellPadding: 3, textColor: 55 },
+      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
+      bodyStyles: { valign: 'middle', fontSize: 8 },
+      styles: { fontSize: 8, cellPadding: 2.5, textColor: 55, overflow: 'linebreak' },
       margin: { left: margin, right: margin },
       tableLineColor: [180, 180, 180],
       tableLineWidth: 0.15,
       columnStyles: {
-        0: { cellWidth: 10 },
-        2: { cellWidth: 28 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 33 },
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 38 },
+        2: { cellWidth: 24 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 24 },
+        5: { cellWidth: 60 },
+        6: { cellWidth: 32 },
+        7: { cellWidth: 28 },
       },
     });
+
+    const pageCount = doc.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setFont('times', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${schoolTitle} — Discount allocation report`, margin, pageHeight - 8);
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+    }
 
     doc.save(`discounted-students-${new Date().toISOString().split('T')[0]}.pdf`);
     toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to discount PDF.` });

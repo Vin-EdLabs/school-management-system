@@ -75,20 +75,20 @@ const AddOtherStaffForm: React.FC<AddOtherStaffFormProps> = ({ onSuccess }) => {
 
   const runValidation = () => {
     const result = validateFormFields(getOtherStaffValidationRules(form));
-    if (result.ok) {
-      setFieldErrors({});
-      setValidationSummary('');
-      return true;
+    if (!result.ok) {
+      setFieldErrors(result.errors);
+      setValidationSummary(result.summary);
+      scrollToFormField(result.firstFieldId, result.firstSectionId);
+      toast({
+        title: 'Missing required information',
+        description: result.summary,
+        variant: 'destructive',
+      });
+      return false;
     }
-    setFieldErrors(result.errors);
-    setValidationSummary(result.summary);
-    scrollToFormField(result.firstFieldId, result.firstSectionId);
-    toast({
-      title: 'Missing required information',
-      description: result.summary,
-      variant: 'destructive',
-    });
-    return false;
+    setFieldErrors({});
+    setValidationSummary('');
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

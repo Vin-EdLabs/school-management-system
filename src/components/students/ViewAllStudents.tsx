@@ -146,6 +146,7 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -375,6 +376,14 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     return 'Discount';
   };
 
+  const discountKind = (student: Student) => {
+    if (!hasDiscount(student)) return 'None';
+    if (isFullDiscount(student)) return 'Full waiver';
+    if (student.discountType === 'percentage') return 'Percentage';
+    if (student.discountType === 'fixed') return 'Fixed amount';
+    return student.isBeneficiary ? 'Full waiver' : 'None';
+  };
+
   const filteredStudents = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return registryStudents.filter((student) => {
@@ -592,202 +601,276 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     setInactiveTermId('');
   };
 
-  const exportSelectedCsv = () => {
-    const rows = registryStudents.filter((s) => selected.has(s.id));
+  const exportSelectedCsv = (exportAll = false) => {
+    const rows = (!exportAll && selected.size > 0)
+      ? sortedStudents.filter((s) => selected.has(s.id))
+      : sortedStudents;
+
     if (rows.length === 0) {
-      toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
+      toast({ title: 'No students found', description: 'No students match the current filters to export.', variant: 'destructive' });
       return;
     }
     const blob = new Blob([exportStudentsToCsv(rows)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `students-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    const classTag = filterClass !== 'all-classes' ? `-${filterClass.replace(/\s+/g, '_')}` : '';
+    const genderTag = filterGender !== 'all-genders' ? `-${filterGender}` : '';
+    a.download = `students-export${classTag}${genderTag}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast({ title: 'Export ready', description: `${rows.length} student(s) exported.` });
+    toast({ title: 'Export ready', description: `${rows.length} student(s) exported to CSV.` });
   };
 
-  const exportSelectedPdf = async () => {
-    const rows = registryStudents.filter((s) => selected.has(s.id));
+  const exportSelectedPdf = async (exportAll = false) => {
+    const rows = (!exportAll && selected.size > 0)
+      ? sortedStudents.filter((s) => selected.has(s.id))
+      : sortedStudents;
+
     if (rows.length === 0) {
-      toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
+      toast({ title: 'No students found', description: 'No students match the current filters to export.', variant: 'destructive' });
       return;
     }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const margin = 14;
-    const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
-    const logoDataUrl = await loadImageDataUrl(logoUrl);
-    const headerTop = 18;
-    const headerHeight = 24;
+    setIsExporting(true);
+    toast({ title: 'Preparing PDF...', description: `Building PDF for ${rows.length} student(s) in batches.` });
 
-    if (logoDataUrl) {
-      const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
-      const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
-      doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
-    }
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const margin = 14;
+      const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+      const logoDataUrl = await loadImageDataUrl(logoUrl);
+      const headerTop = 18;
+      const headerHeight = 24;
 
-    const schoolTitle = school?.name?.trim() || 'School Name';
-    const titleX = logoDataUrl ? margin + 32 : margin;
+      if (logoDataUrl) {
+        const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
+        const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
+        doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
+      }
 
-    doc.setFont('times', 'bold');
-    doc.setFontSize(16);
-    doc.text(schoolTitle, titleX, headerTop + 6);
-    doc.setFont('times', 'normal');
-    doc.setFontSize(10);
-    doc.text('Student Roster', titleX, headerTop + 12);
-    doc.setFontSize(9);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
-    doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
-    doc.setLineWidth(0.35);
-    doc.setDrawColor(45, 45, 45);
-    doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
+      const schoolTitle = school?.name?.trim() || 'School Name';
+      const titleX = logoDataUrl ? margin + 32 : margin;
 
-    autoTable(doc, {
-      startY: headerTop + headerHeight + 18,
-      head: [['#', 'Name', 'Student ID', 'Admission', 'Class', 'Gender', 'Date of birth', 'Location', 'Status', 'Guardian', 'Guardian phone']],
-      body: rows.map((student, index) => [
-        String(index + 1),
-        `${student.firstName} ${student.lastName}`.trim(),
-        student.studentId || '—',
-        student.admissionNumber || '—',
-        student.classAssigned || '—',
-        student.gender || '—',
-        student.dateOfBirth || '—',
-        student.homeAddress || '—',
-        enrollmentStatusLabel(student.enrollmentStatus),
-        student.guardianName || '—',
-        student.guardianContact || '—',
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
-      bodyStyles: { valign: 'middle', fontSize: 7.5 },
-      styles: { cellPadding: 2, textColor: 55, overflow: 'linebreak' },
-      margin: { left: margin, right: margin },
-      tableLineColor: [180, 180, 180],
-      tableLineWidth: 0.15,
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        1: { cellWidth: 34 },
-        2: { cellWidth: 22 },
-        3: { cellWidth: 22 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 16 },
-        6: { cellWidth: 22 },
-        7: { cellWidth: 45 },
-        8: { cellWidth: 20, halign: 'center' },
-        9: { cellWidth: 32 },
-        10: { cellWidth: 28 },
-      },
-    });
+      // Filter descriptors for report title & metadata
+      const filterParts: string[] = [];
+      if (filterClass !== 'all-classes') filterParts.push(`Class: ${filterClass}`);
+      if (filterGender !== 'all-genders') filterParts.push(`Gender: ${filterGender === 'male' ? 'Male' : filterGender === 'female' ? 'Female' : filterGender}`);
+      if (filterDiscount !== 'all-discounts') {
+        const dMap: Record<string, string> = {
+          'discounted': 'Discounted',
+          'full-discount': 'Full waiver',
+          'partial-discount': 'Partial discount',
+          'no-discount': 'No discount',
+        };
+        filterParts.push(`Discount: ${dMap[filterDiscount] || filterDiscount}`);
+      }
+      if (searchTerm.trim()) filterParts.push(`Search: "${searchTerm.trim()}"`);
 
-    const pageCount = doc.getNumberOfPages();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    for (let page = 1; page <= pageCount; page += 1) {
-      doc.setPage(page);
+      const filterSummary = filterParts.length > 0 ? filterParts.join(' | ') : 'All Students';
+      const selectionSummary = (!exportAll && selected.size > 0)
+        ? `${rows.length} student(s) selected`
+        : `All ${rows.length} student(s) (${filterSummary})`;
+
+      doc.setFont('times', 'bold');
+      doc.setFontSize(16);
+      doc.text(schoolTitle, titleX, headerTop + 6);
       doc.setFont('times', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`${schoolTitle} — Student Roster`, margin, pageHeight - 8);
-      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
-    }
+      doc.setFontSize(10);
+      doc.text(`Student Roster — ${filterSummary}`, titleX, headerTop + 12);
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
+      doc.text(selectionSummary, margin, headerTop + headerHeight + 10);
+      doc.setLineWidth(0.35);
+      doc.setDrawColor(45, 45, 45);
+      doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
 
-    doc.save(`students-export-${new Date().toISOString().split('T')[0]}.pdf`);
-    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to PDF.` });
+      // Process rows in batches of 100 to prevent locking the browser event loop
+      const BATCH_SIZE = 100;
+      const body: string[][] = [];
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const batch = rows.slice(i, i + BATCH_SIZE);
+        const batchRows = batch.map((student, bIdx) => {
+          const index = i + bIdx;
+          return [
+            String(index + 1),
+            `${student.firstName} ${student.lastName}`.trim(),
+            student.studentId || '—',
+            student.classAssigned || '—',
+            student.gender || '—',
+            student.dateOfBirth || '—',
+            student.homeAddress || '—',
+            discountKind(student),
+            discountLabel(student),
+            student.guardianName || '—',
+            student.guardianContact || '—',
+          ];
+        });
+        body.push(...batchRows);
+        if (i + BATCH_SIZE < rows.length) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+
+      autoTable(doc, {
+        startY: headerTop + headerHeight + 18,
+        head: [['#', 'Name', 'Student ID', 'Class', 'Gender', 'Date of birth', 'Location', 'Discount kind', 'Discount value', 'Guardian', 'Guardian phone']],
+        body,
+        theme: 'grid',
+        headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
+        bodyStyles: { valign: 'middle', fontSize: 7.5 },
+        styles: { cellPadding: 2, textColor: 55, overflow: 'linebreak' },
+        margin: { left: margin, right: margin },
+        tableLineColor: [180, 180, 180],
+        tableLineWidth: 0.15,
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 36 },
+          2: { cellWidth: 22 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 16 },
+          5: { cellWidth: 22 },
+          6: { cellWidth: 46 },
+          7: { cellWidth: 25 },
+          8: { cellWidth: 22 },
+          9: { cellWidth: 28 },
+          10: { cellWidth: 24 },
+        },
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        doc.setFont('times', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`${schoolTitle} — Student Roster (${filterSummary})`, margin, pageHeight - 8);
+        doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+      }
+
+      const classTag = filterClass !== 'all-classes' ? `-${filterClass.replace(/\s+/g, '_')}` : '';
+      const genderTag = filterGender !== 'all-genders' ? `-${filterGender}` : '';
+      doc.save(`students-export${classTag}${genderTag}-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to PDF.` });
+    } catch (err: any) {
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF file.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  const exportSelectedDiscountPdf = async () => {
-    const rows = registryStudents.filter((s) => selected.has(s.id));
+  const exportSelectedDiscountPdf = async (exportAll = false) => {
+    const rows = (!exportAll && selected.size > 0)
+      ? sortedStudents.filter((s) => selected.has(s.id))
+      : sortedStudents;
+
     if (rows.length === 0) {
-      toast({ title: 'Nothing selected', description: 'Select at least one student to export.', variant: 'destructive' });
+      toast({ title: 'No students found', description: 'No students match the current filters to export.', variant: 'destructive' });
       return;
     }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const margin = 14;
-    const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
-    const logoDataUrl = await loadImageDataUrl(logoUrl);
-    const headerTop = 18;
-    const headerHeight = 24;
+    setIsExporting(true);
+    toast({ title: 'Preparing Discount PDF...', description: `Building discount report for ${rows.length} student(s).` });
 
-    if (logoDataUrl) {
-      const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
-      const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
-      doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
-    }
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const margin = 14;
+      const logoUrl = resolveLogoUrl(school?.logo_url ?? null);
+      const logoDataUrl = await loadImageDataUrl(logoUrl);
+      const headerTop = 18;
+      const headerHeight = 24;
 
-    const schoolTitle = school?.name?.trim() || 'School Name';
-    const titleX = logoDataUrl ? margin + 32 : margin;
+      if (logoDataUrl) {
+        const logoTypeMatch = logoDataUrl.match(/^data:image\/(png|jpeg|jpg);base64,/i);
+        const logoType = logoTypeMatch ? (logoTypeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : logoTypeMatch[1].toUpperCase()) : 'PNG';
+        doc.addImage(logoDataUrl, logoType as 'PNG' | 'JPEG', margin, headerTop - 2, 24, 24);
+      }
 
-    doc.setFont('times', 'bold');
-    doc.setFontSize(16);
-    doc.text(schoolTitle, titleX, headerTop + 6);
-    doc.setFont('times', 'normal');
-    doc.setFontSize(10);
-    doc.text('Discount allocation report', titleX, headerTop + 12);
-    doc.setFontSize(9);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
-    doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
-    doc.setLineWidth(0.35);
-    doc.setDrawColor(45, 45, 45);
-    doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
+      const schoolTitle = school?.name?.trim() || 'School Name';
+      const titleX = logoDataUrl ? margin + 32 : margin;
 
-    autoTable(doc, {
-      startY: headerTop + headerHeight + 18,
-      head: [['#', 'Name', 'Student ID', 'Class', 'Date of birth', 'Location', 'Discount kind', 'Discount value']],
-      body: rows.map((student, index) => [
-        String(index + 1),
-        `${student.firstName} ${student.lastName}`.trim(),
-        student.studentId || '—',
-        student.classAssigned || '—',
-        student.dateOfBirth || '—',
-        student.homeAddress || '—',
-        isFullDiscount(student)
-          ? 'Full waiver'
-          : student.discountType === 'percentage'
-          ? 'Percentage'
-          : student.discountType === 'fixed'
-          ? 'Fixed amount'
-          : student.isBeneficiary
-          ? 'Full waiver'
-          : 'None',
-        discountLabel(student),
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
-      bodyStyles: { valign: 'middle', fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: 2.5, textColor: 55, overflow: 'linebreak' },
-      margin: { left: margin, right: margin },
-      tableLineColor: [180, 180, 180],
-      tableLineWidth: 0.15,
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        1: { cellWidth: 38 },
-        2: { cellWidth: 24 },
-        3: { cellWidth: 22 },
-        4: { cellWidth: 24 },
-        5: { cellWidth: 60 },
-        6: { cellWidth: 32 },
-        7: { cellWidth: 28 },
-      },
-    });
-
-    const pageCount = doc.getNumberOfPages();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    for (let page = 1; page <= pageCount; page += 1) {
-      doc.setPage(page);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(16);
+      doc.text(schoolTitle, titleX, headerTop + 6);
       doc.setFont('times', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`${schoolTitle} — Discount allocation report`, margin, pageHeight - 8);
-      doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
-    }
+      doc.setFontSize(10);
+      doc.text('Discount allocation report', titleX, headerTop + 12);
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
+      doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
+      doc.setLineWidth(0.35);
+      doc.setDrawColor(45, 45, 45);
+      doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
 
-    doc.save(`discounted-students-${new Date().toISOString().split('T')[0]}.pdf`);
-    toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to discount PDF.` });
+      // Process in batches
+      const BATCH_SIZE = 100;
+      const body: string[][] = [];
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const batch = rows.slice(i, i + BATCH_SIZE);
+        const batchRows = batch.map((student, bIdx) => {
+          const index = i + bIdx;
+          return [
+            String(index + 1),
+            `${student.firstName} ${student.lastName}`.trim(),
+            student.studentId || '—',
+            student.classAssigned || '—',
+            student.dateOfBirth || '—',
+            student.homeAddress || '—',
+            discountKind(student),
+            discountLabel(student),
+          ];
+        });
+        body.push(...batchRows);
+        if (i + BATCH_SIZE < rows.length) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+
+      autoTable(doc, {
+        startY: headerTop + headerHeight + 18,
+        head: [['#', 'Name', 'Student ID', 'Class', 'Date of birth', 'Location', 'Discount kind', 'Discount value']],
+        body,
+        theme: 'grid',
+        headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontSize: 8 },
+        bodyStyles: { valign: 'middle', fontSize: 8 },
+        styles: { fontSize: 8, cellPadding: 2.5, textColor: 55, overflow: 'linebreak' },
+        margin: { left: margin, right: margin },
+        tableLineColor: [180, 180, 180],
+        tableLineWidth: 0.15,
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 38 },
+          2: { cellWidth: 24 },
+          3: { cellWidth: 22 },
+          4: { cellWidth: 24 },
+          5: { cellWidth: 60 },
+          6: { cellWidth: 32 },
+          7: { cellWidth: 28 },
+        },
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        doc.setFont('times', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`${schoolTitle} — Discount allocation report`, margin, pageHeight - 8);
+        doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+      }
+
+      const classTag = filterClass !== 'all-classes' ? `-${filterClass.replace(/\s+/g, '_')}` : '';
+      doc.save(`discounted-students${classTag}-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to discount PDF.` });
+    } catch (err: any) {
+      toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF file.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const bulkPromote = () => {
@@ -892,36 +975,57 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                 variant="outline"
                 size="sm"
                 className="h-9 gap-1.5"
-                onClick={exportSelectedPdf}
-                disabled={selected.size === 0}
+                onClick={() => exportSelectedPdf(false)}
+                disabled={sortedStudents.length === 0 || isExporting}
               >
                 <Download className="h-4 w-4 shrink-0" />
-                Export PDF
+                {isExporting
+                  ? 'Exporting...'
+                  : selected.size > 0
+                  ? `Export PDF (${selected.size})`
+                  : `Export PDF (${sortedStudents.length})`}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 gap-1.5" disabled={selected.size === 0}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    disabled={sortedStudents.length === 0 || isExporting}
+                  >
                     Bulk actions
                     <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={exportSelectedCsv}>
+                <DropdownMenuContent align="end" className="w-56">
+                  {selected.size > 0 && (
+                    <>
+                      <DropdownMenuItem onClick={() => exportSelectedPdf(false)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export PDF ({selected.size} selected)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportSelectedCsv(false)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export CSV ({selected.size} selected)
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={() => exportSelectedPdf(true)}>
                     <Download className="mr-2 h-4 w-4" />
-                    Export CSV
+                    Export PDF (All {sortedStudents.length} filtered)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={exportSelectedPdf}>
+                  <DropdownMenuItem onClick={() => exportSelectedCsv(true)}>
                     <Download className="mr-2 h-4 w-4" />
-                    Export PDF
+                    Export CSV (All {sortedStudents.length} filtered)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={exportSelectedDiscountPdf}>
+                  <DropdownMenuItem onClick={() => exportSelectedDiscountPdf(false)}>
                     <Download className="mr-2 h-4 w-4" />
-                    Export Discounts PDF
+                    Export Discounts PDF {selected.size > 0 ? `(${selected.size})` : `(All ${sortedStudents.length})`}
                   </DropdownMenuItem>
-                  {!readOnly && onRequestPromoteStudent ? (
+                  {!readOnly && onRequestPromoteStudent && selected.size > 0 ? (
                   <DropdownMenuItem onClick={bulkPromote}>
                     <TrendingUp className="mr-2 h-4 w-4" />
-                    Go to promote (1)
+                    Go to promote ({selected.size})
                   </DropdownMenuItem>
                   ) : null}
                 </DropdownMenuContent>

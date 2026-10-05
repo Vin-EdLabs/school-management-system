@@ -447,6 +447,15 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
     return sortStudents(filteredStudents, sortKey, sortDir);
   }, [filteredStudents, sortKey, sortDir, showRecentAdmissions, isInactiveView]);
 
+  const allFilteredDiscountedCount = useMemo(() => {
+    return sortedStudents.filter(hasDiscount).length;
+  }, [sortedStudents]);
+
+  const selectedDiscountedCount = useMemo(() => {
+    if (selected.size === 0) return 0;
+    return sortedStudents.filter((s) => selected.has(s.id) && hasDiscount(s)).length;
+  }, [sortedStudents, selected]);
+
   const totalPages = Math.max(1, Math.ceil(sortedStudents.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageSlice = useMemo(() => {
@@ -762,17 +771,26 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
   };
 
   const exportSelectedDiscountPdf = async (exportAll = false) => {
-    const rows = (!exportAll && selected.size > 0)
+    const pool = (!exportAll && selected.size > 0)
       ? sortedStudents.filter((s) => selected.has(s.id))
       : sortedStudents;
 
+    // Filter strictly to ONLY students with an active discount or fee waiver
+    const rows = pool.filter(hasDiscount);
+
     if (rows.length === 0) {
-      toast({ title: 'No students found', description: 'No students match the current filters to export.', variant: 'destructive' });
+      toast({
+        title: 'No discounted students found',
+        description: selected.size > 0 && !exportAll
+          ? 'None of the selected students have an active discount or fee waiver.'
+          : 'None of the students matching the current filter have an active discount or fee waiver.',
+        variant: 'destructive',
+      });
       return;
     }
 
     setIsExporting(true);
-    toast({ title: 'Preparing Discount PDF...', description: `Building discount report for ${rows.length} student(s).` });
+    toast({ title: 'Preparing Discount PDF...', description: `Building discount report for ${rows.length} discounted student(s).` });
 
     try {
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
@@ -796,10 +814,10 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
       doc.text(schoolTitle, titleX, headerTop + 6);
       doc.setFont('times', 'normal');
       doc.setFontSize(10);
-      doc.text('Discount allocation report', titleX, headerTop + 12);
+      doc.text('Discount Allocation Report', titleX, headerTop + 12);
       doc.setFontSize(9);
       doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, margin, headerTop + headerHeight + 4);
-      doc.text(`Students selected: ${rows.length}`, margin, headerTop + headerHeight + 10);
+      doc.text(`Discounted students: ${rows.length}`, margin, headerTop + headerHeight + 10);
       doc.setLineWidth(0.35);
       doc.setDrawColor(45, 45, 45);
       doc.line(margin, headerTop + headerHeight + 12, 297 - margin, headerTop + headerHeight + 12);
@@ -841,13 +859,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         tableLineWidth: 0.15,
         columnStyles: {
           0: { cellWidth: 8, halign: 'center' },
-          1: { cellWidth: 38 },
-          2: { cellWidth: 24 },
-          3: { cellWidth: 22 },
-          4: { cellWidth: 24 },
-          5: { cellWidth: 60 },
-          6: { cellWidth: 32 },
-          7: { cellWidth: 28 },
+          1: { cellWidth: 42 },
+          2: { cellWidth: 26 },
+          3: { cellWidth: 24 },
+          4: { cellWidth: 26 },
+          5: { cellWidth: 75 },
+          6: { cellWidth: 34 },
+          7: { cellWidth: 34 },
         },
       });
 
@@ -859,13 +877,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
         doc.setFont('times', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(120, 120, 120);
-        doc.text(`${schoolTitle} — Discount allocation report`, margin, pageHeight - 8);
+        doc.text(`${schoolTitle} — Discount Allocation Report`, margin, pageHeight - 8);
         doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
       }
 
       const classTag = filterClass !== 'all-classes' ? `-${filterClass.replace(/\s+/g, '_')}` : '';
-      doc.save(`discounted-students${classTag}-${new Date().toISOString().split('T')[0]}.pdf`);
-      toast({ title: 'PDF export ready', description: `${rows.length} student(s) exported to discount PDF.` });
+      doc.save(`discount-allocation-report${classTag}-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast({ title: 'PDF export ready', description: `${rows.length} discounted student(s) exported to PDF.` });
     } catch (err: any) {
       toast({ title: 'Export failed', description: err?.message || 'Could not generate PDF file.', variant: 'destructive' });
     } finally {
@@ -1008,6 +1026,13 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                         <Download className="mr-2 h-4 w-4" />
                         Export CSV ({selected.size} selected)
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => exportSelectedDiscountPdf(false)}
+                        disabled={selectedDiscountedCount === 0}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Discounts PDF ({selectedDiscountedCount} selected)
+                      </DropdownMenuItem>
                     </>
                   )}
                   <DropdownMenuItem onClick={() => exportSelectedPdf(true)}>
@@ -1018,9 +1043,12 @@ const ViewAllStudents: React.FC<ViewAllStudentsProps> = ({ onRequestPromoteStude
                     <Download className="mr-2 h-4 w-4" />
                     Export CSV (All {sortedStudents.length} filtered)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => exportSelectedDiscountPdf(false)}>
+                  <DropdownMenuItem
+                    onClick={() => exportSelectedDiscountPdf(true)}
+                    disabled={allFilteredDiscountedCount === 0}
+                  >
                     <Download className="mr-2 h-4 w-4" />
-                    Export Discounts PDF {selected.size > 0 ? `(${selected.size})` : `(All ${sortedStudents.length})`}
+                    Export Discounts PDF ({allFilteredDiscountedCount} discounted)
                   </DropdownMenuItem>
                   {!readOnly && onRequestPromoteStudent && selected.size > 0 ? (
                   <DropdownMenuItem onClick={bulkPromote}>

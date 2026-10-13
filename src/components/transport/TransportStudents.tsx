@@ -9,6 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from '@/components/ui/dialog';
 import { apiService } from '../../services/api';
 import { useData } from '../../contexts/DataContext';
+import { useSchool } from '../../contexts/SchoolContext';
+import { resolveLogoUrl } from '../../services/tenantService';
+import { fetchClassStudentBalances } from '../../services/studentBalance';
+import { downloadTransportFeesOwingPdf, downloadTransportFeesOwingByBusPdf } from './buildTransportFeesOwingPdf';
 import { toast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -23,6 +27,8 @@ import {
   Filter,
   CheckCircle,
   HelpCircle,
+  FileDown,
+  Loader2,
 } from 'lucide-react';
 
 interface RouteStop {
@@ -38,6 +44,8 @@ interface Route {
 
 interface TransportStudent {
   id: number;
+  student_id?: string | null;
+  admission_number?: string | null;
   first_name: string;
   last_name: string;
   passport_photo_url: string | null;
@@ -57,6 +65,8 @@ interface TransportStudent {
 
 export const TransportStudents: React.FC = () => {
   const { students: allStudentsList } = useData(); // Context for all active students
+  const { school } = useSchool();
+  const [downloadingOwing, setDownloadingOwing] = useState<null | 'all' | 'bus'>(null);
 
   const [enrolledStudents, setEnrolledStudents] = useState<TransportStudent[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -233,6 +243,74 @@ export const TransportStudents: React.FC = () => {
     }
   };
 
+  // Download PDF of every bus rider who still owes school fees (respects route/class filters, not search)
+  const handleDownloadOwingPdf = async (mode: 'all' | 'bus' = 'all') => {
+    const riders = enrolledStudents.filter(
+      s =>
+        (filterRoute === 'all' || s.route_id === filterRoute) &&
+        (filterClass === 'all' || s.class_name === filterClass)
+    );
+    if (riders.length === 0) {
+      toast({ title: 'No riders', description: 'There are no students on school transport to report on.' });
+      return;
+    }
+    setDownloadingOwing(mode);
+    try {
+      const { balances } = await fetchClassStudentBalances();
+      const owing = riders
+        .map(r => {
+          const outstanding = Number(balances?.[String(r.id)]?.outstanding ?? 0);
+          return {
+            studentNumber: r.student_id || r.admission_number || '',
+            studentName: `${r.first_name} ${r.last_name}`.trim(),
+            className: r.class_name || '',
+            routeName: r.route_name || '',
+            stopName: r.stop_name || '',
+            amountOwed: Number.isFinite(outstanding) ? outstanding : 0,
+            busName: r.vehicle_name || '',
+            busPlate: r.vehicle_plate || '',
+            driverName: r.driver_name || '',
+          };
+        })
+        .filter(r => r.amountOwed > 0.001)
+        .sort((a, b) => b.amountOwed - a.amountOwed || a.studentName.localeCompare(b.studentName));
+
+      if (owing.length === 0) {
+        toast({ title: 'Nothing to export', description: 'No student on school transport owes fees right now.' });
+        return;
+      }
+
+      const routeLabel = filterRoute === 'all' ? 'All routes' : routes.find(r => r.id === filterRoute)?.name || 'Selected route';
+      const classLabel = filterClass === 'all' ? 'All classes' : filterClass;
+      const pdfInput = {
+        schoolName: school?.name ?? 'School',
+        logoUrl: resolveLogoUrl(school?.logo_url ?? null),
+        filterLabel: `${routeLabel} · ${classLabel}`,
+        totalRiders: riders.length,
+        owing,
+      };
+      if (mode === 'bus') {
+        const buses = await downloadTransportFeesOwingByBusPdf(pdfInput);
+        toast({
+          title: `${buses.length} PDF${buses.length === 1 ? '' : 's'} downloaded`,
+          description: `One file per bus: ${buses.join(', ')}. If your browser asks, allow multiple downloads.`,
+        });
+      } else {
+        await downloadTransportFeesOwingPdf(pdfInput);
+        toast({ title: 'PDF downloaded', description: `${owing.length} rider(s) owing fees exported.` });
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: 'Download failed',
+        description: err?.message || 'Could not generate the owing list.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingOwing(null);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 animate-in fade-in duration-500">
       {/* Header */}
@@ -240,6 +318,30 @@ export const TransportStudents: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800 dark:text-white">Rider Roster</h1>
           <p className="mt-1 text-sm text-slate-500">Manage student route mapping, track designated stops, and review fleet occupancy.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleDownloadOwingPdf('all')}
+            disabled={downloadingOwing !== null || loading}
+            className="rounded-xl h-9 text-xs font-semibold gap-2 w-fit"
+          >
+            {downloadingOwing === 'all' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+            Download owing list (PDF)
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleDownloadOwingPdf('bus')}
+            disabled={downloadingOwing !== null || loading}
+            className="rounded-xl h-9 text-xs font-semibold gap-2 w-fit"
+          >
+            {downloadingOwing === 'bus' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bus className="h-4 w-4" />}
+            Owing list per bus (separate PDFs)
+          </Button>
         </div>
       </div>
 

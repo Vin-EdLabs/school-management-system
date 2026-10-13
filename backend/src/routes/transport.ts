@@ -934,7 +934,7 @@ router.get('/students', async (req: AuthRequest, res) => {
   try {
     const tenantId = req.user!.tenantId!;
     const result = await query(
-      `SELECT s.id AS id, s.first_name, s.last_name, s.passport_photo_url,
+      `SELECT s.id AS id, s.student_id, s.admission_number, s.first_name, s.last_name, s.passport_photo_url,
          c.class_name, c.level,
          st.id AS student_transport_id, st.enrolled_at, st.status AS transport_status,
          r.name AS route_name, r.id AS route_id,
@@ -948,7 +948,7 @@ router.get('/students', async (req: AuthRequest, res) => {
        LEFT JOIN stops stop ON st.stop_id = stop.id
        LEFT JOIN vehicles v ON r.vehicle_id = v.id
        LEFT JOIN transport_drivers drv ON r.transport_driver_id = drv.id
-       WHERE s.tenant_id = $1 AND st.status = 'active'
+       WHERE s.tenant_id = $1 AND st.status = 'active' AND COALESCE(s.is_deleted, false) = false
        ORDER BY s.first_name ASC, s.last_name ASC`,
       [tenantId]
     );

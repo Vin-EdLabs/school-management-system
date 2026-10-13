@@ -55,7 +55,7 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
     head: [['Summary', 'Value']],
     body: [
       ['Students on school transport', String(input.totalRiders)],
-      ['Riders owing fees', String(input.owing.length)],
+      ['Students owing fees', String(input.owing.length)],
       ['Total amount owed (GHS)', formatPdfMoney(totalOwed)],
     ],
     theme: 'grid',
@@ -120,11 +120,11 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
     doc.setFont('times', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text(`${input.schoolName} — School fees owing (bus riders)`, margin, pageHeight - 8);
+    doc.text(`${input.schoolName} — School fees owing (students on the bus)`, margin, pageHeight - 8);
     doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   }
 
-  doc.save(`school-fees-owing-bus-riders-${generatedAt.toISOString().split('T')[0]}.pdf`);
+  doc.save(`school-fees-owing-students-on-bus-${generatedAt.toISOString().split('T')[0]}.pdf`);
 }
 type BusGroup = { label: string; driver: string; rows: TransportOwingRow[] };
 
@@ -181,7 +181,7 @@ async function downloadBusPdf(
     body: [
       ['Bus', group.label],
       ['Driver', group.driver || '—'],
-      ['Riders owing fees', String(group.rows.length)],
+      ['Students owing fees', String(group.rows.length)],
       ['Total amount owed (GHS)', formatPdfMoney(busTotal)],
     ],
     theme: 'grid',

@@ -218,7 +218,7 @@ export const TransportFeesOwing: React.FC = () => {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800 dark:text-white">School Fees Owing</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Students who ride the school bus and still owe school fees. Review the list, then download it as a PDF.
+            Students who ride the school bus and still owe school fees. Review the list below, then download it as a PDF.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -232,28 +232,6 @@ export const TransportFeesOwing: React.FC = () => {
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void handleDownload('all')}
-            disabled={loading || downloading !== null || filtered.length === 0}
-            className="rounded-xl h-9 text-xs font-semibold gap-2"
-          >
-            {downloading === 'all' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            Download PDF
-          </Button>
-          <Button
-            type="button"
-            variant="primaryAction"
-            size="sm"
-            onClick={() => void handleDownload('bus')}
-            disabled={loading || downloading !== null || filtered.length === 0}
-            className="rounded-xl h-9 text-xs font-semibold gap-2"
-          >
-            {downloading === 'bus' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bus className="h-4 w-4" />}
-            PDF per bus
           </Button>
         </div>
       </div>
@@ -290,6 +268,45 @@ export const TransportFeesOwing: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Download */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => void handleDownload('all')}
+          disabled={loading || downloading !== null || filtered.length === 0}
+          className="group flex items-center gap-4 rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-600 to-indigo-600 p-5 text-left text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+        >
+          <div className="rounded-xl bg-white/15 p-3">
+            {downloading === 'all' ? <Loader2 className="h-7 w-7 animate-spin" /> : <FileDown className="h-7 w-7" />}
+          </div>
+          <div>
+            <p className="text-base font-semibold sm:text-lg">Download all students on the bus</p>
+            <p className="mt-0.5 text-xs text-blue-100 sm:text-sm">
+              One PDF listing every student who owes school fees, with their ID, bus, pickup location and amount owed.
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleDownload('bus')}
+          disabled={loading || downloading !== null || filtered.length === 0}
+          className="group flex items-center gap-4 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-600 to-teal-600 p-5 text-left text-white shadow-lg shadow-emerald-600/20 transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+        >
+          <div className="rounded-xl bg-white/15 p-3">
+            {downloading === 'bus' ? <Loader2 className="h-7 w-7 animate-spin" /> : <Bus className="h-7 w-7" />}
+          </div>
+          <div>
+            <p className="text-base font-semibold sm:text-lg">Download per bus</p>
+            <p className="mt-0.5 text-xs text-emerald-100 sm:text-sm">
+              A separate PDF for each bus (Bus A, Bus B, …) so every driver gets only their own students.
+            </p>
+          </div>
+        </button>
+      </div>
+      <p className="-mt-3 text-xs text-slate-500">
+        Downloads follow the filters below{hasFilters ? ' (filters are on)' : ' (none set, so everyone is included)'}.
+      </p>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/60 bg-white/40 p-2.5 backdrop-blur">

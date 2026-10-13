@@ -56,6 +56,7 @@ import TransportRoutes from './transport/TransportRoutes';
 import TransportVehicles from './transport/TransportVehicles';
 import TransportDrivers from './transport/TransportDrivers';
 import TransportStudents from './transport/TransportStudents';
+import TransportFeesOwing from './transport/TransportFeesOwing';
 const BoardingModule = React.lazy(() => import('./boarding/BoardingModule'));
 import BoardingOverview from './boarding/BoardingOverview';
 import BoardingDormitories from './boarding/BoardingDormitories';
@@ -137,6 +138,7 @@ const DashboardContent = () => {
     if (path.includes('/transport/vehicles')) return 'transport-vehicles';
     if (path.includes('/transport/drivers')) return 'transport-drivers';
     if (path.includes('/transport/students')) return 'transport-students';
+    if (path.includes('/transport/fees-owing')) return 'transport-fees-owing';
     if (path.endsWith('/boarding') || /\/boarding\/?$/.test(path)) return 'boarding-overview';
     if (path.includes('/boarding/dormitories')) return 'boarding-dormitories';
     if (path.includes('/boarding/boarders')) return 'boarding-boarders';
@@ -451,6 +453,8 @@ const DashboardContent = () => {
         return <TransportDrivers />;
       case 'transport-students':
         return <TransportStudents />;
+      case 'transport-fees-owing':
+        return <TransportFeesOwing />;
       case 'boarding-overview':
         return (
           <BoardingModule onNavigate={setActiveModule}>

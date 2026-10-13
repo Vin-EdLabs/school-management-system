@@ -31,6 +31,27 @@ function roundMoney(n: number): number {
 }
 
 /**
+ * The balances endpoint is hit by every open dashboard/tab. The ledger repair pass is heavy,
+ * so share one in-flight run per tenant and skip it if it ran moments ago. (The batch balance
+ * query already adds any payment missing from the ledger, so results stay correct.)
+ */
+const LEDGER_SYNC_COOLDOWN_MS = 15_000;
+const ledgerSyncState = new Map<number, { startedAt: number; promise: Promise<void> }>();
+
+function ensureTenantLedgerSyncedThrottled(tenantId: number): Promise<void> {
+  const existing = ledgerSyncState.get(tenantId);
+  if (existing && Date.now() - existing.startedAt < LEDGER_SYNC_COOLDOWN_MS) {
+    return existing.promise;
+  }
+  const promise = ensureTenantLedgerSynced(tenantId).catch((err) => {
+    ledgerSyncState.delete(tenantId); // let the next request retry after a failure
+    throw err;
+  });
+  ledgerSyncState.set(tenantId, { startedAt: Date.now(), promise });
+  return promise;
+}
+
+/**
  * GET /fee-calculations/students/balances?classId=&termId=
  * Batch ledger balances — single SQL query, student_ledger only.
  * Optional termId loads a specific (including closed) term snapshot for browse mode.
@@ -50,7 +71,7 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
     // Auto-bill only for the live active term — skip when browsing a historical snapshot.
     if (!hasExplicitTerm) {
       try {
-        await ensureTenantLedgerSynced(tenantId);
+        await ensureTenantLedgerSyncedThrottled(tenantId);
       } catch (syncErr) {
         console.error('[students/balances] Ledger sync failed (continuing):', syncErr);
       }
@@ -76,7 +97,10 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
 
     const balances: Record<string, Awaited<ReturnType<typeof ledgerBalanceToApiShape>>> = {};
 
-    for (const row of rows) {
+    // Enrichment issues 2 queries per student. Run a few at a time (pool max is 10) so large
+    // schools don't spend minutes in a sequential loop and hit the proxy timeout.
+    const ENRICH_CONCURRENCY = 5;
+    const processRow = async (row: (typeof rows)[number]) => {
       const rawShape = {
         currentTermFee: row.termFee,
         currentTermName: termLabel,
@@ -151,7 +175,17 @@ router.get('/students/balances', async (req: AuthRequest, res) => {
           rawShape
         );
       }
-    }
+    };
+
+    let nextRow = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(ENRICH_CONCURRENCY, rows.length) }, async () => {
+        while (nextRow < rows.length) {
+          const row = rows[nextRow++];
+          await processRow(row);
+        }
+      })
+    );
 
     let studentsOwing = 0;
     let studentsCredit = 0;

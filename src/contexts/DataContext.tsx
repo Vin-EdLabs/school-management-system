@@ -538,9 +538,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const balancesUrl = termQs
           ? `/fee-calculations/students/balances?${termQs}`
           : '/fee-calculations/students/balances';
+        // Balances can be slow for big schools. Retry once, and if it still fails keep what we
+        // already have and leave the domain "not loaded" so the next visit tries again
+        // (previously a failure became an empty list that was never retried).
+        let balancesFailed = false;
+        const fetchBalances = async () => {
+          try {
+            return await apiService.get(balancesUrl);
+          } catch (firstErr) {
+            console.warn('Student balances failed, retrying once:', firstErr);
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            try {
+              return await apiService.get(balancesUrl);
+            } catch (secondErr) {
+              console.error('Student balances failed after retry:', secondErr);
+              balancesFailed = true;
+              return null;
+            }
+          }
+        };
         const [feesRes, balancesRes] = await Promise.all([
           apiService.get(feesUrl).catch(() => []),
-          apiService.get(balancesUrl).catch(() => ({ balances: {} })),
+          fetchBalances(),
         ]);
         setFeeStructures((Array.isArray(feesRes) ? feesRes : []).map((f: any) => ({
           id: f.id.toString(),
@@ -554,6 +573,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dueDate: formatDateForInput(f.due_date),
           description: f.description || '',
         })));
+        if (balancesFailed) return false; // keep existing balances; retried on the next load
         const balances =
           balancesRes && typeof balancesRes === 'object' && balancesRes !== null && 'balances' in balancesRes
             ? (balancesRes as { balances: Record<string, StudentBalance> }).balances

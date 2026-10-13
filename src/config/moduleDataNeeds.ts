@@ -57,6 +57,7 @@ export const MODULE_DATA_NEEDS: Record<string, DataDomain[]> = {
   'transport-vehicles': [],
   'transport-drivers': [],
   'transport-students': ['students', 'classes'],
+  'transport-fees-owing': [],
   'boarding-overview': ['students'],
   'boarding-dormitories': [],
   'boarding-boarders': ['students', 'classes'],

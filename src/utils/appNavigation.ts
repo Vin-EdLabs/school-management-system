@@ -59,6 +59,7 @@ const TRANSPORT_MODULE_URLS: Record<string, string> = {
   'transport-vehicles': '/transport/vehicles',
   'transport-drivers': '/transport/drivers',
   'transport-students': '/transport/students',
+  'transport-fees-owing': '/transport/fees-owing',
 };
 
 const FINANCE_MODULE_URLS: Record<string, string> = {

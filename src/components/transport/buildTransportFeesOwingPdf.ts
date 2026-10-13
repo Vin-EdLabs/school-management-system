@@ -7,6 +7,8 @@ import {
   pdfLastTableY,
 } from '../../utils/schoolPdfHeader';
 
+const NO_BUS_LABEL = 'No bus assigned';
+
 export type TransportOwingRow = {
   studentNumber: string;
   studentName: string;
@@ -40,7 +42,7 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
   const startY = drawClassicSchoolPdfHeader(doc, {
     schoolName: input.schoolName,
     logoDataUrl,
-    reportTitle: 'Transport riders owing school fees',
+    reportTitle: 'School fees owing — students on the school bus',
     metaLines: [
       `Scope: ${input.filterLabel}`,
       `Generated: ${generatedAt.toLocaleDateString()} ${generatedAt.toLocaleTimeString()}`,
@@ -71,17 +73,18 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
 
   autoTable(doc, {
     startY: pdfLastTableY(doc) + 8,
-    head: [['#', 'Student ID', 'Student name', 'Class', 'Route', 'Pickup location', 'Amount owed (GHS)']],
+    head: [['#', 'Student ID', 'Student name', 'Class', 'Bus', 'Route', 'Pickup location', 'Amount owed (GHS)']],
     body: input.owing.map((r, i) => [
       String(i + 1),
       r.studentNumber || '—',
       r.studentName,
       r.className || '—',
+      [r.busName, r.busPlate].filter(Boolean).join(' ') || NO_BUS_LABEL,
       r.routeName || '—',
       r.stopName || '—',
       formatPdfMoney(r.amountOwed),
     ]),
-    foot: [['', '', '', '', '', 'Total', formatPdfMoney(totalOwed)]],
+    foot: [['', '', '', '', '', '', 'Total', formatPdfMoney(totalOwed)]],
     showFoot: 'lastPage',
     theme: 'grid',
     headStyles: { fillColor: [242, 242, 242], textColor: 34, halign: 'center', fontStyle: 'bold' },
@@ -93,15 +96,16 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
     tableLineWidth: 0.15,
     columnStyles: {
       0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 56 },
-      3: { cellWidth: 28 },
-      4: { cellWidth: 44 },
-      5: { cellWidth: 56 },
-      6: { halign: 'right', cellWidth: 47 },
+      1: { cellWidth: 26 },
+      2: { cellWidth: 48 },
+      3: { cellWidth: 24 },
+      4: { cellWidth: 40 },
+      5: { cellWidth: 36 },
+      6: { cellWidth: 40 },
+      7: { halign: 'right', cellWidth: 45 },
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 6) {
+      if (data.section === 'body' && data.column.index === 7) {
         data.cell.styles.textColor = [185, 28, 28];
         data.cell.styles.fontStyle = 'bold';
       }
@@ -116,14 +120,12 @@ export async function downloadTransportFeesOwingPdf(input: TransportFeesOwingPdf
     doc.setFont('times', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text(`${input.schoolName} — Transport riders owing fees`, margin, pageHeight - 8);
+    doc.text(`${input.schoolName} — School fees owing (bus riders)`, margin, pageHeight - 8);
     doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   }
 
-  doc.save(`transport-fees-owing-${generatedAt.toISOString().split('T')[0]}.pdf`);
+  doc.save(`school-fees-owing-bus-riders-${generatedAt.toISOString().split('T')[0]}.pdf`);
 }
-const NO_BUS_LABEL = 'No bus assigned';
-
 type BusGroup = { label: string; driver: string; rows: TransportOwingRow[] };
 
 function groupOwingByBus(owing: TransportOwingRow[]): BusGroup[] {
@@ -165,7 +167,7 @@ async function downloadBusPdf(
   const startY = drawClassicSchoolPdfHeader(doc, {
     schoolName: input.schoolName,
     logoDataUrl,
-    reportTitle: `Transport fees owing — ${group.label}`,
+    reportTitle: `School fees owing — ${group.label}`,
     metaLines: [
       `Scope: ${input.filterLabel}`,
       `Generated: ${generatedAt.toLocaleDateString()} ${generatedAt.toLocaleTimeString()}`,
@@ -244,7 +246,7 @@ async function downloadBusPdf(
     doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   }
 
-  doc.save(`transport-fees-owing-${slugify(group.label)}-${generatedAt.toISOString().split('T')[0]}.pdf`);
+  doc.save(`school-fees-owing-${slugify(group.label)}-${generatedAt.toISOString().split('T')[0]}.pdf`);
 }
 
 /**

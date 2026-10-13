@@ -94,6 +94,7 @@ const TRANSPORT_MODULE_URLS: Record<string, string> = {
   'transport-vehicles': '/transport/vehicles',
   'transport-drivers': '/transport/drivers',
   'transport-students': '/transport/students',
+  'transport-fees-owing': '/transport/fees-owing',
 };
 
 function pushModuleUrl(moduleId: string, urlMap: Record<string, string>) {
@@ -268,6 +269,7 @@ const getMenuItems = (hasAccess: (permission: string) => boolean, userRole?: str
     ...(hasAccess('transport-vehicles') ? [{ id: 'transport-vehicles', label: 'Vehicles', icon: Bus }] : []),
     ...(hasAccess('transport-drivers') ? [{ id: 'transport-drivers', label: 'Drivers', icon: UserCheck }] : []),
     ...(hasAccess('transport-students') ? [{ id: 'transport-students', label: 'Students', icon: Users }] : []),
+    ...(hasAccess('transport-fees-owing') ? [{ id: 'transport-fees-owing', label: 'Fees Owing', icon: Wallet }] : []),
   ],
   boarding: boardingEnabled
     ? [

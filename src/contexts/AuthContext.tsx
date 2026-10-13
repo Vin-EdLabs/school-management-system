@@ -21,7 +21,7 @@ const PRIMARY_ADMIN_MODULES = [
   'finance-statement', 'teacher-dashboard', 'teacher-classes', 'attendance', 'grades', 'ai-assistant',
   'records', 'subjects', 'timetable', 'support-chat', 'push-notifications', 'parent-desk', 'parent-accounts',
   'manual-adjustments', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes',
-  'transport-vehicles', 'transport-drivers', 'transport-students', 'end-of-year', 'invoices',
+  'transport-vehicles', 'transport-drivers', 'transport-students', 'transport-fees-owing', 'end-of-year', 'invoices',
   'daily-fees',
   'payment-submissions',
   'paystack',
@@ -440,7 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Additional administrators: academic only
     if (user.role === 'administrator') {
-      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-finance', 'boarding-print', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management', 'platform-billing'].includes(module);
+      return ['students', 'teachers', 'other-staff', 'classes', 'calendar', 'timetable', 'dashboard', 'settings', 'settings-password-only', 'print-fee-status', 'records', 'support-chat', 'parent-desk', 'push-notifications', 'audit', 'parent-accounts', 'birthdays', 'transport-overview', 'transport-map', 'transport-routes', 'transport-vehicles', 'transport-drivers', 'transport-students', 'transport-fees-owing', 'boarding-overview', 'boarding-dormitories', 'boarding-boarders', 'boarding-exeats', 'boarding-rollcall', 'boarding-feeding', 'boarding-sickbay', 'boarding-complaints', 'boarding-finance', 'boarding-print', 'checkin-dashboard', 'checkin-settings', 'staff-attendance', 'staff-attendance-settings', 'my-staff-attendance', 'complaints', 'messages', 'website-management', 'platform-billing'].includes(module);
     }
 
     if (user.role === 'matron') {

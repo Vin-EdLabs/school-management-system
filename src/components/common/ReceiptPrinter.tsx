@@ -279,19 +279,29 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
   };
 
   return (
-    <div className="readonly-view-allow fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 overflow-y-auto p-4">
-      <div className="flex min-h-full w-full justify-center">
-      <Card className="modal my-auto mx-auto max-w-md w-full max-h-[calc(100dvh-2rem)] shadow-2xl border-0 rounded-2xl">
-        <CardHeader className="bg-white border-b sticky top-0 z-10 py-4 px-6">
+    <div className="readonly-view-allow fixed inset-0 bg-black/75 backdrop-blur-md z-50 overflow-y-auto p-4 sm:p-6 transition-all animate-in fade-in duration-200">
+      <div className="flex min-h-full w-full items-center justify-center py-4">
+      <Card className="modal my-auto mx-auto max-w-md w-full max-h-[calc(100dvh-2rem)] shadow-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden">
+        <CardHeader className="bg-white/95 dark:bg-slate-900/95 border-b border-slate-200/80 dark:border-slate-800 sticky top-0 z-10 py-3.5 px-6 backdrop-blur-md">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-slate-800">Print Preview</h3>
-            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-slate-100 transition-colors">×</Button>
+            <div className="flex items-center gap-2">
+              <Printer className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Receipt Preview</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 rounded-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-lg"
+            >
+              ×
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-6 bg-slate-100/50">
+        <CardContent className="p-4 sm:p-6 bg-slate-100/90 dark:bg-slate-950/80">
           <div
             id="receipt-content"
-            className="bg-white p-6 shadow-sm mx-auto border border-slate-200 text-black"
+            className="receipt-paper bg-white p-6 shadow-xl mx-auto border border-slate-200/80 rounded-xl text-slate-950"
             style={{ width: '80mm', minHeight: '120mm' }}
           >
             {/* Minimalist Web Preview */}
@@ -480,7 +490,7 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <Button
               onClick={handleDownload}
               variant="outline"
-              className="w-full py-6 rounded-xl font-bold flex items-center justify-center space-x-2"
+              className="w-full py-5 rounded-xl font-bold flex items-center justify-center space-x-2 border-slate-300 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm transition-all"
             >
               <Download className="w-4 h-4" />
               <span>Download Receipt</span>
@@ -488,12 +498,16 @@ const ReceiptPrinter: React.FC<ReceiptPrinterProps> = ({
             <Button
               id="receipt-print-trigger"
               onClick={handlePrint}
-              className="w-full py-6 rounded-xl bg-slate-900 hover:bg-black text-white font-bold flex items-center justify-center space-x-2 shadow-lg shadow-slate-200 transition-all active:scale-95"
+              className="w-full py-5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/25 active:scale-[0.98] transition-all"
             >
               <Printer className="w-4 h-4" />
               <span>Print Slip</span>
             </Button>
-            <Button variant="ghost" onClick={onClose} className="w-full text-slate-400 font-medium">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              className="w-full text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200 font-medium py-2 transition-colors"
+            >
               Cancel
             </Button>
           </div>

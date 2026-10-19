@@ -142,6 +142,10 @@ export interface Payment {
   id: string;
   studentId: string;
   studentIdNum?: number;
+  studentName?: string;
+  studentIdCode?: string;
+  studentAdmissionNumber?: string;
+  className?: string;
   amount: number;
   date: string;
   recordedAt?: string;
@@ -503,7 +507,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'students': {
         try {
           const studentsRes = await apiService.get('/students?status=all');
-          if (gen !== loadGeneration.current || tenantId !== schoolIdRef.current) return true;
+          if (tenantId !== schoolIdRef.current) return false;
           if (!Array.isArray(studentsRes)) {
             console.error('[DataContext] Invalid students response');
             return false;
@@ -597,6 +601,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: (p.id ?? p.payment_id)?.toString() ?? '',
           studentId: (p.student_id ?? p.studentId)?.toString() || '',
           studentIdNum: p.student_id ?? p.studentId,
+          studentName: p.student_name || (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : (p.first_name || p.last_name || undefined)),
+          studentIdCode: p.student_id_code ?? p.school_student_code ?? p.admission_no ?? p.student_code ?? undefined,
+          studentAdmissionNumber: p.admission_number ?? undefined,
+          className: p.class_name ?? undefined,
           amount: parseFloat(p.amount ?? p.amount_paid ?? 0),
           amountPaid: parseFloat(p.amount_paid ?? p.amount ?? 0),
           date: formatDateForInput(p.payment_date ?? p.date),

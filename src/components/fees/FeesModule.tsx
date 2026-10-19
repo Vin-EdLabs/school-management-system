@@ -54,7 +54,7 @@ const FeesModule: React.FC<FeesModuleProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     if (activeLedgerTermId != null) {
-      void refresh(['fees', 'payments']);
+      void refresh(['fees', 'payments', 'students', 'classes']);
     }
   }, [activeLedgerTermId, refresh]);
 

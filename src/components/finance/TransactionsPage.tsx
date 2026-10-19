@@ -127,10 +127,10 @@ const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
 
   const transactions = useMemo<TransactionRow[]>(() => {
     const feePayments = payments.map((payment) => {
-      const student = students.find((s) => s.id === payment.studentId);
+      const student = students.find((s) => String(s.id) === String(payment.studentId) || String(s.id) === String(payment.studentIdNum));
       const studentName = student
         ? `${student.firstName} ${student.lastName}`.trim()
-        : payment.studentId || 'Student';
+        : payment.studentName || 'Student';
 
       return {
         id: `FEE-${payment.id}`,

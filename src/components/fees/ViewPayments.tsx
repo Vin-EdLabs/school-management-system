@@ -11,7 +11,7 @@ import { useData } from '../../contexts/DataContext';
 import { useActiveTerm } from '../../contexts/ActiveTermContext';
 import { formatDisplayDate } from '../../utils/dateFormat';
 import { isActivePayment, paymentAmountValue, sumActivePaymentAmounts } from '../../utils/feeCalculations';
-import { Search } from 'lucide-react';
+import { Search, Lock } from 'lucide-react';
 
 const ViewPayments = () => {
   const { payments, students, classes } = useData();
@@ -28,12 +28,16 @@ const ViewPayments = () => {
       String(s?.id) === String(payment?.studentId) ||
       String(s?.id) === String(payment?.studentIdNum)
     );
-    const matchesSearch = searchTerm === '' || (student && (
-      (student.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (student.lastName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (student.studentId || '').includes(searchTerm)
-    ));
-    const matchesClass = filterClass === 'all-classes' || !student || student.classAssigned === filterClass;
+    const studentName = student
+      ? `${student.firstName} ${student.lastName}`
+      : (payment.studentName || '');
+    const studentDisplayId = student?.studentId || payment.studentIdCode || payment.studentAdmissionNumber || '';
+    const studentClass = student?.classAssigned || payment.className || '';
+
+    const matchesSearch = searchTerm === '' ||
+      studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      studentDisplayId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesClass = filterClass === 'all-classes' || !studentClass || studentClass === filterClass;
     const termsMatch = filterTerm === 'all-terms' ||
       !payment?.term ||
       payment.term === filterTerm ||
@@ -60,9 +64,21 @@ const ViewPayments = () => {
       return <Badge variant="destructive">VOIDED</Badge>;
     }
     if (payment.correctsPaymentId) {
-      return <Badge className="bg-emerald-600 hover:bg-emerald-600">CORRECTED</Badge>;
+      return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">CORRECTED</Badge>;
     }
-    return null;
+    if (payment.isLocked) {
+      return (
+        <Badge variant="outline" className="gap-1 border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-400">
+          <Lock className="h-3 w-3 inline" />
+          <span>Locked</span>
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800">
+        Paid
+      </Badge>
+    );
   };
 
   return (
@@ -170,6 +186,12 @@ const ViewPayments = () => {
                   );
                   const voided = payment.isVoided;
                   const displayAmount = paymentAmountValue(payment);
+                  const studentName = student
+                    ? `${student.firstName} ${student.lastName}`
+                    : (payment.studentName || `Student #${payment.studentId || '?'}`);
+                  const studentDisplayId = student?.studentId || payment.studentIdCode || payment.studentAdmissionNumber || '-';
+                  const classDisplay = student?.classAssigned || payment.className || '-';
+
                   return (
                     <TableRow key={payment.id || payment.studentId + payment.date} className={voided ? 'opacity-70' : undefined}>
                       <TableCell>
@@ -179,15 +201,15 @@ const ViewPayments = () => {
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {student ? `${student.firstName} ${student.lastName}` : `Student #${payment.studentId || '?'}`}
+                            {studentName}
                           </div>
                           <div className="text-sm text-gray-500">
-                            ID: {student?.studentId ?? payment.studentId ?? '-'}
+                            ID: {studentDisplayId}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{student?.classAssigned ?? '-'}</Badge>
+                        <Badge variant="outline">{classDisplay}</Badge>
                       </TableCell>
                       <TableCell>
                         <span className={`font-mono font-bold ${voided ? 'line-through text-muted-foreground' : 'text-green-600'}`}>

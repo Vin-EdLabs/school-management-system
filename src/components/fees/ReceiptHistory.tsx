@@ -75,6 +75,10 @@ const ReceiptHistory = () => {
     id: (p.id ?? p.payment_id)?.toString() ?? '',
     studentId: (p.student_id ?? p.studentId)?.toString() || '',
     studentIdNum: p.student_id ?? p.studentId,
+    studentName: p.student_name || (p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : (p.first_name || p.last_name || undefined)),
+    studentIdCode: p.student_id_code ?? p.school_student_code ?? p.admission_no ?? p.student_code ?? undefined,
+    studentAdmissionNumber: p.admission_number ?? undefined,
+    className: p.class_name ?? undefined,
     amount: parseFloat(p.amount ?? p.amount_paid ?? 0),
     date: p.payment_date?.split?.('T')?.[0] ?? p.date ?? '',
     recordedAt: p.created_at ?? p.recorded_at ?? p.payment_date ?? p.date,
@@ -143,15 +147,15 @@ const ReceiptHistory = () => {
 
     return termFiltered
       .filter((payment) => {
-        const student = students.find((s) => s.id === payment.studentId);
+        const student = (students || []).find((s) => String(s.id) === String(payment.studentId) || String(s.id) === String(payment.studentIdNum));
         const receiptNumber = payment.receiptNumber || '';
+        const studentName = student ? `${student.firstName} ${student.lastName}` : (payment.studentName || '');
+        const studentDisplayId = student?.studentId || payment.studentIdCode || payment.studentAdmissionNumber || '';
         return (
           searchTerm === '' ||
           receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (student &&
-            (student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              student.studentId.includes(searchTerm)))
+          studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          studentDisplayId.toLowerCase().includes(searchTerm.toLowerCase())
         );
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -168,11 +172,14 @@ const ReceiptHistory = () => {
   ]);
 
   const handleViewReceipt = async (payment: Payment) => {
-    const student = students.find(s => s.id === payment.studentId);
-    if (!student) return;
-
+    const student = (students || []).find(s => String(s.id) === String(payment.studentId) || String(s.id) === String(payment.studentIdNum));
     const activePayments = payments.filter((p) => !p.isVoided);
-    const amounts = receiptAmountsForPayment(payment, activePayments, student, feeStructures);
+    const fallbackStudent = {
+      classAssigned: payment.className || '',
+      classAssignedId: undefined,
+      isBeneficiary: false,
+    };
+    const amounts = receiptAmountsForPayment(payment, activePayments, student || fallbackStudent, feeStructures);
 
     let correctionHistory: {
       correctionCount: number;
@@ -198,9 +205,9 @@ const ReceiptHistory = () => {
     }
 
     const receiptData = {
-      studentName: `${student.firstName} ${student.lastName}`,
-      studentId: student.studentId,
-      className: student.classAssigned,
+      studentName: student ? `${student.firstName} ${student.lastName}` : (payment.studentName || `Student #${payment.studentId || '?'}`),
+      studentId: student?.studentId || payment.studentIdCode || payment.studentAdmissionNumber || '-',
+      className: student?.classAssigned || payment.className || '-',
       amount: payment.amount,
       date: payment.date,
       paymentMethod: payment.paymentMethod,
@@ -271,7 +278,11 @@ const ReceiptHistory = () => {
         </Tooltip>
       );
     }
-    return null;
+    return (
+      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800">
+        Paid
+      </Badge>
+    );
   };
 
   const handleCorrected = () => {
@@ -346,11 +357,15 @@ const ReceiptHistory = () => {
                     </TableRow>
                   ) : (
                     filteredPayments.map((payment) => {
-                      const student = students.find(s => s.id === payment.studentId);
+                      const student = (students || []).find(s => String(s.id) === String(payment.studentId) || String(s.id) === String(payment.studentIdNum));
                       const receiptNumber = payment.receiptNumber || '-';
                       const uiState = getCorrectionUiState(payment, paymentById);
                       const showCorrect = canCorrect && canCorrectReceipt(payment, paymentById);
                       const showLock = canCorrect && uiState === 'locked';
+                      const studentName = student
+                        ? `${student.firstName} ${student.lastName}`
+                        : (payment.studentName || `Student #${payment.studentId || '?'}`);
+                      const studentDisplayId = student?.studentId || payment.studentIdCode || payment.studentAdmissionNumber || '-';
                       return (
                         <TableRow key={payment.id} className={payment.isVoided ? 'opacity-70' : undefined}>
                           <TableCell>
@@ -362,10 +377,10 @@ const ReceiptHistory = () => {
                           <TableCell>
                             <div>
                               <div className="font-medium text-foreground">
-                                {student?.firstName} {student?.lastName}
+                                {studentName}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                ID: {student?.studentId}
+                                ID: {studentDisplayId}
                               </div>
                             </div>
                           </TableCell>

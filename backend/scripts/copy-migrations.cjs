@@ -10,7 +10,7 @@ if (!fs.existsSync(src)) {
 }
 
 fs.mkdirSync(dest, { recursive: true });
-fs.cpSync(src, dest, { recursive: true });
+fs.cpSync(src, dest, { recursive: true, force: true });
 console.log('✅ Copied db/migrations → dist/db/migrations');
 
 const demoSeedSrc = path.join(__dirname, '../src/demo/demoSeedData.json');

@@ -9,7 +9,8 @@ if (!fs.existsSync(src)) {
   process.exit(0);
 }
 
-fs.mkdirSync(dest, { recursive: true });
+fs.rmSync(dest, { recursive: true, force: true });
+fs.mkdirSync(path.dirname(dest), { recursive: true });
 fs.cpSync(src, dest, { recursive: true, force: true });
 console.log('✅ Copied db/migrations → dist/db/migrations');
 

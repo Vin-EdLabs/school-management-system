@@ -51,6 +51,10 @@ function canCorrectReceipt(payment: Payment, paymentById: Map<string, Payment>) 
   return getCorrectionUiState(payment, paymentById) === 'correctable';
 }
 
+function getReceiptRecordedDate(payment: Payment): string {
+  return payment.recordedAt || payment.date;
+}
+
 const ReceiptHistory = () => {
   const { payments, students, feeStructures, refresh, ledgerBalances } = useData();
   const { hasAccess } = useAuth();
@@ -158,7 +162,7 @@ const ReceiptHistory = () => {
           studentDisplayId.toLowerCase().includes(searchTerm.toLowerCase())
         );
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => new Date(getReceiptRecordedDate(b)).getTime() - new Date(getReceiptRecordedDate(a)).getTime());
   }, [
     sourcePayments,
     payments,
@@ -389,7 +393,7 @@ const ReceiptHistory = () => {
                               GHS {payment.amount.toFixed(2)}
                             </span>
                           </TableCell>
-                          <TableCell className="text-foreground">{formatDisplayDate(payment.date)}</TableCell>
+                          <TableCell className="text-foreground">{formatDisplayDate(getReceiptRecordedDate(payment))}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">{payment.paymentMethod}</Badge>
                           </TableCell>

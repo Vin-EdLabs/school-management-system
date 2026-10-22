@@ -7,6 +7,14 @@ import { ensureSupplementalSchema } from './ensureSchema.js';
 
 const { Pool } = pg;
 
+// PostgreSQL DATE (OID 1082) is a calendar day with no time zone. node-pg's default parser
+// builds a Date at *server-local* midnight, so on a host ahead of UTC "2026-10-21" serializes
+// as "2026-10-20T22:00:00.000Z" and the UI shows the previous day (receipts, dates of birth…).
+// Anchor DATE values at UTC midnight so the calendar day survives JSON serialization.
+pg.types.setTypeParser(pg.types.builtins.DATE, (value: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : value
+);
+
 const pool = new Pool(
   process.env.DATABASE_URL
     ? {

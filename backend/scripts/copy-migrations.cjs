@@ -19,7 +19,15 @@ const demoSeedDest = path.join(__dirname, '../dist/demo/demoSeedData.json');
 
 if (fs.existsSync(demoSeedSrc)) {
   fs.mkdirSync(path.dirname(demoSeedDest), { recursive: true });
-  fs.copyFileSync(demoSeedSrc, demoSeedDest);
+  // copyFileSync also chmods the destination, which fails with EPERM when a previous build
+  // (e.g. run with sudo) left the file owned by another user. Replace the file and write the
+  // bytes directly instead — no chmod involved.
+  try {
+    fs.rmSync(demoSeedDest, { force: true });
+  } catch {
+    /* not removable — fall through and overwrite in place */
+  }
+  fs.writeFileSync(demoSeedDest, fs.readFileSync(demoSeedSrc));
   console.log('✅ Copied src/demo/demoSeedData.json → dist/demo/demoSeedData.json');
 } else {
   console.warn('copy-migrations: demo seed JSON not found', demoSeedSrc);

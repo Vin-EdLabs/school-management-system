@@ -751,6 +751,7 @@ export async function ensureSupplementalSchema(): Promise<void> {
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS specialization TEXT`, 'teachers.specialization');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS national_id VARCHAR(100)`, 'teachers.national_id');
   await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS employment_type VARCHAR(50)`, 'teachers.employment_type');
+  await safe(`ALTER TABLE teachers ADD COLUMN IF NOT EXISTS documents JSONB NOT NULL DEFAULT '[]'::jsonb`, 'teachers.documents');
   await safe(
     `ALTER TABLE teachers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
     'teachers.deleted_at'

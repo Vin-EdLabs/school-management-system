@@ -9,7 +9,7 @@ import {
   pdfLastTableY,
 } from '@/utils/schoolPdfHeader';
 import type { Teacher } from '@/contexts/DataContext';
-import type { OtherStaffRecord } from '@/components/staff/otherStaffTypes';
+import type { OtherStaffRecord, StaffLegalDocument } from '@/components/staff/otherStaffTypes';
 import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
 
 const EMPTY = '—';
@@ -118,13 +118,127 @@ function drawProfileSection(doc: jsPDF, startY: number, section: PdfSection, isF
   return pdfLastTableY(doc) + 4;
 }
 
-function buildProfileDoc(
+function parseStaffDocuments(raw: unknown): StaffLegalDocument[] {
+  if (Array.isArray(raw)) return raw as StaffLegalDocument[];
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function isPdfAttachment(d: StaffLegalDocument): boolean {
+  return (
+    !!d.type?.toLowerCase().includes('pdf') ||
+    !!d.name?.toLowerCase().endsWith('.pdf') ||
+    !!d.url?.startsWith('data:application/pdf')
+  );
+}
+
+function documentsSection(docs: StaffLegalDocument[], title: string): PdfSection {
+  return {
+    title,
+    fields: docs.map((d) => ({
+      label: d.title || 'Document',
+      value: [
+        d.name,
+        d.document_number ? `Doc/License #: ${d.document_number}` : null,
+        d.expiry_date ? `Expires: ${formatDisplayDate(d.expiry_date)}` : null,
+        isPdfAttachment(d) ? 'PDF file — open from the staff profile to print' : 'Copy attached below',
+      ]
+        .filter(Boolean)
+        .join(' | '),
+    })),
+  };
+}
+
+/** Re-encode any browser-readable image (PNG/JPEG/WebP/GIF) to JPEG so jsPDF can embed it. */
+async function rasterizeImage(src: string): Promise<{ dataUrl: string; width: number; height: number } | null> {
+  if (!src) return null;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.crossOrigin = 'anonymous';
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Image failed to load'));
+      el.src = src;
+    });
+    const width = img.naturalWidth || img.width;
+    const height = img.naturalHeight || img.height;
+    if (!width || !height) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0);
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.9), width, height };
+  } catch {
+    return null;
+  }
+}
+
+/** One page per image attachment: heading, details, then the image scaled to fit. */
+async function appendDocumentImagePages(doc: jsPDF, docs: StaffLegalDocument[], ownerName: string) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  for (const attachment of docs) {
+    if (isPdfAttachment(attachment)) continue;
+    const image = await rasterizeImage(attachment.url);
+    if (!image) continue;
+
+    doc.addPage();
+    let y = 18;
+    doc.setFont('times', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(34, 34, 34);
+    doc.text(attachment.title || 'Document', MARGIN, y);
+    y += 6;
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 90);
+    const meta = [
+      ownerName,
+      attachment.document_number ? `Doc/License #: ${attachment.document_number}` : null,
+      attachment.expiry_date ? `Expires: ${formatDisplayDate(attachment.expiry_date)}` : null,
+      attachment.name,
+    ]
+      .filter(Boolean)
+      .join('  |  ');
+    const metaLines = doc.splitTextToSize(meta, pageW - MARGIN * 2) as string[];
+    doc.text(metaLines, MARGIN, y);
+    y += metaLines.length * 4 + 2;
+    y = drawSectionDivider(doc, y);
+
+    const maxW = pageW - MARGIN * 2;
+    const maxH = pageH - y - 20; // leave room for the footer
+    const scale = Math.min(maxW / image.width, maxH / image.height);
+    const drawW = image.width * scale;
+    const drawH = image.height * scale;
+    const x = (pageW - drawW) / 2;
+    doc.addImage(image.dataUrl, 'JPEG', x, y, drawW, drawH);
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.rect(x, y, drawW, drawH);
+  }
+}
+
+async function buildProfileDoc(
   schoolName: string,
   reportTitle: string,
   metaLines: string[],
   logoDataUrl: string | null,
-  sections: PdfSection[]
-): jsPDF {
+  sections: PdfSection[],
+  attachments: { docs: StaffLegalDocument[]; ownerName: string } | null = null
+): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   let y = drawClassicSchoolPdfHeader(doc, {
     schoolName,
@@ -137,6 +251,10 @@ function buildProfileDoc(
   sections.forEach((section, index) => {
     y = drawProfileSection(doc, y, section, index === 0);
   });
+
+  if (attachments && attachments.docs.length > 0) {
+    await appendDocumentImagePages(doc, attachments.docs, attachments.ownerName);
+  }
 
   drawFooter(doc);
   return doc;
@@ -223,7 +341,12 @@ export async function downloadTeacherProfilePdf(
     },
   ];
 
-  const doc = buildProfileDoc(
+  const docs = parseStaffDocuments(teacher.documents);
+  if (docs.length > 0) {
+    sections.push(documentsSection(docs, 'Legal & Official Documents'));
+  }
+
+  const doc = await buildProfileDoc(
     schoolName,
     'Teacher Profile',
     [
@@ -232,7 +355,8 @@ export async function downloadTeacherProfilePdf(
       `Generated: ${generatedAt.toLocaleDateString()} ${generatedAt.toLocaleTimeString()}`,
     ],
     logoDataUrl,
-    sections
+    sections,
+    { docs, ownerName: `${display(teacher.fullName)} (${display(teacher.staffId)})` }
   );
 
   doc.save(profileFilename(teacher.fullName));
@@ -310,35 +434,12 @@ export async function downloadOtherStaffProfilePdf(
     },
   ];
 
-  const docs = Array.isArray(staff.documents)
-    ? staff.documents
-    : typeof staff.documents === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(staff.documents);
-          } catch {
-            return [];
-          }
-        })()
-      : [];
-
+  const docs = parseStaffDocuments(staff.documents);
   if (docs.length > 0) {
-    sections.push({
-      title: 'Legal & Compliance Documents',
-      fields: docs.map((d: any) => ({
-        label: d.title || 'Document',
-        value: [
-          d.name,
-          d.document_number ? `Doc/License #: ${d.document_number}` : null,
-          d.expiry_date ? `Expires: ${d.expiry_date}` : null,
-        ]
-          .filter(Boolean)
-          .join(' | '),
-      })),
-    });
+    sections.push(documentsSection(docs, 'Legal & Compliance Documents'));
   }
 
-  const doc = buildProfileDoc(
+  const doc = await buildProfileDoc(
     schoolName,
     'Staff Profile',
     [
@@ -347,7 +448,8 @@ export async function downloadOtherStaffProfilePdf(
       `Generated: ${generatedAt.toLocaleDateString()} ${generatedAt.toLocaleTimeString()}`,
     ],
     logoDataUrl,
-    sections
+    sections,
+    { docs, ownerName: `${display(staff.full_name)} (${display(staff.staff_id)})` }
   );
 
   doc.save(profileFilename(staff.full_name));

@@ -26,6 +26,8 @@ import TeacherRemoveConfirmDialog from './TeacherRemoveConfirmDialog';
 import TeacherSubjectClassDisplay from './TeacherSubjectClassDisplay';
 import TeacherStatusHistory from './TeacherStatusHistory';
 import type { TeacherSubjectClassesResponse } from '@/types/teacherSubjectClass';
+import StaffDocumentsList from '../staff/StaffDocumentsList';
+import type { StaffLegalDocument } from '../staff/otherStaffTypes';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +68,7 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
   const [subjectClasses, setSubjectClasses] = useState<TeacherSubjectClassesResponse | null>(null);
   const [detaching, setDetaching] = useState(false);
   const [showDetachConfirm, setShowDetachConfirm] = useState(false);
+  const [documents, setDocuments] = useState<StaffLegalDocument[]>([]);
 
   const status = teacher?.status || 'active';
   const badge = teacher ? teacherStatusBadge(status) : null;
@@ -123,12 +126,29 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
     })();
   }, [open, teacher?.id]);
 
+  useEffect(() => {
+    if (!open || !teacher) {
+      setDocuments([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await apiService.get<{ documents?: StaffLegalDocument[] }>(`/teachers/${teacher.id}`);
+        if (!cancelled) setDocuments(Array.isArray(full.documents) ? full.documents : []);
+      } catch {
+        if (!cancelled) setDocuments([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, teacher?.id]);
+
   const handleDownloadProfile = async () => {
     if (!teacher) return;
     setDownloadingPdf(true);
     try {
       await downloadTeacherProfilePdf(
-        teacher,
+        { ...teacher, documents },
         subjectClasses,
         school?.name || 'School',
         resolveLogoUrl(school?.logo_url)
@@ -369,6 +389,13 @@ const TeacherDetailsDialog: React.FC<TeacherDetailsDialogProps> = ({
                 <DetailField label="Branch">{teacher.bankBranch || '—'}</DetailField>
               </div>
             </div>
+
+            {documents.length > 0 ? (
+              <>
+                <Separator />
+                <StaffDocumentsList documents={documents} />
+              </>
+            ) : null}
 
             {isAdmin && (
               <>

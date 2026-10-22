@@ -80,6 +80,7 @@ async function scrubTeacherRowSoft(
          date_of_birth = NULL,
          subjects_taught = NULL,
          notes = NULL,
+         documents = '[]'::jsonb,
          staff_id = '__removed_' || id::text,
          status = 'soft_deleted',
          is_deleted = true,

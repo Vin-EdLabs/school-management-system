@@ -62,8 +62,19 @@ const upload = multer({
 
 function stripTeacherPhotoForList(row: Record<string, unknown>) {
   const has = !!(row.passport_photo_url && String(row.passport_photo_url).length > 0);
-  const { passport_photo_url, ...rest } = row;
-  return { ...rest, has_passport_photo: has };
+  // Documents are stored inline (base64) — list responses only carry the count; GET /:id returns them.
+  const { passport_photo_url, documents, ...rest } = row;
+  return {
+    ...rest,
+    has_passport_photo: has,
+    documents_count: Array.isArray(documents) ? documents.length : 0,
+  };
+}
+
+function normalizeDocumentsJson(raw: unknown): string {
+  if (Array.isArray(raw)) return JSON.stringify(raw);
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return '[]';
 }
 
 const ASSIGNED_CLASS_IDS_SQL = `
@@ -680,10 +691,10 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         monthly_salary, employment_status, notes, position, department,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         bank_name, bank_account_number, bank_branch, bank_account_name,
-        qualification, specialization, parent_teacher_id, national_id, employment_type, status
+        qualification, specialization, parent_teacher_id, national_id, employment_type, documents, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 'active'
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29::jsonb, 'active'
       ) RETURNING *`,
       [
         tenantId,
@@ -714,6 +725,7 @@ router.post('/', requireRole('super-admin', 'administrator'), async (req: AuthRe
         parentTeacherId,
         teacherData.national_id ? String(teacherData.national_id).trim() : null,
         teacherData.employment_type ? String(teacherData.employment_type).trim() : null,
+        normalizeDocumentsJson(teacherData.documents),
       ]
     );
 
@@ -841,13 +853,16 @@ router.put('/:id', requireRole('super-admin', 'administrator'), async (req: Auth
       'monthly_salary', 'employment_status', 'notes', 'position', 'department',
       'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
       'bank_name', 'bank_account_number', 'bank_branch', 'bank_account_name',
-      'qualification', 'specialization', 'national_id', 'employment_type',
+      'qualification', 'specialization', 'national_id', 'employment_type', 'documents',
     ];
-    
+
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
-        updateFields.push(`${field} = $${paramCount}`);
+        updateFields.push(field === 'documents' ? `documents = $${paramCount}::jsonb` : `${field} = $${paramCount}`);
         let val = updates[field];
+        if (field === 'documents') {
+          val = normalizeDocumentsJson(val);
+        }
         if (field === 'qualification' || field === 'specialization') {
           val = val != null && String(val).trim() !== '' ? String(val).trim() : null;
         }

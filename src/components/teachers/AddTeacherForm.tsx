@@ -21,6 +21,8 @@ import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
 import ParentTeacherSelect from './ParentTeacherSelect';
+import StaffLegalDocumentsSection, { TEACHER_DOC_CATEGORIES } from '../staff/StaffLegalDocumentsSection';
+import type { StaffLegalDocument } from '../staff/otherStaffTypes';
 import {
   flattenSubjectClassMap,
   deriveSubjectNamesFromMap,
@@ -77,6 +79,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [parentTeacherId, setParentTeacherId] = useState('');
+  const [documents, setDocuments] = useState<StaffLegalDocument[]>([]);
   const submitLock = useRef(false);
 
   const runValidation = () => {
@@ -142,6 +145,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
         nationalId: formData.nationalId.trim() || undefined,
         employmentType: formData.employmentType.trim() || undefined,
         parentTeacherId: parentTeacherId || null,
+        documents,
       });
 
       await persistStaffProfileFields(formData.position, formData.department);
@@ -199,6 +203,7 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
       setShowBank(false);
       setPhotoFile(null);
       setPhotoPreview(null);
+      setDocuments([]);
 
       onSuccess();
     } catch (error: unknown) {
@@ -444,6 +449,14 @@ const AddTeacherForm: React.FC<AddTeacherFormProps> = ({ onSuccess }) => {
             </div>
 
             <ParentTeacherSelect value={parentTeacherId} onChange={setParentTeacherId} disabled={isSubmitting} />
+
+            <StaffLegalDocumentsSection
+              documents={documents}
+              onChange={setDocuments}
+              isDriver={false}
+              disabled={isSubmitting}
+              categories={TEACHER_DOC_CATEGORIES}
+            />
 
             <StaffOptionalSections
               showEmergency={showEmergency}

@@ -18,6 +18,8 @@ import StaffFieldSelect from '../common/StaffFieldSelect';
 import PasswordConfirmDialog from '../common/PasswordConfirmDialog';
 import { persistStaffProfileFields } from '@/services/staffFieldApi';
 import ParentTeacherSelect from './ParentTeacherSelect';
+import StaffLegalDocumentsSection, { TEACHER_DOC_CATEGORIES } from '../staff/StaffLegalDocumentsSection';
+import type { StaffLegalDocument } from '../staff/otherStaffTypes';
 import TeacherSubjectClassAssignment from './TeacherSubjectClassAssignment';
 import { FormFieldError, FormValidationSummary } from '@/components/common/FormFieldError';
 import {
@@ -86,6 +88,29 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
   const [showEmergency, setShowEmergency] = useState(false);
   const [showBank, setShowBank] = useState(false);
   const [parentTeacherId, setParentTeacherId] = useState('');
+  const [documents, setDocuments] = useState<StaffLegalDocument[]>([]);
+  // Only send documents back once the full list has loaded, so a failed fetch never wipes them.
+  const [documentsLoaded, setDocumentsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!teacher || !open) {
+      setDocuments([]);
+      setDocumentsLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await apiService.get<{ documents?: StaffLegalDocument[] }>(`/teachers/${teacher.id}`);
+        if (cancelled) return;
+        setDocuments(Array.isArray(full.documents) ? full.documents : []);
+        setDocumentsLoaded(true);
+      } catch {
+        if (!cancelled) setDocumentsLoaded(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [teacher?.id, open]);
 
   useEffect(() => {
     if (!open) {
@@ -216,6 +241,7 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
         specialization: formData.specialization.trim(),
         parentTeacherId: parentTeacherId || null,
         subjectClassAssignments,
+        ...(documentsLoaded ? { documents } : {}),
       });
 
       await persistStaffProfileFields(formData.position, formData.department);
@@ -526,6 +552,15 @@ const EditTeacherDialog: React.FC<EditTeacherDialogProps> = ({
             excludeTeacherId={teacher.id}
             value={parentTeacherId}
             onChange={setParentTeacherId}
+          />
+
+          <StaffLegalDocumentsSection
+            key={documentsLoaded ? 'docs-loaded' : 'docs-loading'}
+            documents={documents}
+            onChange={setDocuments}
+            isDriver={false}
+            disabled={!documentsLoaded}
+            categories={TEACHER_DOC_CATEGORIES}
           />
 
           <StaffOptionalSections

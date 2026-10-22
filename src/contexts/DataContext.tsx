@@ -16,6 +16,7 @@ import {
 } from '@/hooks/useStudentCache';
 import { getActiveAcademicTerm, getActiveAcademicYear } from '@/utils/feeCalculations';
 import type { StudentBalance } from '@/services/studentBalance';
+import type { StaffLegalDocument } from '@/components/staff/otherStaffTypes';
 import {
   getClosedTermBrowse,
   subscribeClosedTermBrowse,
@@ -103,6 +104,9 @@ export interface Teacher {
   specialization?: string;
   assignedClassIds?: string[];
   subjectClassAssignments?: Array<{ subject_id: number; class_id: number }>;
+  /** Full attachments — only present when loaded from GET /teachers/:id (list responses omit them). */
+  documents?: StaffLegalDocument[];
+  documentsCount?: number;
 }
 
 function normalizeTeacherStatus(raw: string | null | undefined): TeacherStatus {
@@ -356,6 +360,10 @@ const mapTeacher = (backendTeacher: any): Teacher => ({
     : backendTeacher.class_assigned_id
       ? [String(backendTeacher.class_assigned_id)]
       : [],
+  documents: Array.isArray(backendTeacher.documents) ? backendTeacher.documents : undefined,
+  documentsCount: Array.isArray(backendTeacher.documents)
+    ? backendTeacher.documents.length
+    : Number(backendTeacher.documents_count) || 0,
 });
 
 // Helper function to map frontend teacher to backend format (only defined fields for partial updates)
@@ -390,6 +398,7 @@ const mapTeacherToBackend = (teacher: Partial<Teacher>): any => {
   if (teacher.department !== undefined) out.department = String(teacher.department).trim() || null;
   if (teacher.qualification !== undefined) out.qualification = String(teacher.qualification).trim() || null;
   if (teacher.specialization !== undefined) out.specialization = String(teacher.specialization).trim() || null;
+  if (teacher.documents !== undefined) out.documents = teacher.documents;
   if (teacher.parentTeacherId !== undefined) {
     out.parent_teacher_id =
       teacher.parentTeacherId && String(teacher.parentTeacherId).trim()

@@ -38,7 +38,25 @@ interface StaffLegalDocumentsSectionProps {
   onChange: (docs: StaffLegalDocument[]) => void;
   isDriver: boolean;
   disabled?: boolean;
+  /** Document type options; defaults to the general staff / driver list. */
+  categories?: readonly string[];
 }
+
+const OTHER_DOC_CATEGORY = 'Other Legal Document';
+
+export const TEACHER_DOC_CATEGORIES = [
+  "National ID / Ghana Card",
+  "Academic Certificate",
+  "Transcript / Results Slip",
+  "Teaching License (NTC)",
+  "Curriculum Vitae (CV)",
+  "Appointment / Posting Letter",
+  "Employment Contract / Agreement",
+  "Police Clearance / Background Check",
+  "Medical Fitness Certificate",
+  "SSNIT Biometric Card",
+  OTHER_DOC_CATEGORY,
+] as const;
 
 const COMMON_DOC_CATEGORIES = [
   "Driver's License (Front)",
@@ -51,7 +69,7 @@ const COMMON_DOC_CATEGORIES = [
   "National ID / Ghana Card",
   "Medical Fitness / Vision Certificate",
   "Employment Contract / Agreement",
-  "Other Legal Document",
+  OTHER_DOC_CATEGORY,
 ] as const;
 
 function formatFileSize(bytes?: number): string {
@@ -100,6 +118,7 @@ export const StaffLegalDocumentsSection: React.FC<StaffLegalDocumentsSectionProp
   onChange,
   isDriver,
   disabled = false,
+  categories = COMMON_DOC_CATEGORIES,
 }) => {
   const [isOpen, setIsOpen] = useState(isDriver || documents.length > 0);
   const [selectedCategory, setSelectedCategory] = useState<string>(
@@ -187,8 +206,10 @@ export const StaffLegalDocumentsSection: React.FC<StaffLegalDocumentsSectionProp
             ? customTitle.trim() || file.name.replace(/\.[^/.]+$/, '')
             : selectedCategory;
 
-        if (validFiles.length > 1) {
-          // If multiple files uploaded together, label smartly
+        if (validFiles.length > 1 && !isDriver) {
+          effectiveTitle = `${effectiveTitle} (${i + 1})`;
+        } else if (validFiles.length > 1) {
+          // If multiple driver files uploaded together, label smartly
           const lowerName = file.name.toLowerCase();
           if (lowerName.includes('front')) {
             effectiveTitle = "Driver's License (Front)";
@@ -392,7 +413,7 @@ export const StaffLegalDocumentsSection: React.FC<StaffLegalDocumentsSectionProp
                     <SelectValue placeholder="Select document type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {COMMON_DOC_CATEGORIES.map((cat) => (
+                    {categories.map((cat) => (
                       <SelectItem key={cat} value={cat} className="text-xs">
                         {cat}
                       </SelectItem>
